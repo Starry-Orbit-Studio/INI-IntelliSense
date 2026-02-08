@@ -194,5 +194,14 @@
     "welcome.step3.title": "3. Configure Indexing Whitelist (Optional)",
     "welcome.step3.desc": "Define which files the extension should track. You can edit the rules below.",
     "welcome.step3.button.settings": "Edit in settings.json",
-    "welcome.finishButton.text": "Finish Setup & Close"
+    "welcome.finishButton.text": "Finish Setup & Close",
+    "view.csfOutline.name": "CSF Viewer",
+    "command.refreshCsfOutline.title": "Refresh CSF Outline",
+    "csfOutline.noFiles": "No CSF files found",
+    "csfOutline.scanWorkspace": "Scan workspace for .csf files",
+    "csfOutline.rootLabel": "CSF Viewer",
+    "csfOutline.rootTooltip": "CSF file viewer for RA2/YR string resources",
+    "csfOutline.openFile": "Open CSF File",
+    "csfOutline.loading": "Loading CSF files...",
+    "csfOutline.initializing": "Initializing..."
 }

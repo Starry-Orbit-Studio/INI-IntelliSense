@@ -18,6 +18,7 @@ import { registerFormattingCommands } from './formatting/formatter';
 import { DictionaryService } from './dictionary-service';
 import { FileTypeManager } from './file-type-manager';
 import { CsfManager } from './csf-manager';
+import { CsfOutlineProvider } from './csf-outline-provider';
 
 const LANGUAGE_ID = 'ra2-ini';
 
@@ -30,6 +31,14 @@ export async function activate(context: vscode.ExtensionContext) {
 	const schemaManager = new SchemaManager();
     const fileTypeManager = new FileTypeManager();
     const csfManager = new CsfManager();
+    const csfOutlineProvider = new CsfOutlineProvider(csfManager);
+    
+    // 等待CSF管理器初始化完成，然后刷新树状视图
+    csfManager.waitForInitialization().then(() => {
+        csfOutlineProvider.refresh();
+    }).catch(err => {
+        console.error('Failed to initialize CSF manager:', err);
+    });
 	iniManager.setSchemaManager(schemaManager);
     iniManager.setFileTypeManager(fileTypeManager);
 
@@ -71,7 +80,9 @@ export async function activate(context: vscode.ExtensionContext) {
     context.subscriptions.push(diagnosticManager);
 
 	context.subscriptions.push(vscode.window.createTreeView('ini-outline', { treeDataProvider: outlineProvider }));
+	context.subscriptions.push(vscode.window.createTreeView('csf-outline', { treeDataProvider: csfOutlineProvider }));
     context.subscriptions.push(vscode.commands.registerCommand('ra2-ini-intellisense.refreshOutline', () => outlineProvider.refresh()));
+    context.subscriptions.push(vscode.commands.registerCommand('ra2-ini-intellisense.refreshCsfOutline', () => csfOutlineProvider.refresh()));
 
     function getProjectRoot(): string | undefined {
         const config = vscode.workspace.getConfiguration('ra2-ini-intellisense');

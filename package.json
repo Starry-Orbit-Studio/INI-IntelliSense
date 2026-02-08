@@ -79,6 +79,11 @@
           "id": "ini-outline",
           "name": "%view.outline.name%",
           "icon": "$(list-tree)"
+        },
+        {
+          "id": "csf-outline",
+          "name": "%view.csfOutline.name%",
+          "icon": "$(list-flat)"
         }
       ]
     },
@@ -87,6 +92,11 @@
         {
           "command": "ra2-ini-intellisense.refreshOutline",
           "when": "view == ini-outline",
+          "group": "navigation"
+        },
+        {
+          "command": "ra2-ini-intellisense.refreshCsfOutline",
+          "when": "view == csf-outline",
           "group": "navigation"
         }
       ],
@@ -127,6 +137,11 @@
       {
         "command": "ra2-ini-intellisense.refreshOutline",
         "title": "%command.refreshOutline.title%",
+        "icon": "$(refresh)"
+      },
+      {
+        "command": "ra2-ini-intellisense.refreshCsfOutline",
+        "title": "%command.refreshCsfOutline.title%",
         "icon": "$(refresh)"
       },
       {

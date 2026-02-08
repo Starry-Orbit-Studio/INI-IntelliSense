@@ -16,6 +16,8 @@
     "command.extractSuperclass.title": "提取超类...",
     "command.formatSelection.title": "格式化选区/当前行",
     "command.formatDocument.title": "格式化文档",
+    "command.refreshCsfOutline.title": "刷新 CSF 大纲",
+    "view.csfOutline.name": "CSF 查看器",
     "configuration.title": "INI IntelliSense",
     "configuration.properties.exePath.description": "INIValidator.exe 的绝对路径。推荐通过点击状态栏图标或使用 '管理 INI Validator' 命令进行设置。",
     "configuration.properties.validationFolderPath.description": "要校验的Mod根目录的绝对路径。推荐通过设置向导或状态栏图标进行设置。",
