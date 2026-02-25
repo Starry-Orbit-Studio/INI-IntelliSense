@@ -630,7 +630,12 @@ export async function activate(context: vscode.ExtensionContext) {
                         }
 
                         // 添加描述
-                        const description = descriptionManager.getDescription(typeName, keyPart);
+                        // 首先尝试使用节名查找（描述文件中的节名）
+                        let description = descriptionManager.getDescription(currentSectionName, keyPart);
+                        // 如果没找到，尝试使用类型名
+                        if (!description && typeName && typeName !== currentSectionName) {
+                            description = descriptionManager.getDescription(typeName, keyPart);
+                        }
                         if (description) {
                             markdown.appendMarkdown('\n\n---\n\n');
                             markdown.appendMarkdown(description);

@@ -168,6 +168,20 @@ export class DescriptionManager {
     private descriptionDir: string | null = null;
     
     /**
+     * 统一大小写以确保必定匹配
+     */
+    private normalizeLanguageCode(language: string): string {
+        if (!language) return language;
+        const parts = language.split('-');
+        if (parts.length === 2) {
+            // 语言部分小写，区域部分大写
+            return `${parts[0].toLowerCase()}-${parts[1].toUpperCase()}`;
+        }
+        // 如果没有区域部分，转换为小写
+        return language.toLowerCase();
+    }
+    
+    /**
      * 设置描述文件的存储目录。
      */
     setDescriptionDir(dir: string): void {
@@ -179,7 +193,7 @@ export class DescriptionManager {
      * @param language 语言代码，如 'zh-CN', 'en-US'
      */
     setLanguage(language: string): void {
-        this.currentLanguage = language;
+        this.currentLanguage = this.normalizeLanguageCode(language);
     }
     
     /**
@@ -191,8 +205,16 @@ export class DescriptionManager {
         try {
             const content = fs.readFileSync(filePath, 'utf-8');
             const parsed = this.parser.parse(content);
-            this.descriptions.set(language, parsed);
-            console.log(`[DescriptionManager] Loaded descriptions for ${language} from ${filePath}`);
+            const normalizedLanguage = this.normalizeLanguageCode(language);
+            this.descriptions.set(normalizedLanguage, parsed);
+            
+            // 输出统计信息
+            let totalKeys = 0;
+            for (const [section, keys] of parsed.entries()) {
+                totalKeys += keys.size;
+            }
+            console.log(`[DescriptionManager] Loaded descriptions for ${normalizedLanguage} from ${filePath}: ${parsed.size} sections, ${totalKeys} keys`);
+            
             return true;
         } catch (error) {
             console.error(`[DescriptionManager] Failed to load descriptions from ${filePath}:`, error);
@@ -293,7 +315,8 @@ export class DescriptionManager {
      * 获取指定语言的描述。
      */
     private getDescriptionForLanguage(sectionName: string, keyName: string, language: string): string | undefined {
-        const langDescriptions = this.descriptions.get(language);
+        const normalizedLanguage = this.normalizeLanguageCode(language);
+        const langDescriptions = this.descriptions.get(normalizedLanguage);
         if (!langDescriptions) {
             return undefined;
         }
