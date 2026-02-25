@@ -94,6 +94,8 @@
     "dictionary.downloading": "正在下载 INI Dictionary...",
     "dictionary.download.success": "INI Dictionary 下载并配置成功。",
     "dictionary.download.failed": "下载字典失败: {0}",
+    "dictionary.downloadingDescriptions": "正在下载描述文件...",
+    "dictionary.downloadingDescriptionFile": "正在下载 {0} ({1})...",
     "validator.run.notReady": "INI Validator 尚未配置, 无法执行校验。",
     "validator.run.progress.title": "正在运行 INI Validator...",
     "validator.run.progress.success": "校验完成!",

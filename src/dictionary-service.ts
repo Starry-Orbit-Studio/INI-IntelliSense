@@ -87,6 +87,62 @@ export class DictionaryService {
                         }
                     }
                     
+                    // 下载描述文件（如果存在）
+                    const descriptionDir = path.join(dictDir, 'descriptions');
+                    if (!fs.existsSync(descriptionDir)) {
+                        fs.mkdirSync(descriptionDir, { recursive: true });
+                    }
+                    
+                    // 读取主字典文件，查找 [Description] 节
+                    const mainDictContent = fs.readFileSync(path.join(dictDir, DICT_FILENAME), 'utf-8');
+                    const lines = mainDictContent.split(/\r?\n/);
+                    let inDescriptionSection = false;
+                    const descriptionFiles = new Map<string, string>(); // language -> filename
+                    
+                    for (const line of lines) {
+                        const trimmed = line.trim();
+                        if (trimmed === '[Description]') {
+                            inDescriptionSection = true;
+                            continue;
+                        }
+                        if (trimmed.startsWith('[') && trimmed !== '[Description]') {
+                            inDescriptionSection = false;
+                            continue;
+                        }
+                        
+                        if (inDescriptionSection && trimmed && !trimmed.startsWith(';')) {
+                            const eqIdx = trimmed.indexOf('=');
+                            if (eqIdx !== -1) {
+                                const language = trimmed.substring(0, eqIdx).trim();
+                                const filename = trimmed.substring(eqIdx + 1).trim();
+                                descriptionFiles.set(language, filename);
+                            }
+                        }
+                    }
+                    
+                    // 下载描述文件
+                    if (descriptionFiles.size > 0) {
+                        progress.report({ message: localize('dictionary.downloadingDescriptions', 'Downloading description files...') });
+                        
+                        for (const [language, filename] of descriptionFiles.entries()) {
+                            try {
+                                progress.report({ message: localize('dictionary.downloadingDescriptionFile', 'Downloading {0} ({1})...', filename, language) });
+                                const descContent = await this.httpsGet(baseUrl + filename);
+                                const descPath = path.join(descriptionDir, filename);
+                                // 确保目录存在
+                                const descDir = path.dirname(descPath);
+                                if (!fs.existsSync(descDir)) {
+                                    fs.mkdirSync(descDir, { recursive: true });
+                                }
+                                await fs.promises.writeFile(descPath, Buffer.from(descContent));
+                                console.log(`Downloaded description file: ${filename} for language ${language}`);
+                            } catch (error: any) {
+                                console.warn(`Failed to download description file ${filename}: ${error.message}`);
+                                // 继续下载其他文件，不阻止主流程
+                            }
+                        }
+                    }
+                    
                     // 如果执行到这里没有抛错，说明该镜像源下载成功
                     // 更新配置并返回
                     const targetPath = path.join(dictDir, DICT_FILENAME);

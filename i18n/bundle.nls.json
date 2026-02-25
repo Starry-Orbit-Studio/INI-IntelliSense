@@ -94,6 +94,8 @@
     "dictionary.downloading": "Downloading INI Dictionary...",
     "dictionary.download.success": "INI Dictionary downloaded and configured successfully.",
     "dictionary.download.failed": "Failed to download dictionary: {0}",
+    "dictionary.downloadingDescriptions": "Downloading description files...",
+    "dictionary.downloadingDescriptionFile": "Downloading {0} ({1})...",
     "validator.run.notReady": "INI Validator is not configured, cannot run validation.",
     "validator.run.progress.title": "Running INI Validator...",
     "validator.run.progress.success": "Validation complete!",

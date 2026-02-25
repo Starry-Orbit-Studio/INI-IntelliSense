@@ -19,6 +19,7 @@ import { DictionaryService } from './dictionary-service';
 import { FileTypeManager } from './file-type-manager';
 import { CsfManager } from './csf-manager';
 import { CsfOutlineProvider } from './csf-outline-provider';
+import { DescriptionManager } from './description-manager';
 
 const LANGUAGE_ID = 'ra2-ini';
 
@@ -32,6 +33,7 @@ export async function activate(context: vscode.ExtensionContext) {
     const fileTypeManager = new FileTypeManager();
     const csfManager = new CsfManager();
     const csfOutlineProvider = new CsfOutlineProvider(csfManager);
+    const descriptionManager = new DescriptionManager();
     
     // 等待CSF管理器初始化完成，然后刷新树状视图
     csfManager.waitForInitialization().then(() => {
@@ -199,6 +201,28 @@ export async function activate(context: vscode.ExtensionContext) {
 				const schemaContentBytes = await vscode.workspace.fs.readFile(schemaUri);
 				const schemaContent = Buffer.from(schemaContentBytes).toString('utf-8');
 				schemaManager.loadSchema(schemaContent, schemaPath);
+				
+				// 加载描述文件
+				try {
+					// 设置描述管理器语言
+					const language = vscode.env.language;
+					descriptionManager.setLanguage(language);
+					
+					// 设置描述文件目录（字典文件所在目录）
+					const dictDir = path.dirname(schemaPath);
+					descriptionManager.setDescriptionDir(dictDir);
+					
+					// 从字典文件加载描述
+					const loaded = descriptionManager.loadFromDictionary(schemaPath);
+					if (loaded) {
+						console.log(`[INI IntelliSense] Loaded descriptions for language: ${language}`);
+					} else {
+						console.log(`[INI IntelliSense] No descriptions loaded for language: ${language}`);
+					}
+				} catch (descError) {
+					console.error('[INI IntelliSense] Failed to load descriptions:', descError);
+					// 描述加载失败不应阻止主流程
+				}
 			} catch (error) {
 				schemaManager.clearSchema();
 				vscode.window.showErrorMessage(localize('schema.load.failure', 'Failed to load the specified INI Dictionary file: {0}.', schemaPath));
@@ -600,9 +624,16 @@ export async function activate(context: vscode.ExtensionContext) {
                         if (propDef.source && propDef.source !== 'INIDictionary') {
                              markdown.appendMarkdown(`\n- Source: **${propDef.source}**`);
                         }
-                        const csfEntry = csfManager.getLabel(valueRaw);
+                         const csfEntry = csfManager.getLabel(valueRaw);
                         if (csfEntry) {
                             markdown.appendMarkdown(`\n\n**CSF**: ${csfEntry.value}`);
+                        }
+
+                        // 添加描述
+                        const description = descriptionManager.getDescription(typeName, keyPart);
+                        if (description) {
+                            markdown.appendMarkdown('\n\n---\n\n');
+                            markdown.appendMarkdown(description);
                         }
 
                         markdown.appendMarkdown('\n\n---\n\n');

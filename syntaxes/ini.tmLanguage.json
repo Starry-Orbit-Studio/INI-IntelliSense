@@ -65,6 +65,12 @@
                   "name": "punctuation.value.comma.ini"
                 },
                 {
+                  "begin": "\"\"\"",
+                  "end": "\"\"\"",
+                  "name": "string.quoted.triple.ini",
+                  "contentName": "string.quoted.triple.content.ini"
+                },
+                {
                   "match": "\"[^\"]*\"",
                   "name": "string.quoted.double.ini"
                 }
