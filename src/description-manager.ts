@@ -4,23 +4,30 @@ import * as path from 'path';
 import { localize } from './i18n';
 
 /**
+ * 描述节的数据结构，包含属性和基类信息。
+ */
+interface DescriptionSection {
+    properties: Map<string, string>;
+    base: string | null;
+}
+
+/**
  * 解析包含多行字符串的INI文件。
  * 支持使用 """ 包裹的多行字符串值。
  */
 export class MultilineIniParser {
     /**
-     * 解析INI文件内容，返回节到键值对的映射。
+     * 解析INI文件内容，返回节到描述数据的映射。
      * 值中的多行字符串会被完整保留。
      * @param content 文件内容
-     * @returns 映射：section -> key -> value
+     * @returns 映射：section -> DescriptionSection
      */
-    parse(content: string): Map<string, Map<string, string>> {
-        const result = new Map<string, Map<string, string>>();
+    parse(content: string): Map<string, DescriptionSection> {
+        const result = new Map<string, DescriptionSection>();
         let currentSection = '';
         let currentKey = '';
         let currentValue = '';
         let inMultilineString = false;
-        let multilineStringIndent = 0;
         
         const lines = content.split(/\r?\n/);
         
@@ -75,13 +82,19 @@ export class MultilineIniParser {
                     this.saveKeyValue(result, currentSection, currentKey, currentValue);
                 }
                 
-                currentSection = sectionMatch[1];
+                currentSection = sectionMatch[1].trim();
+                const baseSection = sectionMatch[2] ? sectionMatch[2].trim() : null;
+
                 currentKey = '';
                 currentValue = '';
                 
                 // 初始化节的映射（如果不存在）
                 if (!result.has(currentSection)) {
-                    result.set(currentSection, new Map<string, string>());
+                    result.set(currentSection, { properties: new Map<string, string>(), base: baseSection });
+                } else if (baseSection) {
+                    // 如果已经存在（可能分散在文件多处），且当前处定义了基类，则更新基类
+                    const existing = result.get(currentSection)!;
+                    existing.base = baseSection;
                 }
                 continue;
             }
@@ -139,7 +152,7 @@ export class MultilineIniParser {
     }
     
     private saveKeyValue(
-        result: Map<string, Map<string, string>>,
+        result: Map<string, DescriptionSection>,
         section: string,
         key: string,
         value: string
@@ -149,11 +162,11 @@ export class MultilineIniParser {
         }
         
         if (!result.has(section)) {
-            result.set(section, new Map<string, string>());
+            result.set(section, { properties: new Map<string, string>(), base: null });
         }
         
-        const sectionMap = result.get(section)!;
-        sectionMap.set(key, value);
+        const sectionData = result.get(section)!;
+        sectionData.properties.set(key, value);
     }
 }
 
@@ -163,7 +176,7 @@ export class MultilineIniParser {
  */
 export class DescriptionManager {
     private parser = new MultilineIniParser();
-    private descriptions = new Map<string, Map<string, Map<string, string>>>();
+    private descriptions = new Map<string, Map<string, DescriptionSection>>();
     private currentLanguage: string = 'en-US';
     private descriptionDir: string | null = null;
     
@@ -210,8 +223,8 @@ export class DescriptionManager {
             
             // 输出统计信息
             let totalKeys = 0;
-            for (const [section, keys] of parsed.entries()) {
-                totalKeys += keys.size;
+            for (const [section, data] of parsed.entries()) {
+                totalKeys += data.properties.size;
             }
             console.log(`[DescriptionManager] Loaded descriptions for ${normalizedLanguage} from ${filePath}: ${parsed.size} sections, ${totalKeys} keys`);
             
@@ -284,68 +297,59 @@ export class DescriptionManager {
     
     /**
      * 获取指定节和键的描述。
-     * 支持沿继承链查找（如果描述文件中有继承语法）。
+     * 支持沿描述文件的继承链查找（如果描述文件中有继承语法）。
      * @param sectionName 节名称
      * @param keyName 键名称
      * @returns 描述文本（Markdown格式），如果未找到则返回 undefined
      */
     getDescription(sectionName: string, keyName: string): string | undefined {
         // 首先尝试当前语言
-        let desc = this.getDescriptionForLanguage(sectionName, keyName, this.currentLanguage);
+        let desc = this.findDescriptionRecursive(sectionName, keyName, this.currentLanguage);
         if (desc !== undefined) {
             return desc;
         }
         
         // 回退到英语
         if (this.currentLanguage !== 'en-US') {
-            desc = this.getDescriptionForLanguage(sectionName, keyName, 'en-US');
+            desc = this.findDescriptionRecursive(sectionName, keyName, 'en-US');
             if (desc !== undefined) {
                 return desc;
             }
         }
         
-        // 如果还没有，尝试沿继承链查找
-        // 描述文件中可能包含继承语法，如 [ChildType]:[ParentType]
-        // 这里简化处理：直接返回 undefined
-        // 未来可以添加继承链查找
         return undefined;
     }
     
     /**
-     * 获取指定语言的描述。
+     * 在指定语言中递归查找描述。
+     * 会沿着描述文件中定义的继承关系（base）向上查找。
      */
-    private getDescriptionForLanguage(sectionName: string, keyName: string, language: string): string | undefined {
+    private findDescriptionRecursive(sectionName: string, keyName: string, language: string): string | undefined {
         const normalizedLanguage = this.normalizeLanguageCode(language);
         const langDescriptions = this.descriptions.get(normalizedLanguage);
         if (!langDescriptions) {
             return undefined;
         }
         
-        // 直接查找
-        const sectionMap = langDescriptions.get(sectionName);
-        if (sectionMap) {
-            const desc = sectionMap.get(keyName);
+        let currentSection: string | null = sectionName;
+        const visited = new Set<string>();
+
+        while (currentSection && !visited.has(currentSection)) {
+            visited.add(currentSection);
+            
+            const sectionData = langDescriptions.get(currentSection);
+            if (!sectionData) {
+                break;
+            }
+
+            // 查找当前节是否有该键的描述
+            const desc = sectionData.properties.get(keyName);
             if (desc !== undefined && desc !== '') {
                 return desc;
             }
-        }
-        
-        // 尝试查找继承节（如 [ChildType]:[ParentType]）
-        // 首先检查是否有带继承的节
-        for (const [sectionKey, sectionDescMap] of langDescriptions.entries()) {
-            // 检查节键是否包含继承语法
-            const match = sectionKey.match(/^([^:]+):\[([^\]]+)\]$/);
-            if (match) {
-                const childSection = match[1];
-                const parentSection = match[2];
-                if (childSection === sectionName) {
-                    // 首先在父节中查找
-                    const parentDesc = this.getDescriptionForLanguage(parentSection, keyName, language);
-                    if (parentDesc !== undefined) {
-                        return parentDesc;
-                    }
-                }
-            }
+            
+            // 如果没有，向上查找基类
+            currentSection = sectionData.base;
         }
         
         return undefined;

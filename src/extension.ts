@@ -629,21 +629,32 @@ export async function activate(context: vscode.ExtensionContext) {
                             markdown.appendMarkdown(`\n\n**CSF**: ${csfEntry.value}`);
                         }
 
-                        // 添加描述
-                        // 首先尝试使用节名查找（描述文件中的节名）
-                        let description = descriptionManager.getDescription(currentSectionName, keyPart);
-                        // 如果没找到，尝试使用类型名
-                        if (!description && typeName && typeName !== currentSectionName) {
-                            description = descriptionManager.getDescription(typeName, keyPart);
-                        }
-                        if (description) {
-                            markdown.appendMarkdown('\n\n---\n\n');
-                            markdown.appendMarkdown(description);
-                        }
-
-                        markdown.appendMarkdown('\n\n---\n\n');
+						markdown.appendMarkdown('\n\n---\n\n');
 						markdown.appendMarkdown(localize('hover.type.belongsTo', `\n\nBelongs to type **{0}**.`, typeName));
-						hasContent = true;
+						
+						let foundDescription: string | undefined; // 改个名避免混淆
+						let currentLookupType: string | null = typeName; 
+						const visitedTypes = new Set<string>();
+
+						// 逻辑：沿着 Schema 定义的继承链（如 UnitType -> TechnoType）
+						// 逐级向 DescriptionManager 查询描述
+						while (currentLookupType && !visitedTypes.has(currentLookupType)) {
+							visitedTypes.add(currentLookupType);
+							foundDescription = descriptionManager.getDescription(currentLookupType, keyPart);
+							if (foundDescription) {
+								break; // 找到了就退出
+							}
+
+							// 没找到，查阅 SchemaManager 获取父类
+							const schema = schemaManager.getSchema(currentLookupType);
+							currentLookupType = schema?.base ?? null; 
+						}
+
+						if (foundDescription) {
+							markdown.appendMarkdown('\n\n---\n\n');
+							markdown.appendMarkdown(foundDescription);
+						}
+                        hasContent = true;
 					}
 				}
 
