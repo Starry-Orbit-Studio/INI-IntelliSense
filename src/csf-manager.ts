@@ -18,7 +18,7 @@ export class CsfManager {
     private initializationPromise: Promise<void> | null = null;
 
     constructor() {
-        this.watcher = vscode.workspace.createFileSystemWatcher('**/*.csf');
+        this.watcher = vscode.workspace.createFileSystemWatcher('**/*.{csf,llf}');
         this.watcher.onDidChange(uri => this.reloadFile(uri));
         this.watcher.onDidCreate(uri => this.reloadFile(uri));
         this.watcher.onDidDelete(uri => this.removeFile(uri));
@@ -30,8 +30,10 @@ export class CsfManager {
     }
 
     public async indexWorkspaceFiles() {
-        const uris = await vscode.workspace.findFiles('**/*.csf');
-        for (const uri of uris) {
+        const csfUris = await vscode.workspace.findFiles('**/*.csf');
+        const llfUris = await vscode.workspace.findFiles('**/*.llf');
+        const allUris = [...csfUris, ...llfUris];
+        for (const uri of allUris) {
             await this.reloadFile(uri);
         }
     }
@@ -43,9 +45,14 @@ export class CsfManager {
     private async reloadFile(uri: vscode.Uri) {
         try {
             const buffer = await fs.readFile(uri.fsPath);
-            this.parseCsf(buffer, uri.fsPath);
+            const content = buffer.toString('utf-8');
+            if (uri.fsPath.toLowerCase().endsWith('.llf')) {
+                this.parseLlf(content, uri.fsPath);
+            } else {
+                this.parseCsf(buffer, uri.fsPath);
+            }
         } catch (e) {
-            console.error(`Failed to parse CSF file ${uri.fsPath}:`, e);
+            console.error(`Failed to parse file ${uri.fsPath}:`, e);
         }
     }
 
@@ -57,6 +64,87 @@ export class CsfManager {
         this.fileLabels.delete(uri.fsPath);
         this.mergedLabels.clear();
         this.indexWorkspaceFiles();
+    }
+
+    /**
+     * 解析LLF文件
+     */
+    private parseLlf(content: string, filePath: string) {
+        const fileEntries = new Map<string, CsfEntry>();
+        const lines = content.split('\n');
+        let currentLabel = '';
+        let currentValue = '';
+        let isMultiline = false;
+        let inMultilineBlock = false;
+
+        for (let line of lines) {
+            line = line.replace(/\r$/, '');
+
+            if (line.trim() === '') {
+                continue;
+            }
+
+            if (inMultilineBlock) {
+                if (line.startsWith('  ')) {
+                    currentValue += '\n' + line.substring(2);
+                } else {
+                    const entry: CsfEntry = {
+                        label: currentLabel,
+                        value: currentValue
+                    };
+                    fileEntries.set(currentLabel.toLowerCase(), entry);
+                    this.mergedLabels.set(currentLabel.toLowerCase(), entry);
+                    inMultilineBlock = false;
+                    currentLabel = '';
+                    currentValue = '';
+                }
+                continue;
+            }
+
+            const commentIndex = line.indexOf('#');
+            if (commentIndex !== -1) {
+                const beforeComment = line.substring(0, commentIndex);
+                if (beforeComment.trim() === '') {
+                    continue;
+                }
+                line = beforeComment;
+            }
+
+            const separatorIndex = line.indexOf(': ');
+            if (separatorIndex !== -1) {
+                currentLabel = line.substring(0, separatorIndex).trim();
+                let valuePart = line.substring(separatorIndex + 2).trim();
+
+                if (valuePart.startsWith('>')) {
+                    isMultiline = true;
+                    valuePart = valuePart.substring(1).trim();
+                }
+
+                if (isMultiline) {
+                    inMultilineBlock = true;
+                    currentValue = valuePart;
+                } else {
+                    const entry: CsfEntry = {
+                        label: currentLabel,
+                        value: valuePart
+                    };
+                    fileEntries.set(currentLabel.toLowerCase(), entry);
+                    this.mergedLabels.set(currentLabel.toLowerCase(), entry);
+                }
+                isMultiline = false;
+            }
+        }
+
+        if (inMultilineBlock && currentLabel && currentValue) {
+            const entry: CsfEntry = {
+                label: currentLabel,
+                value: currentValue
+            };
+            fileEntries.set(currentLabel.toLowerCase(), entry);
+            this.mergedLabels.set(currentLabel.toLowerCase(), entry);
+        }
+
+        this.fileLabels.set(filePath, fileEntries);
     }
 
     /**
