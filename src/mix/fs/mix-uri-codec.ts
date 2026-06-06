@@ -37,6 +37,17 @@ export class MixUriCodec {
         });
     }
 
+    public static toNestedRootUri(fileUri: vscode.Uri): vscode.Uri {
+        const decoded = MixUriCodec.decode(fileUri);
+        const segments = decoded.virtualPath.split('/').filter(Boolean);
+        const leaf = segments.at(-1);
+        if (!leaf) {
+            return MixUriCodec.toRootUri(decoded.containerUri, decoded.nestedChain);
+        }
+
+        return MixUriCodec.toRootUri(decoded.containerUri, [...decoded.nestedChain, leaf]);
+    }
+
     public static decode(uri: vscode.Uri): DecodedMixUri {
         if (uri.scheme !== MixUriCodec.scheme) {
             throw new Error(`Unsupported scheme: ${uri.scheme}`);

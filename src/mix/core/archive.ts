@@ -362,12 +362,13 @@ export class MixArchive {
             bytes.push(upper.charCodeAt(i) & 0xff);
         }
 
-        const remainderAligned = bytes.length & ~3;
-        if (bytes.length & 3) {
-            const repeat = bytes.length - remainderAligned;
-            bytes.push(repeat);
-            for (let i = 0; i < 3 - (bytes.length - remainderAligned - 1); i++) {
-                bytes.push(bytes[remainderAligned] ?? 0);
+        const originalLength = bytes.length;
+        const alignedLength = originalLength & ~3;
+        if (originalLength & 3) {
+            bytes.push(originalLength - alignedLength);
+            const repeatedByte = bytes[alignedLength] ?? 0;
+            for (let i = 0; i < 3 - (originalLength & 3); i++) {
+                bytes.push(repeatedByte);
             }
         }
 
@@ -492,21 +493,27 @@ export class MixArchive {
             return;
         }
 
-        const decoder = new TextDecoder('latin1');
-        const header = decoder.decode(bytes.slice(0, 32));
-        if (header !== XCC_ID) {
+        const headerBytes = bytes.slice(0, 32);
+        const expectedHeaderBytes = Uint8Array.from(XCC_ID, char => char.charCodeAt(0));
+        if (headerBytes.byteLength !== expectedHeaderBytes.byteLength) {
             return;
+        }
+        for (let i = 0; i < expectedHeaderBytes.byteLength; i++) {
+            if (headerBytes[i] !== expectedHeaderBytes[i]) {
+                return;
+            }
         }
 
         const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
-        const gameId = view.getInt32(36, true);
-        const fileCount = view.getInt32(40, true);
+        const decoder = new TextDecoder('latin1');
+        const gameId = view.getInt32(44, true);
+        const fileCount = view.getInt32(48, true);
         this.game = mapGameId(gameId);
 
-        let cursor = 44;
+        let cursor = 52;
         const entriesWithoutDb = [...this.entries.values()]
-            .filter(entry => entry.id !== LOCAL_MIX_DATABASE_ID)
             .sort((left, right) => left.offset - right.offset);
+        this.localDb.clear();
 
         for (let i = 0; i < fileCount && cursor < bytes.byteLength; i++) {
             const end = bytes.indexOf(0, cursor);
@@ -519,7 +526,7 @@ export class MixArchive {
             this.localDb.set(id, name);
         }
 
-        if (entriesWithoutDb.length !== fileCount) {
+        if (fileCount !== entriesWithoutDb.filter(entry => entry.id !== LOCAL_MIX_DATABASE_ID).length) {
             this.warnings.push({
                 message: localize('mix.warning.localDbCountMismatch', 'The local MIX database count does not match the entry count.'),
             });

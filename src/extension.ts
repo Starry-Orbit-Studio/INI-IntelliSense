@@ -112,8 +112,16 @@ export async function activate(context: vscode.ExtensionContext) {
     context.subscriptions.push(vscode.workspace.registerFileSystemProvider(MixUriCodec.scheme, mixFileSystemProvider, { isCaseSensitive: false }));
     context.subscriptions.push(vscode.commands.registerCommand('ra2-ini-intellisense.refreshOutline', () => outlineProvider.refresh()));
     context.subscriptions.push(vscode.commands.registerCommand('ra2-ini-intellisense.refreshCsfOutline', () => csfOutlineProvider.refresh()));
-    context.subscriptions.push(vscode.commands.registerCommand('ra2-ini-intellisense.refreshIniFiles', () => iniFilesProvider.refresh()));
-    context.subscriptions.push(vscode.commands.registerCommand('ra2-ini-intellisense.refreshMixFiles', () => mixFilesProvider.refresh()));
+    context.subscriptions.push(vscode.commands.registerCommand('ra2-ini-intellisense.refreshIniFiles', () => {
+        resourceService.clearCaches();
+        iniFilesProvider.refresh();
+    }));
+    context.subscriptions.push(vscode.commands.registerCommand('ra2-ini-intellisense.refreshMixFiles', () => {
+        mixWorkspaceManager.clearCache();
+        mixDetectorService.clear();
+        resourceService.clearCaches();
+        mixFilesProvider.refresh();
+    }));
     context.subscriptions.push(vscode.commands.registerCommand('ra2-ini-intellisense.mix.openAsWorkspace', async (nodeOrUri?: ResourceNode | vscode.Uri) => {
         const targetUri = nodeOrUri instanceof vscode.Uri ? nodeOrUri : nodeOrUri?.uri;
         if (!targetUri) {
@@ -126,11 +134,11 @@ export async function activate(context: vscode.ExtensionContext) {
             const nextChain = lowerName?.endsWith('.mix')
                 ? [...decoded.nestedChain, lowerName]
                 : decoded.nestedChain;
-            await mixWorkspaceManager.openAsWorkspace(decoded.containerUri, nextChain);
+            await mixWorkspaceManager.openAsWorkspace(decoded.containerUri, nextChain, true);
             return;
         }
 
-        await mixWorkspaceManager.openAsWorkspace(targetUri);
+        await mixWorkspaceManager.openAsWorkspace(targetUri, [], true);
     }));
     context.subscriptions.push(vscode.commands.registerCommand('ra2-ini-intellisense.mix.openAsWorkspaceInNewWindow', async (nodeOrUri?: ResourceNode | vscode.Uri) => {
         const targetUri = nodeOrUri instanceof vscode.Uri ? nodeOrUri : nodeOrUri?.uri;
@@ -248,6 +256,9 @@ export async function activate(context: vscode.ExtensionContext) {
         vscode.window.showInformationMessage(localize('mix.saveAll.success', 'All modified MIX archives have been saved.'));
     }));
     context.subscriptions.push(vscode.workspace.onDidChangeWorkspaceFolders(() => {
+        mixWorkspaceManager.clearCache();
+        mixDetectorService.clear();
+        resourceService.clearCaches();
         iniFilesProvider.refresh();
         mixFilesProvider.refresh();
         outlineProvider.refresh();
@@ -1081,6 +1092,10 @@ export async function activate(context: vscode.ExtensionContext) {
 function resolveMixTargetUri(node?: ResourceNode): vscode.Uri | undefined {
     if (!node) {
         return undefined;
+    }
+
+    if (node.sourceUri?.scheme === MixUriCodec.scheme && node.kind === 'mixFile') {
+        return node.uri;
     }
 
     if (node.uri.scheme !== MixUriCodec.scheme) {

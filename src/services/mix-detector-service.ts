@@ -7,6 +7,7 @@ const MIX_ENCRYPTED = 0x00020000;
 
 export class MixDetectorService {
     private readonly cache = new Map<string, boolean>();
+    private readonly directoryCache = new Map<string, boolean>();
 
     constructor(private readonly mixWorkspaceManager: MixWorkspaceManager) {}
 
@@ -25,9 +26,45 @@ export class MixDetectorService {
     public clear(uri?: vscode.Uri): void {
         if (!uri) {
             this.cache.clear();
+            this.directoryCache.clear();
             return;
         }
-        this.cache.delete(uri.toString());
+        const key = uri.toString();
+        this.cache.delete(key);
+        this.directoryCache.delete(key);
+    }
+
+    public async directoryContainsMix(uri: vscode.Uri): Promise<boolean> {
+        const key = uri.toString();
+        const cached = this.directoryCache.get(key);
+        if (cached !== undefined) {
+            return cached;
+        }
+
+        const entries = await vscode.workspace.fs.readDirectory(uri);
+        const subdirectories: vscode.Uri[] = [];
+        for (const [name, type] of entries) {
+            const childUri = vscode.Uri.joinPath(uri, name);
+            if (type === vscode.FileType.Directory) {
+                subdirectories.push(childUri);
+                continue;
+            }
+
+            if (await this.isMixLike(childUri)) {
+                this.directoryCache.set(key, true);
+                return true;
+            }
+        }
+
+        for (const childUri of subdirectories) {
+            if (await this.directoryContainsMix(childUri)) {
+                this.directoryCache.set(key, true);
+                return true;
+            }
+        }
+
+        this.directoryCache.set(key, false);
+        return false;
     }
 
     private async detect(uri: vscode.Uri): Promise<boolean> {
@@ -37,7 +74,7 @@ export class MixDetectorService {
                 return false;
             }
 
-            const header = await this.peekFile(uri, 96);
+            const header = await this.peekFile(uri, 32);
             return looksLikeMix(header, stat.size);
         } catch {
             return false;

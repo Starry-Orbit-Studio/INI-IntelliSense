@@ -12,6 +12,7 @@ export type ResourceNodeKind =
 export interface ResourceNode {
     kind: ResourceNodeKind;
     uri: vscode.Uri;
+    sourceUri?: vscode.Uri;
     label: string;
     description?: string;
     contextValue: string;

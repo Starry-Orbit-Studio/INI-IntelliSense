@@ -102,6 +102,28 @@ export class MixWorkspaceManager {
         }
     }
 
+    public clearCache(targetUri?: vscode.Uri): void {
+        if (!targetUri) {
+            this.archiveHandles.clear();
+            return;
+        }
+
+        if (targetUri.scheme === MixUriCodec.scheme) {
+            const decoded = MixUriCodec.decode(targetUri);
+            const key = this.getArchiveKey(decoded.containerUri, decoded.nestedChain);
+            this.archiveHandles.delete(key);
+            return;
+        }
+
+        const containerKeyPrefix = targetUri.toString();
+        for (const key of [...this.archiveHandles.keys()]) {
+            const decoded = JSON.parse(key) as { container: string; chain?: string[] };
+            if (decoded.container === containerKeyPrefix) {
+                this.archiveHandles.delete(key);
+            }
+        }
+    }
+
     public getTextContentService(): TextContentService {
         return this.textContentService;
     }
