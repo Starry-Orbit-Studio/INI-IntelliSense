@@ -46,6 +46,11 @@ export class MixWorkspaceManager {
         return archive.readFile(virtualPath);
     }
 
+    public async peekFile(uri: vscode.Uri, maxBytes: number): Promise<Uint8Array> {
+        const { archive, virtualPath } = await this.resolveArchive(uri);
+        return archive.peekFile(virtualPath, maxBytes);
+    }
+
     public async writeFile(uri: vscode.Uri, content: Uint8Array, options: { create: boolean; overwrite: boolean }): Promise<void> {
         const { archive } = await this.resolveArchive(uri);
         archive.writeFile(MixUriCodec.decode(uri).virtualPath, content, options);
@@ -145,24 +150,28 @@ export class MixWorkspaceManager {
             return;
         }
 
-        const rootEntries = archive.listDirectory('/');
-        for (const item of rootEntries) {
-            if (item.type !== 'file') {
-                continue;
-            }
+        const queue = ['/'];
+        while (queue.length > 0) {
+            const current = queue.shift()!;
+            for (const item of archive.listDirectory(current)) {
+                if (item.type === 'directory') {
+                    queue.push(item.path);
+                    continue;
+                }
 
-            const baseName = path.posix.basename(item.path);
-            if (!/^0x[0-9A-F]{8}$/i.test(baseName)) {
-                continue;
-            }
+                const baseName = path.posix.basename(item.path);
+                if (!/^0x[0-9A-F]{8}$/i.test(baseName)) {
+                    continue;
+                }
 
-            const id = Number.parseInt(baseName.slice(2), 16);
-            const resolvedName = await this.globalMixDb.getFileName(archive.getGame(), id);
-            if (!resolvedName) {
-                continue;
-            }
+                const id = Number.parseInt(baseName.slice(2), 16);
+                const resolvedName = await this.globalMixDb.getFileName(archive.getGame(), id);
+                if (!resolvedName) {
+                    continue;
+                }
 
-            archive.rename(item.path, `/${resolvedName}`, { overwrite: false });
+                archive.applyDisplayName(id, resolvedName);
+            }
         }
     }
 

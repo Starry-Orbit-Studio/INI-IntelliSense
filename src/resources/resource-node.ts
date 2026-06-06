@@ -15,4 +15,6 @@ export interface ResourceNode {
     label: string;
     description?: string;
     contextValue: string;
+    parentUri?: vscode.Uri;
+    mixContainer?: boolean;
 }

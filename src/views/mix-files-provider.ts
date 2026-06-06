@@ -22,8 +22,7 @@ export class MixFilesProvider extends ResourceTreeBase {
         return children.filter(node =>
             node.kind === 'directory' ||
             node.kind === 'mixFile' ||
-            node.kind === 'mixDirectory' ||
-            node.kind === 'mixEntryFile');
+            node.kind === 'mixDirectory');
     }
 
     protected override getCommand(element: ResourceNode): vscode.Command | undefined {

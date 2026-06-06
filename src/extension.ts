@@ -30,6 +30,9 @@ import { MixFilesProvider } from './views/mix-files-provider';
 import { WorkspaceIndexer } from './workspace/workspace-indexer';
 import { TextContentService } from './services/text-content-service';
 import { ResourceNode } from './resources/resource-node';
+import { ImportExportService } from './services/import-export-service';
+import { MixTreeDragAndDropController } from './views/mix-tree-drag-and-drop';
+import { MixDetectorService } from './services/mix-detector-service';
 
 const LANGUAGE_ID = 'ra2-ini';
 
@@ -48,10 +51,13 @@ export async function activate(context: vscode.ExtensionContext) {
     const globalMixDb = new GlobalMixDb(context);
     const mixWorkspaceManager = new MixWorkspaceManager(globalMixDb, textContentService);
     const mixFileSystemProvider = new MixFileSystemProvider(mixWorkspaceManager);
-    const resourceService = new ResourceService();
+    const mixDetectorService = new MixDetectorService(mixWorkspaceManager);
+    const resourceService = new ResourceService(mixDetectorService);
     const iniFilesProvider = new IniFilesProvider(resourceService);
     const mixFilesProvider = new MixFilesProvider(resourceService);
     const workspaceIndexer = new WorkspaceIndexer();
+    const importExportService = new ImportExportService();
+    const mixTreeDnD = new MixTreeDragAndDropController(importExportService);
     
     // 等待CSF管理器初始化完成，然后刷新树状视图
     csfManager.waitForInitialization().then(() => {
@@ -102,7 +108,7 @@ export async function activate(context: vscode.ExtensionContext) {
 	context.subscriptions.push(vscode.window.createTreeView('ini-outline', { treeDataProvider: outlineProvider }));
 	context.subscriptions.push(vscode.window.createTreeView('csf-outline', { treeDataProvider: csfOutlineProvider }));
 	context.subscriptions.push(vscode.window.createTreeView('ini-files', { treeDataProvider: iniFilesProvider }));
-	context.subscriptions.push(vscode.window.createTreeView('mix-files', { treeDataProvider: mixFilesProvider }));
+	context.subscriptions.push(vscode.window.createTreeView('mix-files', { treeDataProvider: mixFilesProvider, dragAndDropController: mixTreeDnD }));
     context.subscriptions.push(vscode.workspace.registerFileSystemProvider(MixUriCodec.scheme, mixFileSystemProvider, { isCaseSensitive: false }));
     context.subscriptions.push(vscode.commands.registerCommand('ra2-ini-intellisense.refreshOutline', () => outlineProvider.refresh()));
     context.subscriptions.push(vscode.commands.registerCommand('ra2-ini-intellisense.refreshCsfOutline', () => csfOutlineProvider.refresh()));
@@ -125,6 +131,126 @@ export async function activate(context: vscode.ExtensionContext) {
         }
 
         await mixWorkspaceManager.openAsWorkspace(targetUri);
+    }));
+    context.subscriptions.push(vscode.commands.registerCommand('ra2-ini-intellisense.mix.openAsWorkspaceInNewWindow', async (nodeOrUri?: ResourceNode | vscode.Uri) => {
+        const targetUri = nodeOrUri instanceof vscode.Uri ? nodeOrUri : nodeOrUri?.uri;
+        if (!targetUri) {
+            return;
+        }
+
+        if (targetUri.scheme === MixUriCodec.scheme) {
+            const decoded = MixUriCodec.decode(targetUri);
+            const leaf = decoded.virtualPath.split('/').pop()?.toLowerCase();
+            const nextChain = leaf?.endsWith('.mix')
+                ? [...decoded.nestedChain, leaf]
+                : decoded.nestedChain;
+            await mixWorkspaceManager.openAsWorkspace(decoded.containerUri, nextChain, true);
+            return;
+        }
+
+        await mixWorkspaceManager.openAsWorkspace(targetUri, [], true);
+    }));
+    context.subscriptions.push(vscode.commands.registerCommand('ra2-ini-intellisense.mix.importFiles', async (node?: ResourceNode) => {
+        const targetUri = resolveMixTargetUri(node);
+        if (!targetUri) {
+            return;
+        }
+
+        const sources = await vscode.window.showOpenDialog({
+            canSelectFiles: true,
+            canSelectFolders: true,
+            canSelectMany: true,
+            openLabel: localize('mix.import.selectFiles', 'Import into MIX'),
+        });
+        if (!sources || sources.length === 0) {
+            return;
+        }
+
+        await importExportService.importIntoMix(targetUri, sources);
+        mixFilesProvider.refresh();
+    }));
+    context.subscriptions.push(vscode.commands.registerCommand('ra2-ini-intellisense.mix.export', async (node?: ResourceNode, selection?: ResourceNode[]) => {
+        const sources = selection && selection.length > 0
+            ? selection.filter(item => item.uri.scheme === MixUriCodec.scheme).map(item => item.uri)
+            : node?.uri && node.uri.scheme === MixUriCodec.scheme
+                ? [node.uri]
+                : [];
+        if (sources.length === 0) {
+            return;
+        }
+
+        await importExportService.exportFromMix(sources);
+    }));
+    context.subscriptions.push(vscode.commands.registerCommand('ra2-ini-intellisense.mix.newFolder', async (node?: ResourceNode) => {
+        const targetUri = resolveMixTargetUri(node);
+        if (!targetUri) {
+            return;
+        }
+
+        const folderName = await vscode.window.showInputBox({
+            prompt: localize('mix.newFolder.prompt', 'Enter a new folder name'),
+            validateInput: value => value.trim().length === 0 ? localize('mix.newFolder.validation', 'Folder name cannot be empty.') : null,
+        });
+        if (!folderName) {
+            return;
+        }
+
+        const newUri = MixUriCodec.toChildUri(targetUri, `${targetUri.path}/${folderName}`);
+        await vscode.workspace.fs.createDirectory(newUri);
+        mixFilesProvider.refresh();
+    }));
+    context.subscriptions.push(vscode.commands.registerCommand('ra2-ini-intellisense.mix.rename', async (node?: ResourceNode) => {
+        if (!node || node.uri.scheme !== MixUriCodec.scheme) {
+            return;
+        }
+
+        const oldName = node.label;
+        const newName = await vscode.window.showInputBox({
+            prompt: localize('mix.rename.prompt', 'Enter a new name'),
+            value: oldName,
+            validateInput: value => value.trim().length === 0 ? localize('mix.rename.validation', 'Name cannot be empty.') : null,
+        });
+        if (!newName || newName === oldName) {
+            return;
+        }
+
+        const parentPath = node.uri.path.substring(0, node.uri.path.lastIndexOf('/')) || '/';
+        const newUri = MixUriCodec.toChildUri(node.uri, `${parentPath}/${newName}`);
+        await vscode.workspace.fs.rename(node.uri, newUri, { overwrite: false });
+        mixFilesProvider.refresh();
+    }));
+    context.subscriptions.push(vscode.commands.registerCommand('ra2-ini-intellisense.mix.delete', async (node?: ResourceNode, selection?: ResourceNode[]) => {
+        const targets = selection && selection.length > 0
+            ? selection.filter(item => item.uri.scheme === MixUriCodec.scheme)
+            : node && node.uri.scheme === MixUriCodec.scheme
+                ? [node]
+                : [];
+        if (targets.length === 0) {
+            return;
+        }
+
+        const confirmed = await vscode.window.showWarningMessage(
+            localize('mix.delete.confirm', 'Delete {0} selected MIX item(s)?', targets.length),
+            { modal: true },
+            localize('mix.delete.action', 'Delete'),
+        );
+        if (!confirmed) {
+            return;
+        }
+
+        for (const target of targets) {
+            await vscode.workspace.fs.delete(target.uri, { recursive: true });
+        }
+        mixFilesProvider.refresh();
+    }));
+    context.subscriptions.push(vscode.commands.registerCommand('ra2-ini-intellisense.mix.saveAll', async () => {
+        await mixWorkspaceManager.flushAll();
+        vscode.window.showInformationMessage(localize('mix.saveAll.success', 'All modified MIX archives have been saved.'));
+    }));
+    context.subscriptions.push(vscode.workspace.onDidChangeWorkspaceFolders(() => {
+        iniFilesProvider.refresh();
+        mixFilesProvider.refresh();
+        outlineProvider.refresh();
     }));
 
     function getProjectRoot(): string | undefined {
@@ -948,6 +1074,29 @@ export async function activate(context: vscode.ExtensionContext) {
 	}
 }
 
-export function deactivate() {
+	export function deactivate() {
     // 这里的清理工作由 subscriptions 自动处理
+}
+
+function resolveMixTargetUri(node?: ResourceNode): vscode.Uri | undefined {
+    if (!node) {
+        return undefined;
+    }
+
+    if (node.uri.scheme !== MixUriCodec.scheme) {
+        if (node.kind === 'mixFile') {
+            return MixUriCodec.toRootUri(node.uri);
+        }
+        return undefined;
+    }
+
+    if (node.kind === 'mixEntryFile') {
+        if (node.parentUri) {
+            return node.parentUri;
+        }
+        const parentPath = node.uri.path.substring(0, node.uri.path.lastIndexOf('/')) || '/';
+        return MixUriCodec.toChildUri(node.uri, parentPath);
+    }
+
+    return node.uri;
 }

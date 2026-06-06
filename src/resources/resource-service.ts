@@ -3,8 +3,11 @@ import * as vscode from 'vscode';
 import { MixUriCodec } from '../mix/fs/mix-uri-codec';
 import { ResourceNode } from './resource-node';
 import { ResourcePath } from './resource-path';
+import { MixDetectorService } from '../services/mix-detector-service';
 
 export class ResourceService {
+    constructor(private readonly mixDetectorService: MixDetectorService) {}
+
     public async getWorkspaceRootNodes(): Promise<ResourceNode[]> {
         const folders = vscode.workspace.workspaceFolders ?? [];
         return folders.map(folder => ({
@@ -13,6 +16,7 @@ export class ResourceService {
             label: folder.name,
             description: ResourcePath.relativeToWorkspace(folder.uri),
             contextValue: 'workspaceRoot',
+            parentUri: undefined,
         }));
     }
 
@@ -43,17 +47,21 @@ export class ResourceService {
                     uri: childUri,
                     label: name,
                     contextValue: 'directory',
+                    parentUri: uri,
                 });
                 continue;
             }
 
             const lower = name.toLowerCase();
-            if (lower.endsWith('.mix')) {
+            const mixLike = await this.mixDetectorService.isMixLike(childUri);
+            if (mixLike) {
                 children.push({
                     kind: 'mixFile',
                     uri: childUri,
                     label: name,
                     contextValue: 'mixFile',
+                    parentUri: uri,
+                    mixContainer: true,
                 });
             } else if (lower.endsWith('.ini')) {
                 children.push({
@@ -61,6 +69,7 @@ export class ResourceService {
                     uri: childUri,
                     label: name,
                     contextValue: 'iniFile',
+                    parentUri: uri,
                 });
             } else {
                 children.push({
@@ -68,6 +77,7 @@ export class ResourceService {
                     uri: childUri,
                     label: name,
                     contextValue: 'unknownFile',
+                    parentUri: uri,
                 });
             }
         }
@@ -89,16 +99,20 @@ export class ResourceService {
                     uri: childUri,
                     label: name,
                     contextValue: 'mixDirectory',
+                    parentUri: mixRoot,
                 });
                 continue;
             }
 
             const lower = name.toLowerCase();
+            const mixLike = await this.mixDetectorService.isMixLike(childUri);
             children.push({
-                kind: lower.endsWith('.mix') ? 'mixFile' : 'mixEntryFile',
+                kind: mixLike ? 'mixFile' : 'mixEntryFile',
                 uri: childUri,
                 label: name,
-                contextValue: lower.endsWith('.mix') ? 'mixEntryMixFile' : 'mixEntryFile',
+                contextValue: mixLike ? 'mixEntryMixFile' : 'mixEntryFile',
+                parentUri: mixRoot,
+                mixContainer: mixLike,
             });
         }
 

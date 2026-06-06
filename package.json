@@ -140,6 +140,11 @@
           "when": "resourceExtname == .mix",
           "command": "ra2-ini-intellisense.mix.openAsWorkspace",
           "group": "navigation"
+        },
+        {
+          "when": "resourceExtname == .mix",
+          "command": "ra2-ini-intellisense.mix.openAsWorkspaceInNewWindow",
+          "group": "navigation@2"
         }
       ],
       "view/item/context": [
@@ -147,6 +152,36 @@
           "when": "view == mix-files && viewItem =~ /mixFile|mixEntryMixFile/",
           "command": "ra2-ini-intellisense.mix.openAsWorkspace",
           "group": "navigation"
+        },
+        {
+          "when": "view == mix-files && viewItem =~ /mixFile|mixEntryMixFile/",
+          "command": "ra2-ini-intellisense.mix.openAsWorkspaceInNewWindow",
+          "group": "navigation@2"
+        },
+        {
+          "when": "view == mix-files && viewItem =~ /mixFile|mixDirectory/",
+          "command": "ra2-ini-intellisense.mix.importFiles",
+          "group": "2_mix"
+        },
+        {
+          "when": "view == mix-files && viewItem =~ /mixDirectory/",
+          "command": "ra2-ini-intellisense.mix.newFolder",
+          "group": "2_mix"
+        },
+        {
+          "when": "view == mix-files && viewItem =~ /mixEntryFile|mixEntryMixFile|mixDirectory/",
+          "command": "ra2-ini-intellisense.mix.export",
+          "group": "2_mix"
+        },
+        {
+          "when": "view == mix-files && viewItem =~ /mixEntryFile|mixEntryMixFile|mixDirectory/",
+          "command": "ra2-ini-intellisense.mix.rename",
+          "group": "2_mix"
+        },
+        {
+          "when": "view == mix-files && viewItem =~ /mixEntryFile|mixEntryMixFile|mixDirectory/",
+          "command": "ra2-ini-intellisense.mix.delete",
+          "group": "2_mix"
         }
       ],
       "editor/context": [
@@ -186,6 +221,41 @@
       {
         "command": "ra2-ini-intellisense.mix.openAsWorkspace",
         "title": "%command.mix.openAsWorkspace.title%",
+        "category": "%command.category%"
+      },
+      {
+        "command": "ra2-ini-intellisense.mix.openAsWorkspaceInNewWindow",
+        "title": "%command.mix.openAsWorkspaceInNewWindow.title%",
+        "category": "%command.category%"
+      },
+      {
+        "command": "ra2-ini-intellisense.mix.importFiles",
+        "title": "%command.mix.importFiles.title%",
+        "category": "%command.category%"
+      },
+      {
+        "command": "ra2-ini-intellisense.mix.export",
+        "title": "%command.mix.export.title%",
+        "category": "%command.category%"
+      },
+      {
+        "command": "ra2-ini-intellisense.mix.newFolder",
+        "title": "%command.mix.newFolder.title%",
+        "category": "%command.category%"
+      },
+      {
+        "command": "ra2-ini-intellisense.mix.rename",
+        "title": "%command.mix.rename.title%",
+        "category": "%command.category%"
+      },
+      {
+        "command": "ra2-ini-intellisense.mix.delete",
+        "title": "%command.mix.delete.title%",
+        "category": "%command.category%"
+      },
+      {
+        "command": "ra2-ini-intellisense.mix.saveAll",
+        "title": "%command.mix.saveAll.title%",
         "category": "%command.category%"
       },
       {

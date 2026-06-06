@@ -146,6 +146,27 @@ export class MixArchive {
         return bytes;
     }
 
+    public peekFile(virtualPath: string, maxBytes: number): Uint8Array {
+        const normalizedPath = normalizeMixPath(virtualPath);
+        const entry = this.entries.get(normalizedPath);
+        if (!entry) {
+            throw new Error(localize('mix.error.fileNotFound', 'File not found: {0}', normalizedPath));
+        }
+
+        const cached = this.contentCache.get(normalizedPath);
+        if (cached) {
+            return cached.subarray(0, Math.min(maxBytes, cached.byteLength));
+        }
+
+        const start = this.bodyStartOffset + entry.offset;
+        const end = Math.min(start + Math.min(entry.size, maxBytes), this.sourceData.byteLength);
+        if (start < 0 || end > this.sourceData.byteLength) {
+            throw new Error(localize('mix.error.entryOutOfRange', 'The MIX entry "{0}" is out of range.', entry.fileName));
+        }
+
+        return this.sourceData.slice(start, end);
+    }
+
     public writeFile(virtualPath: string, content: Uint8Array, options: { create: boolean; overwrite: boolean }): void {
         const normalizedPath = normalizeMixPath(virtualPath);
         const existing = this.entries.get(normalizedPath);
@@ -351,6 +372,23 @@ export class MixArchive {
         }
 
         return crc32(Uint8Array.from(bytes)) >>> 0;
+    }
+
+    public applyDisplayName(id: number, resolvedName: string): void {
+        const currentEntry = [...this.entries.entries()].find(([, entry]) => entry.id === id);
+        if (!currentEntry) {
+            return;
+        }
+
+        const [oldPath, entry] = currentEntry;
+        const targetPath = joinMixPath(entry.path, resolvedName);
+        this.unregisterPath(oldPath);
+        this.entries.delete(oldPath);
+        entry.fileName = resolvedName;
+        entry.type = getFileType(resolvedName);
+        this.entries.set(targetPath, entry);
+        this.registerFile(targetPath, entry);
+        this.entryOrder = this.entryOrder.map(candidate => candidate === oldPath ? targetPath : candidate);
     }
 
     private parse(): void {
