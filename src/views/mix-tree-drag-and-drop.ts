@@ -2,6 +2,7 @@ import * as path from 'path';
 import * as vscode from 'vscode';
 import { ResourceNode } from '../resources/resource-node';
 import { ImportExportService } from '../services/import-export-service';
+import { MixUriCodec } from '../mix/fs/mix-uri-codec';
 
 export class MixTreeDragAndDropController implements vscode.TreeDragAndDropController<ResourceNode> {
     public readonly dropMimeTypes = ['files', 'text/uri-list', 'application/vnd.code.tree.mix-files'];
@@ -24,11 +25,7 @@ export class MixTreeDragAndDropController implements vscode.TreeDragAndDropContr
             return;
         }
 
-        const targetUri = target.kind === 'mixDirectory' || target.kind === 'mixFile'
-            ? target.uri
-            : target.kind === 'mixEntryFile'
-                ? vscode.Uri.joinPath(target.uri, '..')
-                : undefined;
+        const targetUri = resolveDropTargetUri(target);
 
         if (!targetUri || targetUri.scheme !== 'ra2mix') {
             return;
@@ -50,4 +47,18 @@ export class MixTreeDragAndDropController implements vscode.TreeDragAndDropContr
             await this.importExportService.importIntoMix(targetUri, sourceUris);
         }
     }
+}
+
+function resolveDropTargetUri(target: ResourceNode): vscode.Uri | undefined {
+    if (target.kind === 'mixDirectory' || target.kind === 'mixFile') {
+        return target.uri;
+    }
+
+    if (target.kind === 'mixEntryFile') {
+        const decoded = MixUriCodec.decode(target.uri);
+        const parentPath = decoded.virtualPath.substring(0, decoded.virtualPath.lastIndexOf('/')) || '/';
+        return MixUriCodec.toChildUri(target.uri, parentPath);
+    }
+
+    return undefined;
 }

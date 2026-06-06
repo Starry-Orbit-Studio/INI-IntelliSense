@@ -1,6 +1,7 @@
 import * as path from 'path';
 import * as vscode from 'vscode';
 import { MixArchive } from './archive';
+import { decodeLocalText } from './local-encoding';
 import { MixGame } from './types';
 
 interface IdInfo {
@@ -55,14 +56,13 @@ export class GlobalMixDb {
         const count = view.getInt32(offset, true);
         offset += 4;
 
-        const decoder = new TextDecoder('latin1');
         for (let i = 0; i < count; i++) {
             const nameEnd = bytes.indexOf(0, offset);
-            const name = decoder.decode(bytes.slice(offset, nameEnd));
+            const name = decodeLocalText(bytes.slice(offset, nameEnd));
             offset = nameEnd + 1;
 
             const descEnd = bytes.indexOf(0, offset);
-            const description = decoder.decode(bytes.slice(offset, descEnd));
+            const description = decodeLocalText(bytes.slice(offset, descEnd));
             offset = descEnd + 1;
 
             const id = MixArchive.calculateId(name, game);

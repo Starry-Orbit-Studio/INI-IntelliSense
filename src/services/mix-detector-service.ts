@@ -1,4 +1,5 @@
 import * as fs from 'fs/promises';
+import * as path from 'path';
 import * as vscode from 'vscode';
 import { MixWorkspaceManager } from '../mix/fs/mix-workspace-manager';
 
@@ -55,6 +56,11 @@ export class MixDetectorService {
                 return false;
             }
 
+            const ext = path.extname(uri.path).toLowerCase();
+            if (NON_MIX_EXTENSIONS.has(ext)) {
+                return false;
+            }
+
             const header = await this.peekFile(uri, 32);
             return looksLikeMix(header, stat.size);
         } catch {
@@ -82,6 +88,25 @@ export class MixDetectorService {
         return bytes.subarray(0, maxBytes);
     }
 }
+
+const NON_MIX_EXTENSIONS = new Set([
+    '.pcx',
+    '.png',
+    '.jpg',
+    '.jpeg',
+    '.gif',
+    '.bmp',
+    '.webp',
+    '.pal',
+    '.shp',
+    '.ini',
+    '.csf',
+    '.json',
+    '.txt',
+    '.xml',
+    '.lua',
+    '.md',
+]);
 
 function looksLikeMix(header: Uint8Array, totalSize: number): boolean {
     if (header.byteLength < 6) {

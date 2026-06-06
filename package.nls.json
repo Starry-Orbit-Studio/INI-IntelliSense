@@ -13,7 +13,7 @@
     "command.mix.openAsWorkspace.title": "MIX: Open as Workspace",
     "command.mix.openAsWorkspaceInNewWindow.title": "MIX: Open as Workspace in New Window",
     "command.mix.importFiles.title": "MIX: Import Files",
-    "command.mix.export.title": "MIX: Export",
+    "command.mix.export.title": "MIX: Export Selected Items",
     "command.mix.newFolder.title": "MIX: New Folder",
     "command.mix.rename.title": "MIX: Rename",
     "command.mix.delete.title": "MIX: Delete",

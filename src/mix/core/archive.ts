@@ -1,6 +1,7 @@
 import * as path from 'path';
 import { localize } from '../../i18n';
 import { crc32 } from './crc32';
+import { decodeLocalText } from './local-encoding';
 import { getParentMixPath, joinMixPath, normalizeMixPath, splitMixVirtualPath } from './path-utils';
 import { MixArchiveOptions, MixArchiveWarning, MixDirectoryEntry, MixEntry, MixGame, MixStat, MixTreeEntry, MixType } from './types';
 
@@ -505,7 +506,6 @@ export class MixArchive {
         }
 
         const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
-        const decoder = new TextDecoder('latin1');
         const gameId = view.getInt32(44, true);
         const fileCount = view.getInt32(48, true);
         this.game = mapGameId(gameId);
@@ -520,7 +520,7 @@ export class MixArchive {
             if (end === -1) {
                 break;
             }
-            const name = decoder.decode(bytes.slice(cursor, end));
+            const name = decodeLocalText(bytes.slice(cursor, end));
             cursor = end + 1;
             const id = MixArchive.calculateId(name, this.game);
             this.localDb.set(id, name);

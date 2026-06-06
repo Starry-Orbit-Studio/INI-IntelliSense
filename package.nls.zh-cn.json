@@ -13,7 +13,7 @@
     "command.mix.openAsWorkspace.title": "MIX: 作为工作区打开",
     "command.mix.openAsWorkspaceInNewWindow.title": "MIX: 在新窗口中作为工作区打开",
     "command.mix.importFiles.title": "MIX: 导入文件",
-    "command.mix.export.title": "MIX: 导出",
+    "command.mix.export.title": "MIX: 导出所选项目",
     "command.mix.newFolder.title": "MIX: 新建文件夹",
     "command.mix.rename.title": "MIX: 重命名",
     "command.mix.delete.title": "MIX: 删除",
