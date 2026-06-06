@@ -12,7 +12,7 @@ export function registerRegisterIdCommand(iniManager: INIManager, schemaManager:
         if (!editor) {return;}
 
         const position = contextPosition || editor.selection.active;
-        const sectionName = iniManager.getSectionNameAtLine(editor.document.uri.fsPath, position.line);
+        const sectionName = iniManager.getSectionNameAtLine(editor.document.uri, position.line);
 
         if (!sectionName) {
             vscode.window.showWarningMessage(localize('register.error.noSection', 'Could not find a section at the current cursor position.'));

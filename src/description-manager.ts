@@ -184,7 +184,9 @@ export class DescriptionManager {
      * 统一大小写以确保必定匹配
      */
     private normalizeLanguageCode(language: string): string {
-        if (!language) return language;
+        if (!language) {
+            return language;
+        }
         const parts = language.split('-');
         if (parts.length === 2) {
             // 语言部分小写，区域部分大写

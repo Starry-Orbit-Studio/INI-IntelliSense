@@ -185,9 +185,9 @@ export class INIManager {
             try {
                 const fileContentBytes = await vscode.workspace.fs.readFile(fileUri);
                 const content = Buffer.from(fileContentBytes).toString('utf8');
-                this.documents.set(fileUri.fsPath, new IniDocument(fileUri, content));
+                this.documents.set(fileUri.toString(), new IniDocument(fileUri, content));
             } catch (error) {
-                console.error(`Failed to parse INI file ${fileUri.fsPath}:`, error);
+                console.error(`Failed to parse INI file ${fileUri.toString()}:`, error);
             }
         }
         this.rebuildAllIndexes();
@@ -196,11 +196,11 @@ export class INIManager {
     async updateFile(uri: vscode.Uri, content?: string) {
         try {
             const fileContent = content ?? Buffer.from(await vscode.workspace.fs.readFile(uri)).toString('utf8');
-            const doc = this.documents.get(uri.fsPath);
+            const doc = this.documents.get(uri.toString());
             if (doc) {
                 doc.update(fileContent);
             } else {
-                this.documents.set(uri.fsPath, new IniDocument(uri, fileContent));
+                this.documents.set(uri.toString(), new IniDocument(uri, fileContent));
             }
             
             // 策略：为了保证全局引用的正确性，目前仍执行全量索引重建。
@@ -208,21 +208,24 @@ export class INIManager {
             // 但由于我们已经优化了 parsing 过程（不再生成大对象），这里的重建速度已经大幅提升。
             this.rebuildAllIndexes();
         } catch (error) {
-            console.error(`Failed to update index for file ${uri.fsPath}:`, error);
+            console.error(`Failed to update index for file ${uri.toString()}:`, error);
         }
     }
 
     removeFile(uri: vscode.Uri) {
-        if (this.documents.has(uri.fsPath)) {
-            this.documents.delete(uri.fsPath);
+        if (this.documents.has(uri.toString())) {
+            this.documents.delete(uri.toString());
             this.rebuildAllIndexes();
         }
     }
 
     // --- 新增 API：直接基于文档模型查询 ---
 
-    public getDocument(filePath: string): IniDocument | undefined {
-        return this.documents.get(filePath);
+    public getDocument(uriOrKey: string | vscode.Uri): IniDocument | undefined {
+        const key = typeof uriOrKey === 'string'
+            ? uriOrKey
+            : uriOrKey.toString();
+        return this.documents.get(key);
     }
 
     // --- 索引构建逻辑 (适配新模型) ---
@@ -330,12 +333,12 @@ export class INIManager {
                     continue;
                 }
             }
-            const doc = this.documents.get(location.uri.fsPath);
+            const doc = this.documents.get(location.uri.toString());
             if (doc) {
                 // 为了保持 findSection 签名的兼容性，这里传递整个 content
                 // 实际上外部调用者通常只需要 content 来再次切分行，这有点浪费
                 // 但为了不破坏太多外部逻辑，暂且如此
-                results.push({ file: location.uri.fsPath, content: doc.content });
+                results.push({ file: location.uri.toString(), content: doc.content });
             }
         }
         return results;
@@ -394,7 +397,7 @@ export class INIManager {
                 if (this.fileTypeManager.getFileType(loc.uri) !== contextFileType) { continue; }
             }
             
-            const doc = this.documents.get(loc.uri.fsPath);
+            const doc = this.documents.get(loc.uri.toString());
             if (!doc) { continue; }
 
             const section = doc.getSectionAt(loc.range.start.line);
@@ -459,7 +462,7 @@ export class INIManager {
         if (refs && refs.length > 0) {
             // 只需要检查一个引用即可推断
             const loc = refs[0];
-            const doc = this.documents.get(loc.uri.fsPath);
+            const doc = this.documents.get(loc.uri.toString());
             if (doc) {
                 const contextSec = doc.getSectionAt(loc.range.start.line);
                 if (contextSec) {
@@ -493,8 +496,11 @@ export class INIManager {
         return typeMap ? typeMap.get(sectionName) : undefined;
     }
     
-    public getSectionNameAtLine(filePath: string, lineNumber: number): string | null {
-        const doc = this.documents.get(filePath);
+    public getSectionNameAtLine(uriOrKey: string | vscode.Uri, lineNumber: number): string | null {
+        const key = typeof uriOrKey === 'string'
+            ? uriOrKey
+            : uriOrKey.toString();
+        const doc = this.documents.get(key);
         if (doc) {
             const sec = doc.getSectionAt(lineNumber);
             return sec ? sec.name : null;

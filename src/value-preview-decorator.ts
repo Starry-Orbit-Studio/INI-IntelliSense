@@ -78,7 +78,7 @@ export class ValuePreviewDecorator implements vscode.Disposable {
         const csfDecorations: vscode.DecorationOptions[] = [];
         
         const document = editor.document;
-        const docModel = this.iniManager.getDocument(document.uri.fsPath);
+        const docModel = this.iniManager.getDocument(document.uri);
         if (!docModel) { return; }
 
         // 仅遍历可见范围，实现极致性能

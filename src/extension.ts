@@ -20,6 +20,16 @@ import { FileTypeManager } from './file-type-manager';
 import { CsfManager } from './csf-manager';
 import { CsfOutlineProvider } from './csf-outline-provider';
 import { DescriptionManager } from './description-manager';
+import { MixFileSystemProvider } from './mix/fs/mix-file-system-provider';
+import { MixWorkspaceManager } from './mix/fs/mix-workspace-manager';
+import { MixUriCodec } from './mix/fs/mix-uri-codec';
+import { GlobalMixDb } from './mix/core/global-mix-db';
+import { ResourceService } from './resources/resource-service';
+import { IniFilesProvider } from './views/ini-files-provider';
+import { MixFilesProvider } from './views/mix-files-provider';
+import { WorkspaceIndexer } from './workspace/workspace-indexer';
+import { TextContentService } from './services/text-content-service';
+import { ResourceNode } from './resources/resource-node';
 
 const LANGUAGE_ID = 'ra2-ini';
 
@@ -34,6 +44,14 @@ export async function activate(context: vscode.ExtensionContext) {
     const csfManager = new CsfManager();
     const csfOutlineProvider = new CsfOutlineProvider(csfManager);
     const descriptionManager = new DescriptionManager();
+    const textContentService = new TextContentService();
+    const globalMixDb = new GlobalMixDb(context);
+    const mixWorkspaceManager = new MixWorkspaceManager(globalMixDb, textContentService);
+    const mixFileSystemProvider = new MixFileSystemProvider(mixWorkspaceManager);
+    const resourceService = new ResourceService();
+    const iniFilesProvider = new IniFilesProvider(resourceService);
+    const mixFilesProvider = new MixFilesProvider(resourceService);
+    const workspaceIndexer = new WorkspaceIndexer();
     
     // 等待CSF管理器初始化完成，然后刷新树状视图
     csfManager.waitForInitialization().then(() => {
@@ -83,8 +101,31 @@ export async function activate(context: vscode.ExtensionContext) {
 
 	context.subscriptions.push(vscode.window.createTreeView('ini-outline', { treeDataProvider: outlineProvider }));
 	context.subscriptions.push(vscode.window.createTreeView('csf-outline', { treeDataProvider: csfOutlineProvider }));
+	context.subscriptions.push(vscode.window.createTreeView('ini-files', { treeDataProvider: iniFilesProvider }));
+	context.subscriptions.push(vscode.window.createTreeView('mix-files', { treeDataProvider: mixFilesProvider }));
+    context.subscriptions.push(vscode.workspace.registerFileSystemProvider(MixUriCodec.scheme, mixFileSystemProvider, { isCaseSensitive: false }));
     context.subscriptions.push(vscode.commands.registerCommand('ra2-ini-intellisense.refreshOutline', () => outlineProvider.refresh()));
     context.subscriptions.push(vscode.commands.registerCommand('ra2-ini-intellisense.refreshCsfOutline', () => csfOutlineProvider.refresh()));
+    context.subscriptions.push(vscode.commands.registerCommand('ra2-ini-intellisense.refreshIniFiles', () => iniFilesProvider.refresh()));
+    context.subscriptions.push(vscode.commands.registerCommand('ra2-ini-intellisense.refreshMixFiles', () => mixFilesProvider.refresh()));
+    context.subscriptions.push(vscode.commands.registerCommand('ra2-ini-intellisense.mix.openAsWorkspace', async (nodeOrUri?: ResourceNode | vscode.Uri) => {
+        const targetUri = nodeOrUri instanceof vscode.Uri ? nodeOrUri : nodeOrUri?.uri;
+        if (!targetUri) {
+            return;
+        }
+
+        if (targetUri.scheme === MixUriCodec.scheme) {
+            const decoded = MixUriCodec.decode(targetUri);
+            const lowerName = decoded.virtualPath.split('/').pop()?.toLowerCase();
+            const nextChain = lowerName?.endsWith('.mix')
+                ? [...decoded.nestedChain, lowerName]
+                : decoded.nestedChain;
+            await mixWorkspaceManager.openAsWorkspace(decoded.containerUri, nextChain);
+            return;
+        }
+
+        await mixWorkspaceManager.openAsWorkspace(targetUri);
+    }));
 
     function getProjectRoot(): string | undefined {
         const config = vscode.workspace.getConfiguration('ra2-ini-intellisense');
@@ -105,29 +146,34 @@ export async function activate(context: vscode.ExtensionContext) {
 
 		try {
 			const config = vscode.workspace.getConfiguration('ra2-ini-intellisense');
-			const includePatterns = config.get<string[]>('indexing.includePatterns', []);
-			const excludePatterns = config.get<string[]>('indexing.excludePatterns', []);
-            const categoryPatterns = fileTypeManager.getAllCategoryPatterns();
-            const combinedIncludePatterns = Array.from(new Set([...includePatterns, ...categoryPatterns]));
-			
-            const projectRoot = getProjectRoot();
+			const projectRoot = getProjectRoot();
 
-			if (!projectRoot || combinedIncludePatterns.length === 0) {
-				console.log('INI IntelliSense: 未找到有效项目根目录或包含模式，跳过文件索引。');
+			if (!projectRoot) {
+				console.log('INI IntelliSense: 未找到有效项目根目录，跳过文件索引。');
 				await iniManager.indexFiles([]);
 				outlineProvider.refresh();
+                iniFilesProvider.refresh();
+                mixFilesProvider.refresh();
 				return;
 			}
-            
-            const searchRoot = vscode.Uri.file(projectRoot);
-			const includePattern = new vscode.RelativePattern(searchRoot, `{${combinedIncludePatterns.join(',')}}`);
-			const excludePattern = excludePatterns.length > 0 ? new vscode.RelativePattern(searchRoot, `{${excludePatterns.join(',')}}`) : null;
-			
-			const iniFiles = await vscode.workspace.findFiles(includePattern, excludePattern);
+
+            let rootUri: vscode.Uri;
+            if (vscode.workspace.workspaceFolders && vscode.workspace.workspaceFolders.length > 0 && vscode.workspace.workspaceFolders[0].uri.scheme !== 'file') {
+                rootUri = vscode.workspace.workspaceFolders[0].uri;
+            } else {
+                rootUri = vscode.Uri.file(projectRoot);
+            }
+
+			const iniFiles = await workspaceIndexer.collectFiles(rootUri, {
+                includeExtensions: new Set(['.ini']),
+                excludeGlobs: config.get<string[]>('indexing.excludePatterns', []),
+            });
 			await iniManager.indexFiles(iniFiles);
-			const indexedFiles = Array.from(iniManager.documents.keys()).map(p => path.basename(p));
+			const indexedFiles = Array.from(iniManager.documents.values()).map(doc => path.basename(doc.uri.path));
 			console.log(`INI IntelliSense: 已索引 ${iniManager.documents.size} 个INI文件: [${indexedFiles.join(', ')}]`);
 			outlineProvider.refresh();
+            iniFilesProvider.refresh();
+            mixFilesProvider.refresh();
 		} finally {
 			isIndexing = false;
 			updateMainStatus();
@@ -386,7 +432,7 @@ export async function activate(context: vscode.ExtensionContext) {
 						if (isIndexing) { return []; }
 						const codeLenses: vscode.CodeLens[] = [];
                         // 使用新 API：直接遍历 Sections
-                        const doc = iniManager.getDocument(document.uri.fsPath);
+                        const doc = iniManager.getDocument(document.uri);
                         if (!doc) { return []; }
 
 						for (const sec of doc.sections) {
@@ -501,11 +547,11 @@ export async function activate(context: vscode.ExtensionContext) {
 		outputChannel.appendLine(localize('debug.index.summary', '✅ Indexing complete: Found {0} unique registered section IDs across all files.\n', iniManager.getRegistryMapSize()));
 
 		outputChannel.appendLine(localize('debug.context.title', '--- Context Info ---'));
-		outputChannel.appendLine(localize('debug.context.file', 'File: {0}', document.uri.fsPath));
+		outputChannel.appendLine(localize('debug.context.file', 'File: {0}', document.uri.toString()));
         outputChannel.appendLine(`File Type: ${fileTypeManager.getFileType(document.uri)}`);
 		outputChannel.appendLine(localize('debug.context.position', 'Cursor Position: Line {0}, Character {1}\n', position.line + 1, position.character + 1));
 
-		const currentSectionName = iniManager.getSectionNameAtLine(document.uri.fsPath, position.line);
+		const currentSectionName = iniManager.getSectionNameAtLine(document.uri, position.line);
 
 		if (!currentSectionName) {
 			outputChannel.appendLine(localize('debug.context.noSection', 'Error: Cursor is not within a valid section.'));
@@ -577,7 +623,7 @@ export async function activate(context: vscode.ExtensionContext) {
 					if (!wordRange) {return null;}
 
 					const word = document.getText(wordRange);
-                    const secDoc = iniManager.getDocument(document.uri.fsPath); // 假设同文件
+                    const secDoc = iniManager.getDocument(document.uri); // 假设同文件
                     if (secDoc) {
                         const commentText = iniManager.getSectionComment(secDoc.content, word);
                         if (commentText) {
@@ -594,7 +640,7 @@ export async function activate(context: vscode.ExtensionContext) {
 
 				if (!keyRange.contains(position)) {return null;}
 
-				const currentSectionName = iniManager.getSectionNameAtLine(document.uri.fsPath, position.line);
+				const currentSectionName = iniManager.getSectionNameAtLine(document.uri, position.line);
 				if (!currentSectionName) {return null;}
 		
 				const markdown = new vscode.MarkdownString("", true);
@@ -668,7 +714,7 @@ export async function activate(context: vscode.ExtensionContext) {
 						if(hasContent) {markdown.appendMarkdown('\n\n---\n\n');}
 
 						const lineNum = parentKeyInfo.location.range.start.line + 1;
-						const fileName = path.basename(parentKeyInfo.location.uri.fsPath);
+						const fileName = path.basename(parentKeyInfo.location.uri.path);
 
 						markdown.appendMarkdown(localize('hover.override.info', `This key overrides a value from base class in **{0}**:L{1}`, fileName, lineNum));
 						
@@ -698,7 +744,7 @@ export async function activate(context: vscode.ExtensionContext) {
 				const equalsIndex = line.text.indexOf('=');
 				const isKeyCompletion = equalsIndex === -1 || position.character <= equalsIndex;
 
-				const currentSectionName = iniManager.getSectionNameAtLine(document.uri.fsPath, position.line);
+				const currentSectionName = iniManager.getSectionNameAtLine(document.uri, position.line);
 				if (!currentSectionName) {return new vscode.CompletionList([], false);}
 		
 				const typeName = iniManager.getTypeForSection(currentSectionName);
@@ -793,7 +839,7 @@ export async function activate(context: vscode.ExtensionContext) {
 					const equalsIndex = line.text.indexOf('=');
 					if (equalsIndex === -1) {continue;}
 
-					const currentSectionName = iniManager.getSectionNameAtLine(document.uri.fsPath, i);
+					const currentSectionName = iniManager.getSectionNameAtLine(document.uri, i);
 					if (!currentSectionName) {continue;}
 					
 					const currentKey = line.text.substring(0, equalsIndex).trim();
@@ -850,7 +896,7 @@ export async function activate(context: vscode.ExtensionContext) {
 		vscode.languages.registerFoldingRangeProvider(selector, {
 			provideFoldingRanges(document, context, token) {
                 // 使用新模型极速生成折叠范围
-                const doc = iniManager.getDocument(document.uri.fsPath);
+                const doc = iniManager.getDocument(document.uri);
                 if (!doc) { return []; }
                 
                 return doc.sections.map(sec => {

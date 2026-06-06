@@ -115,7 +115,7 @@ export class DiagnosticManager implements vscode.Disposable {
         };
 
         // 获取文档对应的 INI Document Model，用于快速查找 Section
-        const iniDoc = this.iniManager.getDocument(document.uri.fsPath);
+        const iniDoc = this.iniManager.getDocument(document.uri);
 
         for (const range of ranges) {
             for (let i = range.start.line; i <= range.end.line; i++) {

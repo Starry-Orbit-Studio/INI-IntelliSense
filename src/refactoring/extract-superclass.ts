@@ -17,7 +17,7 @@ export function registerExtractSuperclassCommand(iniManager: INIManager) {
         let preselectedSection: string | undefined;
         const currentUri = contextUri || activeEditor.document.uri;
         const currentPosition = contextPosition || activeEditor.selection.active;
-        preselectedSection = iniManager.getSectionNameAtLine(currentUri.fsPath, currentPosition.line) || undefined;
+        preselectedSection = iniManager.getSectionNameAtLine(currentUri, currentPosition.line) || undefined;
         
         const allSections = Array.from(iniManager.getAllSectionNames());
         
@@ -100,7 +100,7 @@ export function registerExtractSuperclassCommand(iniManager: INIManager) {
                 if (sectionData) {
                     for (const key of propertiesToExtract) {
                         const keyLocation = iniManager.findKeyLocation(sectionName, key);
-                        if (keyLocation && keyLocation.location.uri.fsPath === location.uri.fsPath) {
+                        if (keyLocation && keyLocation.location.uri.toString() === location.uri.toString()) {
                             // 删除整行
                             const lineRange = doc.lineAt(keyLocation.location.range.start.line).rangeIncludingLineBreak;
                             edit.delete(location.uri, lineRange);

@@ -1,5 +1,6 @@
 import * as vscode from 'vscode';
 import * as path from 'path';
+import { ResourcePath } from './resources/resource-path';
 
 /**
  * 管理文件类型的分类和匹配。
@@ -46,7 +47,7 @@ export class FileTypeManager {
      * @returns 文件类型名称（如 "Rules", "Art"），如果未匹配则返回 "INI"
      */
     public getFileType(uri: vscode.Uri): string {
-        const fileName = path.basename(uri.fsPath);
+        const fileName = ResourcePath.basename(uri);
         // 优先匹配完整路径，其次匹配文件名
         const relativePath = vscode.workspace.asRelativePath(uri);
         

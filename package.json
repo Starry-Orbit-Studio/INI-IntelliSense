@@ -31,6 +31,16 @@
           ".ini"
         ],
         "configuration": "./language-configuration.json"
+      },
+      {
+        "id": "llf",
+        "aliases": [
+          "LLF",
+          "llf"
+        ],
+        "extensions": [
+          ".llf"
+        ]
       }
     ],
     "grammars": [
@@ -38,6 +48,11 @@
         "language": "ra2-ini",
         "scopeName": "source.ra2-ini",
         "path": "./syntaxes/ini.tmLanguage.json"
+      },
+      {
+        "language": "llf",
+        "scopeName": "source.llf",
+        "path": "./syntaxes/llf.tmLanguage.json"
       }
     ],
     "semanticTokenProvider": {
@@ -76,6 +91,16 @@
     "views": {
       "ini-intellisense-explorer": [
         {
+          "id": "ini-files",
+          "name": "%view.iniFiles.name%",
+          "icon": "$(files)"
+        },
+        {
+          "id": "mix-files",
+          "name": "%view.mixFiles.name%",
+          "icon": "$(archive)"
+        },
+        {
           "id": "ini-outline",
           "name": "%view.outline.name%",
           "icon": "$(list-tree)"
@@ -90,6 +115,16 @@
     "menus": {
       "view/title": [
         {
+          "command": "ra2-ini-intellisense.refreshIniFiles",
+          "when": "view == ini-files",
+          "group": "navigation"
+        },
+        {
+          "command": "ra2-ini-intellisense.refreshMixFiles",
+          "when": "view == mix-files",
+          "group": "navigation"
+        },
+        {
           "command": "ra2-ini-intellisense.refreshOutline",
           "when": "view == ini-outline",
           "group": "navigation"
@@ -97,6 +132,20 @@
         {
           "command": "ra2-ini-intellisense.refreshCsfOutline",
           "when": "view == csf-outline",
+          "group": "navigation"
+        }
+      ],
+      "explorer/context": [
+        {
+          "when": "resourceExtname == .mix",
+          "command": "ra2-ini-intellisense.mix.openAsWorkspace",
+          "group": "navigation"
+        }
+      ],
+      "view/item/context": [
+        {
+          "when": "view == mix-files && viewItem =~ /mixFile|mixEntryMixFile/",
+          "command": "ra2-ini-intellisense.mix.openAsWorkspace",
           "group": "navigation"
         }
       ],
@@ -124,6 +173,21 @@
       ]
     },
     "commands": [
+      {
+        "command": "ra2-ini-intellisense.refreshIniFiles",
+        "title": "%command.refreshIniFiles.title%",
+        "icon": "$(refresh)"
+      },
+      {
+        "command": "ra2-ini-intellisense.refreshMixFiles",
+        "title": "%command.refreshMixFiles.title%",
+        "icon": "$(refresh)"
+      },
+      {
+        "command": "ra2-ini-intellisense.mix.openAsWorkspace",
+        "title": "%command.mix.openAsWorkspace.title%",
+        "category": "%command.category%"
+      },
       {
         "command": "ra2-ini-intellisense.showWelcomePage",
         "title": "%command.showWelcomePage.title%",
@@ -347,6 +411,69 @@
           "valueString": "#a76c00",
           "comment": "#808080"
         }
+      },
+      "editor.tokenColorCustomizations": {
+        "textMateRules": [
+          {
+            "scope": [
+              "source.llf"
+            ],
+            "settings": {
+              "foreground": "#d4d4d4"
+            }
+          },
+          {
+            "scope": [
+              "comment.line.llf",
+              "punctuation.definition.comment.llf"
+            ],
+            "settings": {
+              "foreground": "#6a9955"
+            }
+          },
+          {
+            "scope": [
+              "entity.name.label.key.llf"
+            ],
+            "settings": {
+              "foreground": "#569cd6",
+              "fontStyle": "bold"
+            }
+          },
+          {
+            "scope": [
+              "punctuation.separator.key-value.llf"
+            ],
+            "settings": {
+              "foreground": "#d4d4d4"
+            }
+          },
+          {
+            "scope": [
+              "keyword.operator.multiline.llf"
+            ],
+            "settings": {
+              "foreground": "#c586c0"
+            }
+          },
+          {
+            "scope": [
+              "string.value.llf",
+              "string.multiline.continuation.llf"
+            ],
+            "settings": {
+              "foreground": "#ce9178"
+            }
+          },
+          {
+            "scope": [
+              "punctuation.whitespace.multiline.llf"
+            ],
+            "settings": {
+              "foreground": "#808080"
+            }
+          }
+        ]
       }
     }
   },

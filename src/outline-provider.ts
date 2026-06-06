@@ -88,10 +88,13 @@ export class INIOutlineProvider implements vscode.TreeDataProvider<OutlineItem> 
         }
 
         if (!element) {
-            const filePaths = Array.from(this.iniManager.documents.keys())
+            const fileUris = Array.from(this.iniManager.documents.values())
+                .map(doc => doc.uri)
+                .filter(uri => uri.scheme === 'file')
+                .map(uri => uri.fsPath)
                 .filter(p => !p.includes('INIConfigCheck.ini')); 
 
-            const tree = this.buildFileTree(filePaths);
+            const tree = this.buildFileTree(fileUris);
             return this.createTreeItemsFromNode(tree, vscode.workspace.workspaceFolders[0].uri.fsPath);
         }
 
@@ -102,7 +105,7 @@ export class INIOutlineProvider implements vscode.TreeDataProvider<OutlineItem> 
                 return this.createTreeItemsFromNode(element.data, filePath);
             
             case OutlineItemType.File:
-                const doc = this.iniManager.getDocument(filePath);
+                const doc = this.iniManager.getDocument(vscode.Uri.file(filePath));
                 if (!doc) {return [];}
                 
                 return doc.sections.map(sec => {
@@ -117,7 +120,7 @@ export class INIOutlineProvider implements vscode.TreeDataProvider<OutlineItem> 
 
             case OutlineItemType.Section:
                 // 使用 Document Model 直接获取属性，替代旧的 parsed 对象
-                const sectionDoc = this.iniManager.getDocument(filePath);
+                const sectionDoc = this.iniManager.getDocument(vscode.Uri.file(filePath));
                 const section = sectionDoc?.getSection(element.sectionName!);
                 
                 if (!section) { return []; }
