@@ -7,7 +7,7 @@ import { MixArchiveOptions, MixArchiveWarning, MixDirectoryEntry, MixEntry, MixG
 const MIX_CHECKSUM = 0x00010000;
 const MIX_ENCRYPTED = 0x00020000;
 const LOCAL_MIX_DATABASE_ID = 0x366e051f;
-const XCC_ID = 'XCC by Olaf van der Spek\x1a\x04\x17\x27\x10\x19\x80';
+const XCC_ID = 'XCC by Olaf van der Spek\x1a\x04\x17\x27\x10\x19\x80\x00';
 
 interface MixDbEntry {
     id: number;
