@@ -101,11 +101,6 @@
           "icon": "$(archive)"
         },
         {
-          "id": "ini-outline",
-          "name": "%view.outline.name%",
-          "icon": "$(list-tree)"
-        },
-        {
           "id": "csf-outline",
           "name": "%view.csfOutline.name%",
           "icon": "$(list-flat)"
@@ -122,11 +117,6 @@
         {
           "command": "ra2-ini-intellisense.refreshMixFiles",
           "when": "view == mix-files",
-          "group": "navigation"
-        },
-        {
-          "command": "ra2-ini-intellisense.refreshOutline",
-          "when": "view == ini-outline",
           "group": "navigation"
         },
         {
@@ -267,11 +257,6 @@
         "command": "ra2-ini-intellisense.manageValidator",
         "title": "%command.manageValidator.title%",
         "category": "%command.category%"
-      },
-      {
-        "command": "ra2-ini-intellisense.refreshOutline",
-        "title": "%command.refreshOutline.title%",
-        "icon": "$(refresh)"
       },
       {
         "command": "ra2-ini-intellisense.refreshCsfOutline",

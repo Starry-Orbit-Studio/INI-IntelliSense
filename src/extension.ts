@@ -2,7 +2,6 @@ import * as vscode from 'vscode';
 import * as path from 'path';
 import { INIManager } from './parser';
 import { INIValidatorExt } from './ini-validator-ext';
-import { INIOutlineProvider } from './outline-provider';
 import { SchemaManager } from './schema-manager';
 import { IniSemanticTokensProvider, legend } from './semantic-tokens-provider';
 import { DiagnosticManager } from './diagnostics/engine';
@@ -41,7 +40,6 @@ export async function activate(context: vscode.ExtensionContext) {
 	const outputChannel = vscode.window.createOutputChannel(localize('output.channel.name', 'INI IntelliSense'));
 	
 	const iniManager = new INIManager();
-	const outlineProvider = new INIOutlineProvider(context, iniManager);
 	const schemaManager = new SchemaManager();
     const fileTypeManager = new FileTypeManager();
     const csfManager = new CsfManager();
@@ -105,12 +103,10 @@ export async function activate(context: vscode.ExtensionContext) {
     // DiagnosticManager 内部管理了自己的 collection，记得 dispose
     context.subscriptions.push(diagnosticManager);
 
-	context.subscriptions.push(vscode.window.createTreeView('ini-outline', { treeDataProvider: outlineProvider }));
 	context.subscriptions.push(vscode.window.createTreeView('csf-outline', { treeDataProvider: csfOutlineProvider }));
 	context.subscriptions.push(vscode.window.createTreeView('ini-files', { treeDataProvider: iniFilesProvider }));
 	context.subscriptions.push(vscode.window.createTreeView('mix-files', { treeDataProvider: mixFilesProvider, dragAndDropController: mixTreeDnD }));
     context.subscriptions.push(vscode.workspace.registerFileSystemProvider(MixUriCodec.scheme, mixFileSystemProvider, { isCaseSensitive: false }));
-    context.subscriptions.push(vscode.commands.registerCommand('ra2-ini-intellisense.refreshOutline', () => outlineProvider.refresh()));
     context.subscriptions.push(vscode.commands.registerCommand('ra2-ini-intellisense.refreshCsfOutline', () => csfOutlineProvider.refresh()));
     context.subscriptions.push(vscode.commands.registerCommand('ra2-ini-intellisense.refreshIniFiles', () => {
         resourceService.clearCaches();
@@ -261,7 +257,6 @@ export async function activate(context: vscode.ExtensionContext) {
         resourceService.clearCaches();
         iniFilesProvider.refresh();
         mixFilesProvider.refresh();
-        outlineProvider.refresh();
     }));
 
     function getProjectRoot(): string | undefined {
@@ -288,7 +283,6 @@ export async function activate(context: vscode.ExtensionContext) {
 			if (!projectRoot) {
 				console.log('INI IntelliSense: 未找到有效项目根目录，跳过文件索引。');
 				await iniManager.indexFiles([]);
-				outlineProvider.refresh();
                 iniFilesProvider.refresh();
                 mixFilesProvider.refresh();
 				return;
@@ -308,7 +302,6 @@ export async function activate(context: vscode.ExtensionContext) {
 			await iniManager.indexFiles(iniFiles);
 			const indexedFiles = Array.from(iniManager.documents.values()).map(doc => path.basename(doc.uri.path));
 			console.log(`INI IntelliSense: 已索引 ${iniManager.documents.size} 个INI文件: [${indexedFiles.join(', ')}]`);
-			outlineProvider.refresh();
             iniFilesProvider.refresh();
             mixFilesProvider.refresh();
 		} finally {
@@ -643,17 +636,15 @@ export async function activate(context: vscode.ExtensionContext) {
 		console.log(`INI 文件变更: ${uri.fsPath}, 正在增量更新索引...`);
 		await iniManager.updateFile(uri);
         // 外部文件变更（非编辑器输入），触发全量刷新
-        const doc = vscode.workspace.textDocuments.find(d => d.uri.toString() === uri.toString());
+		const doc = vscode.workspace.textDocuments.find(d => d.uri.toString() === uri.toString());
         if (doc) { diagnosticManager.handleDocumentChange(doc); }
         
         overrideDecorator.triggerUpdateDecorationsForAllVisibleEditors();
-		outlineProvider.refresh();
 	};
 
 	const onFileDelete = (uri: vscode.Uri) => {
 		console.log(`INI 文件删除: ${uri.fsPath}, 正在移除索引...`);
 		iniManager.removeFile(uri);
-		outlineProvider.refresh();
 	};
 
 	watcher.onDidCreate(onFileChange);
