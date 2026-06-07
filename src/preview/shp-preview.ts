@@ -53,13 +53,18 @@ export async function createShpPreview(
         }
         : await previewContext.resolvePaletteForShp(uri);
     const palette = paletteSelection.colors;
-    const pixels = new Uint8ClampedArray(frame.width * frame.height * 4);
+    const previewWidth = Math.max(canvasWidth, frame.x + frame.width);
+    const previewHeight = Math.max(canvasHeight, frame.y + frame.height);
+    const pixels = new Uint8ClampedArray(previewWidth * previewHeight * 4);
 
     for (let i = 0; i < framePixels.length; i++) {
         const value = framePixels[i];
-        const dst = i * 4;
+        const localX = i % frame.width;
+        const localY = Math.floor(i / frame.width);
+        const canvasX = frame.x + localX;
+        const canvasY = frame.y + localY;
+        const dst = (canvasY * previewWidth + canvasX) * 4;
         if (value === 0) {
-            pixels[dst + 3] = 0;
             continue;
         }
 
@@ -73,8 +78,8 @@ export async function createShpPreview(
     return {
         kind: 'rgba-image',
         title,
-        width: frame.width,
-        height: frame.height,
+        width: previewWidth,
+        height: previewHeight,
         pixels,
         description: `${frameCount} frame(s)`,
         details: [
@@ -91,14 +96,14 @@ export async function createShpPreview(
 }
 
 function readFrameHeader(bytes: Uint8Array, offset: number): ShpFrameHeader {
-    const view = new DataView(bytes.buffer, bytes.byteOffset + offset, 20);
+    const view = new DataView(bytes.buffer, bytes.byteOffset + offset, 24);
     return {
         x: view.getUint16(0, true),
         y: view.getUint16(2, true),
         width: view.getUint16(4, true),
         height: view.getUint16(6, true),
         flags: bytes[offset + 8],
-        offset: view.getUint32(16, true),
+        offset: view.getUint32(20, true),
     };
 }
 

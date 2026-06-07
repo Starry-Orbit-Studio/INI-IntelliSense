@@ -166,9 +166,9 @@ function parseVxl(bytes: Uint8Array): VxlModel {
     const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
     const signature = decodeAscii(bytes.slice(0, 16));
     const limbCount = view.getUint32(20, true);
-    const bodySize = view.getUint32(24, true);
-    const remapStart = bytes[28] ?? 0;
-    const remapEnd = bytes[29] ?? 0;
+    const bodySize = view.getUint32(28, true);
+    const remapStart = bytes[32] ?? 0;
+    const remapEnd = bytes[33] ?? 0;
 
     let offset = 802;
     const headers: LimbHeader[] = [];
