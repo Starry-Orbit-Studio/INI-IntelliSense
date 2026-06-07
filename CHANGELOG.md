@@ -10,3 +10,4 @@ Check [Keep a Changelog](http://keepachangelog.com/) for recommendations on how 
 
 - Initial release
 - Added first-class MIX archive browsing with a virtual `ra2mix:` file system, lazy-loaded MIX/INI resource views, and open-as-workspace support for `.mix` files.
+- Added default-open resource previews for `pcx`, `pal`, `map`, `shp`, `vxl`, and `hva`, with theme-aware centered rendering and SHP palette selection support.

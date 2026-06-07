@@ -229,5 +229,12 @@
     "mix.rename.validation": "Name cannot be empty.",
     "mix.delete.confirm": "Delete {0} selected MIX item(s)?",
     "mix.delete.action": "Delete",
-    "mix.saveAll.success": "All modified MIX archives have been saved."
+    "mix.saveAll.success": "All modified MIX archives have been saved.",
+    "preview.unsupported.content": "Preview for this file type is not available yet.",
+    "preview.palette.grayscale": "Grayscale Fallback",
+    "preview.palette.notFound": "No palette files were found in the current workspace.",
+    "preview.palette.pick.title": "Choose Palette",
+    "preview.palette.pick.placeholder": "Select a palette for the current preview",
+    "preview.palette.choose": "Choose Palette",
+    "preview.palette.reset": "Auto Palette"
 }

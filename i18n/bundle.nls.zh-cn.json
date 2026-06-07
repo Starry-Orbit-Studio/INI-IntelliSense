@@ -205,5 +205,12 @@
     "csfOutline.rootTooltip": "RA2/YR 字符串资源 CSF/LLF 文件查看器",
     "csfOutline.openFile": "打开文件",
     "csfOutline.loading": "正在加载字符串资源文件...",
-    "csfOutline.initializing": "正在初始化..."
+    "csfOutline.initializing": "正在初始化...",
+    "preview.unsupported.content": "此文件类型暂时还没有可用的预览。",
+    "preview.palette.grayscale": "灰度回退调色板",
+    "preview.palette.notFound": "当前工作区中没有找到可用的调色板文件。",
+    "preview.palette.pick.title": "选择调色板",
+    "preview.palette.pick.placeholder": "为当前预览选择一个调色板",
+    "preview.palette.choose": "选择调色板",
+    "preview.palette.reset": "自动调色板"
 }

@@ -1,6 +1,8 @@
 import * as path from 'path';
 import * as vscode from 'vscode';
+import { PreviewContext } from './preview-context';
 import { RgbaImagePreview } from './preview-types';
+import { PaletteColor } from './palette-utils';
 
 interface ShpFrameHeader {
     x: number;
@@ -11,7 +13,13 @@ interface ShpFrameHeader {
     offset: number;
 }
 
-export async function createShpPreview(uri: vscode.Uri, bytes: Uint8Array, title: string): Promise<RgbaImagePreview> {
+export async function createShpPreview(
+    uri: vscode.Uri,
+    bytes: Uint8Array,
+    title: string,
+    previewContext: PreviewContext,
+    paletteUri?: vscode.Uri
+): Promise<RgbaImagePreview> {
     const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
     if (bytes.byteLength < 8) {
         throw new Error('Invalid SHP file.');
@@ -26,7 +34,15 @@ export async function createShpPreview(uri: vscode.Uri, bytes: Uint8Array, title
 
     const frame = readFrameHeader(bytes, 8);
     const framePixels = decodeFrame(bytes, frame);
-    const palette = await resolvePalette(uri);
+    const paletteSelection = paletteUri
+        ? {
+            uri: paletteUri,
+            label: path.posix.basename(paletteUri.path),
+            colors: await previewContext.readPalette(paletteUri),
+            source: 'manual' as const,
+        }
+        : await previewContext.resolvePaletteForShp(uri);
+    const palette = paletteSelection.colors;
     const pixels = new Uint8ClampedArray(frame.width * frame.height * 4);
 
     for (let i = 0; i < framePixels.length; i++) {
@@ -39,9 +55,9 @@ export async function createShpPreview(uri: vscode.Uri, bytes: Uint8Array, title
 
         const color = palette?.[value];
         if (color) {
-            pixels[dst] = color[0];
-            pixels[dst + 1] = color[1];
-            pixels[dst + 2] = color[2];
+            pixels[dst] = color.r;
+            pixels[dst + 1] = color.g;
+            pixels[dst + 2] = color.b;
         } else {
             pixels[dst] = value;
             pixels[dst + 1] = value;
@@ -56,7 +72,14 @@ export async function createShpPreview(uri: vscode.Uri, bytes: Uint8Array, title
         width: frame.width,
         height: frame.height,
         pixels,
-        description: `${frameCount} frame(s), canvas ${width} x ${height}${palette ? '' : ', grayscale fallback'}`,
+        description: `${frameCount} frame(s)`,
+        details: [
+            `Canvas ${width} x ${height}`,
+            `Frame 1 ${frame.width} x ${frame.height}`,
+            `Palette ${paletteSelection.label}`,
+            paletteSelection.source === 'manual' ? 'Manual palette' : paletteSelection.source === 'fallback' ? 'Fallback palette' : 'Auto palette',
+        ],
+        pixelated: true,
     };
 }
 
@@ -98,46 +121,4 @@ function decodeFrame(bytes: Uint8Array, frame: ShpFrameHeader): Uint8Array {
     }
 
     return output;
-}
-
-async function resolvePalette(uri: vscode.Uri): Promise<Array<[number, number, number]> | undefined> {
-    const candidates = buildPaletteCandidates(uri);
-    for (const candidate of candidates) {
-        try {
-            const bytes = await vscode.workspace.fs.readFile(candidate);
-            if (bytes.byteLength < 0x300) {
-                continue;
-            }
-            return readPalette(bytes);
-        } catch {
-            continue;
-        }
-    }
-    return undefined;
-}
-
-function buildPaletteCandidates(uri: vscode.Uri): vscode.Uri[] {
-    const extless = uri.path.slice(0, -path.extname(uri.path).length);
-    const parent = uri.path.substring(0, uri.path.lastIndexOf('/')) || '/';
-    const names = [
-        `${path.posix.basename(extless)}.pal`,
-        'unittem.pal',
-        'temperat.pal',
-        'cameo.pal',
-        'palette.pal',
-    ];
-
-    return names.map(name => uri.with({ path: `${parent}/${name}` }));
-}
-
-function readPalette(bytes: Uint8Array): Array<[number, number, number]> {
-    const colors: Array<[number, number, number]> = [];
-    for (let i = 0; i < 256; i++) {
-        colors.push([
-            (bytes[i * 3] ?? 0) * 4,
-            (bytes[i * 3 + 1] ?? 0) * 4,
-            (bytes[i * 3 + 2] ?? 0) * 4,
-        ]);
-    }
-    return colors;
 }

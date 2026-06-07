@@ -5,6 +5,8 @@ export interface RgbaImagePreview {
     height: number;
     pixels: Uint8ClampedArray;
     description?: string;
+    details?: string[];
+    pixelated?: boolean;
 }
 
 export interface PalettePreview {
@@ -12,18 +14,21 @@ export interface PalettePreview {
     title: string;
     colors: string[];
     description?: string;
+    details?: string[];
 }
 
 export interface HtmlPreview {
     kind: 'html';
     title: string;
     bodyHtml: string;
+    details?: string[];
 }
 
 export interface TextPreview {
     kind: 'text';
     title: string;
     content: string;
+    details?: string[];
 }
 
 export type ResourcePreviewModel =
