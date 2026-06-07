@@ -13,7 +13,8 @@
     "vscode": "^1.96.0"
   },
   "activationEvents": [
-    "onLanguage:ra2-ini"
+    "onLanguage:ra2-ini",
+    "onCustomEditor:ra2-resource-preview.viewer"
   ],
   "categories": [
     "Other"
@@ -79,6 +80,39 @@
         "tokenModifiers": []
       }
     },
+    "customEditors": [
+      {
+        "viewType": "ra2-resource-preview.viewer",
+        "displayName": "RA2 Resource Preview",
+        "selector": [
+          {
+            "filenamePattern": "*.pcx"
+          },
+          {
+            "filenamePattern": "*.shp"
+          },
+          {
+            "filenamePattern": "*.pal"
+          },
+          {
+            "filenamePattern": "*.map"
+          },
+          {
+            "filenamePattern": "*.mpr"
+          },
+          {
+            "filenamePattern": "*.yrm"
+          },
+          {
+            "filenamePattern": "*.vxl"
+          },
+          {
+            "filenamePattern": "*.hva"
+          }
+        ],
+        "priority": "default"
+      }
+    ],
     "viewsContainers": {
       "activitybar": [
         {

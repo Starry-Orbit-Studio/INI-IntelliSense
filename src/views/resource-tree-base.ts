@@ -47,6 +47,14 @@ export abstract class ResourceTreeBase implements vscode.TreeDataProvider<Resour
     }
 
     protected getCommand(element: ResourceNode): vscode.Command | undefined {
+        if (isPreviewableResource(element)) {
+            return {
+                command: 'vscode.openWith',
+                title: 'Preview',
+                arguments: [element.uri, 'ra2-resource-preview.viewer'],
+            };
+        }
+
         if (element.kind === 'iniFile' || element.kind === 'mixEntryFile' || element.kind === 'unknownFile') {
             return {
                 command: 'vscode.open',
@@ -56,4 +64,20 @@ export abstract class ResourceTreeBase implements vscode.TreeDataProvider<Resour
         }
         return undefined;
     }
+}
+
+function isPreviewableResource(element: ResourceNode): boolean {
+    if (element.kind !== 'mixEntryFile' && element.kind !== 'unknownFile') {
+        return false;
+    }
+
+    const lowerPath = element.uri.path.toLowerCase();
+    return lowerPath.endsWith('.pcx')
+        || lowerPath.endsWith('.shp')
+        || lowerPath.endsWith('.pal')
+        || lowerPath.endsWith('.map')
+        || lowerPath.endsWith('.mpr')
+        || lowerPath.endsWith('.yrm')
+        || lowerPath.endsWith('.vxl')
+        || lowerPath.endsWith('.hva');
 }

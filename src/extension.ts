@@ -32,6 +32,7 @@ import { ResourceNode } from './resources/resource-node';
 import { ImportExportService } from './services/import-export-service';
 import { MixTreeDragAndDropController } from './views/mix-tree-drag-and-drop';
 import { MixDetectorService } from './services/mix-detector-service';
+import { ResourcePreviewProvider } from './preview/resource-preview-provider';
 
 const LANGUAGE_ID = 'ra2-ini';
 
@@ -56,6 +57,7 @@ export async function activate(context: vscode.ExtensionContext) {
     const workspaceIndexer = new WorkspaceIndexer();
     const importExportService = new ImportExportService();
     const mixTreeDnD = new MixTreeDragAndDropController(importExportService);
+    const resourcePreviewProvider = new ResourcePreviewProvider();
     
     // 等待CSF管理器初始化完成，然后刷新树状视图
     csfManager.waitForInitialization().then(() => {
@@ -107,6 +109,12 @@ export async function activate(context: vscode.ExtensionContext) {
 	context.subscriptions.push(vscode.window.createTreeView('ini-files', { treeDataProvider: iniFilesProvider, canSelectMany: true }));
 	context.subscriptions.push(vscode.window.createTreeView('mix-files', { treeDataProvider: mixFilesProvider, dragAndDropController: mixTreeDnD, canSelectMany: true }));
     context.subscriptions.push(vscode.workspace.registerFileSystemProvider(MixUriCodec.scheme, mixFileSystemProvider, { isCaseSensitive: false }));
+    context.subscriptions.push(vscode.window.registerCustomEditorProvider(ResourcePreviewProvider.viewType, resourcePreviewProvider, {
+        supportsMultipleEditorsPerDocument: false,
+        webviewOptions: {
+            retainContextWhenHidden: true,
+        },
+    }));
     context.subscriptions.push(vscode.commands.registerCommand('ra2-ini-intellisense.refreshCsfOutline', () => csfOutlineProvider.refresh()));
     context.subscriptions.push(vscode.commands.registerCommand('ra2-ini-intellisense.refreshIniFiles', () => {
         resourceService.clearCaches();
