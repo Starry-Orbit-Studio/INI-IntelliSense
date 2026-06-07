@@ -63,7 +63,7 @@ const DEFAULT_PERSPECTIVE_CAMERA = {
 };
 
 const GAME_VIEW_CAMERA = {
-    yaw: 45,
+    yaw: -45,
     pitch: -35.264,
     zoom: 1,
     panX: 0,

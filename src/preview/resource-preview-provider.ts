@@ -476,6 +476,82 @@ function rotateY(vector, angle) {
     };
 }
 
+function applyViewRotation(vector, yaw, pitch) {
+    return rotateX(rotateY(vector, yaw), pitch);
+}
+
+function applyInverseViewRotation(vector, yaw, pitch) {
+    return rotateY(rotateX(vector, -pitch), -yaw);
+}
+
+function transposeMatrix3(matrix) {
+    return [
+        [matrix[0][0], matrix[1][0], matrix[2][0]],
+        [matrix[0][1], matrix[1][1], matrix[2][1]],
+        [matrix[0][2], matrix[1][2], matrix[2][2]],
+    ];
+}
+
+function multiplyMatrix3(left, right) {
+    return [
+        [
+            left[0][0] * right[0][0] + left[0][1] * right[1][0] + left[0][2] * right[2][0],
+            left[0][0] * right[0][1] + left[0][1] * right[1][1] + left[0][2] * right[2][1],
+            left[0][0] * right[0][2] + left[0][1] * right[1][2] + left[0][2] * right[2][2],
+        ],
+        [
+            left[1][0] * right[0][0] + left[1][1] * right[1][0] + left[1][2] * right[2][0],
+            left[1][0] * right[0][1] + left[1][1] * right[1][1] + left[1][2] * right[2][1],
+            left[1][0] * right[0][2] + left[1][1] * right[1][2] + left[1][2] * right[2][2],
+        ],
+        [
+            left[2][0] * right[0][0] + left[2][1] * right[1][0] + left[2][2] * right[2][0],
+            left[2][0] * right[0][1] + left[2][1] * right[1][1] + left[2][2] * right[2][1],
+            left[2][0] * right[0][2] + left[2][1] * right[1][2] + left[2][2] * right[2][2],
+        ],
+    ];
+}
+
+function applyMatrix3(matrix, vector) {
+    return {
+        x: matrix[0][0] * vector.x + matrix[0][1] * vector.y + matrix[0][2] * vector.z,
+        y: matrix[1][0] * vector.x + matrix[1][1] * vector.y + matrix[1][2] * vector.z,
+        z: matrix[2][0] * vector.x + matrix[2][1] * vector.y + matrix[2][2] * vector.z,
+    };
+}
+
+function createRotationXMatrix(angle) {
+    const c = Math.cos(angle);
+    const s = Math.sin(angle);
+    return [
+        [1, 0, 0],
+        [0, c, -s],
+        [0, s, c],
+    ];
+}
+
+function createRotationYMatrix(angle) {
+    const c = Math.cos(angle);
+    const s = Math.sin(angle);
+    return [
+        [c, 0, s],
+        [0, 1, 0],
+        [-s, 0, c],
+    ];
+}
+
+function createGameViewMatrix(yaw, pitch) {
+    return multiplyMatrix3(createRotationXMatrix(pitch), createRotationYMatrix(yaw));
+}
+
+function applyGameViewRotation(vector, yaw, pitch) {
+    return applyMatrix3(createGameViewMatrix(yaw, pitch), vector);
+}
+
+function applyGameViewInverseRotation(vector, yaw, pitch) {
+    return applyMatrix3(transposeMatrix3(createGameViewMatrix(yaw, pitch)), vector);
+}
+
 function normalize(vector) {
     const length = Math.hypot(vector.x, vector.y, vector.z) || 1;
     return {
@@ -493,7 +569,7 @@ function readGameNormal(normalIndex) {
     const offset = Math.max(0, Math.min(255, normalIndex)) * 3;
     return normalize({
         x: scene.gameNormals[offset] ?? 0,
-        y: scene.gameNormals[offset + 2] ?? 1,
+        y: -(scene.gameNormals[offset + 2] ?? 1),
         z: scene.gameNormals[offset + 1] ?? 0,
     });
 }
@@ -503,9 +579,9 @@ function readVplColor(lightLevelIndex, colorIndex) {
     const finalColorIndex = scene.vplLookup[lookupIndex] ?? colorIndex;
     const offset = finalColorIndex * 3;
     return {
-        r: scene.vplPalette[offset] ?? 0,
-        g: scene.vplPalette[offset + 1] ?? 0,
-        b: scene.vplPalette[offset + 2] ?? 0,
+        r: scene.palette[offset] ?? 0,
+        g: scene.palette[offset + 1] ?? 0,
+        b: scene.palette[offset + 2] ?? 0,
     };
 }
 
@@ -626,23 +702,23 @@ function renderVoxelView(limb) {
     const lightDirection = normalize(state.renderMode === 'game'
         ? { x: 0.2013022, y: -0.9101138, z: -0.3621709 }
         : { x: -0.7, y: 1.0, z: 0.4 });
-    const ambient = state.renderMode === 'game' ? 0.4 : 0.35;
-    const diffuseStrength = state.renderMode === 'game' ? 0.6 : 0.65;
+    const ambient = state.renderMode === 'game' ? 0.3 : 0.35;
+    const diffuseStrength = state.renderMode === 'game' ? 0.7 : 0.65;
     const yaw = state.cameraYaw * Math.PI / 180;
     const pitch = clamp(state.cameraPitch, -89, 89) * Math.PI / 180;
     const maxDimension = Math.max(limb.sizeX, limb.sizeY, limb.sizeZ, 1);
     const centerX = canvas.width / 2 + state.cameraPanX;
     const centerY = canvas.height / 2 + state.cameraPanY;
-    const distance = state.renderMode === 'game'
-        ? maxDimension * 2.1 + 6
-        : (maxDimension * 2.8 + 10) / Math.max(state.cameraZoom, 0.01);
+    const distance = (maxDimension * 2.8 + 10) / Math.max(state.cameraZoom, 0.01);
     const baseZoom = state.renderMode === 'game'
-        ? Math.max(5, Math.floor(340 / maxDimension)) * state.cameraZoom
+        ? Math.max(2, Math.ceil((220 / maxDimension) * state.cameraZoom))
         : 1;
     const fov = 50 * Math.PI / 180;
     const focal = (canvas.height * 0.5) / Math.tan(fov * 0.5);
     const active = buildActiveVoxelList(limb);
-    const worldU = normalize({ x: 0, y: 0, z: 1 });
+    const worldU = state.renderMode === 'game'
+        ? normalize(applyGameViewInverseRotation({ x: 0, y: 0, z: 1 }, yaw, pitch))
+        : normalize({ x: 0, y: 0, z: 1 });
     active.sort((left, right) => {
         const leftScore = left.x + left.y + left.z;
         const rightScore = right.x + right.y + right.z;
@@ -655,7 +731,9 @@ function renderVoxelView(limb) {
             y: voxel.y - limb.sizeY / 2,
             z: voxel.z - limb.sizeZ / 2,
         };
-        const rotated = rotateY(rotateX(local, pitch), yaw);
+        const rotated = state.renderMode === 'game'
+            ? applyGameViewRotation(local, yaw, pitch)
+            : applyViewRotation(local, yaw, pitch);
         const paletteOffset = voxel.color * 3;
         const base = {
             r: scene.palette[paletteOffset] ?? voxel.color,
@@ -679,11 +757,12 @@ function renderVoxelView(limb) {
             const f2 = f2Denominator > 1e-6 ? (f2Dot / f2Denominator) : 0.0;
             let lightLevelIndex = Math.floor(16.0 * (Math.max(0, f1) + Math.max(0, f2)));
             lightLevelIndex = clamp(lightLevelIndex, 0, 31);
-            const vplColor = readVplColor(lightLevelIndex, voxel.color);
+            const baseColor = readVplColor(lightLevelIndex, voxel.color);
+            const diffuseFactor = 1.0 - ambient;
             color = {
-                r: Math.max(0, Math.min(255, Math.round(vplColor.r * (ambient + diffuseStrength)))),
-                g: Math.max(0, Math.min(255, Math.round(vplColor.g * (ambient + diffuseStrength)))),
-                b: Math.max(0, Math.min(255, Math.round(vplColor.b * (ambient + diffuseStrength)))),
+                r: Math.max(0, Math.min(255, Math.round(baseColor.r * (ambient + diffuseFactor)))),
+                g: Math.max(0, Math.min(255, Math.round(baseColor.g * (ambient + diffuseFactor)))),
+                b: Math.max(0, Math.min(255, Math.round(baseColor.b * (ambient + diffuseFactor)))),
             };
         } else {
             const shade = ambient + Math.max(0, dot(normal, lightDirection)) * diffuseStrength;
