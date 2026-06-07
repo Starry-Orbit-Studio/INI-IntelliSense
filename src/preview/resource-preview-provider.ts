@@ -6,24 +6,20 @@ import { createMapPreview } from './map-preview';
 import { createPalPreview } from './pal-preview';
 import { createPcxPreview } from './pcx-preview';
 import { ResourcePreviewModel } from './preview-types';
-import { createShpPreview } from './shp-preview';
-import { createHvaPreview, createVxlPreview } from './vxl-hva-preview';
+import { createShpPreview, ShpPreviewModel } from './shp-preview';
+import { createHvaPreview, createVxlPreview, VoxelPreviewModel, VoxelPreviewState } from './vxl-hva-preview';
 
 interface PreviewSessionState {
     paletteUri?: vscode.Uri;
-}
-
-interface PreviewStateStoreEntry {
-    session: PreviewSessionState;
-    panel: vscode.WebviewPanel;
-    document: vscode.CustomDocument;
+    shpFrameIndex: number;
+    voxel: VoxelPreviewState;
 }
 
 export class ResourcePreviewProvider implements vscode.CustomReadonlyEditorProvider {
     public static readonly viewType = 'ra2-resource-preview.viewer';
 
     private readonly previewContext: PreviewContext;
-    private readonly stateByUri = new Map<string, PreviewStateStoreEntry>();
+    private readonly stateByUri = new Map<string, PreviewSessionState>();
 
     constructor(private readonly services: PreviewContextServices) {
         this.previewContext = new PreviewContext(services);
@@ -45,35 +41,66 @@ export class ResourcePreviewProvider implements vscode.CustomReadonlyEditorProvi
         };
 
         const key = document.uri.toString();
-        const existing = this.stateByUri.get(key);
-        const state: PreviewSessionState = existing?.session ?? {};
-        this.stateByUri.set(key, {
-            session: state,
-            panel: webviewPanel,
-            document,
-        });
+        const state = this.stateByUri.get(key) ?? {
+            shpFrameIndex: 0,
+            voxel: {
+                limbIndex: 0,
+                sliceIndex: 0,
+                viewType: 'top',
+            },
+        };
+        this.stateByUri.set(key, state);
 
         const refresh = async () => {
-            const preview = await this.createPreviewModel(document.uri, state.paletteUri);
+            const preview = await this.createPreviewModel(document.uri, state);
             webviewPanel.title = preview.title;
-            webviewPanel.webview.html = renderPreviewHtml(webviewPanel.webview, preview, document.uri, state.paletteUri);
+            webviewPanel.webview.html = renderPreviewHtml(preview, document.uri, state.paletteUri);
         };
 
         await refresh();
 
         webviewPanel.webview.onDidReceiveMessage(async message => {
-            if (message?.type === 'choosePalette') {
-                const selected = await this.previewContext.choosePalette(document.uri);
-                if (selected?.uri) {
-                    state.paletteUri = selected.uri;
-                    await refresh();
-                }
+            if (!message?.type) {
                 return;
             }
 
-            if (message?.type === 'resetPalette') {
-                state.paletteUri = undefined;
-                await refresh();
+            switch (message.type) {
+                case 'choosePalette': {
+                    const selected = await this.previewContext.choosePalette(document.uri);
+                    if (selected?.uri) {
+                        state.paletteUri = selected.uri;
+                        await refresh();
+                    }
+                    return;
+                }
+                case 'resetPalette':
+                    state.paletteUri = undefined;
+                    await refresh();
+                    return;
+                case 'shpPrevFrame':
+                    state.shpFrameIndex = Math.max(0, state.shpFrameIndex - 1);
+                    await refresh();
+                    return;
+                case 'shpNextFrame':
+                    state.shpFrameIndex += 1;
+                    await refresh();
+                    return;
+                case 'voxelPrevSlice':
+                    state.voxel.sliceIndex = Math.max(0, state.voxel.sliceIndex - 1);
+                    await refresh();
+                    return;
+                case 'voxelNextSlice':
+                    state.voxel.sliceIndex += 1;
+                    await refresh();
+                    return;
+                case 'voxelSetView':
+                    if (message.viewType === 'front' || message.viewType === 'side' || message.viewType === 'top') {
+                        state.voxel.viewType = message.viewType;
+                        await refresh();
+                    }
+                    return;
+                default:
+                    return;
             }
         });
 
@@ -82,7 +109,7 @@ export class ResourcePreviewProvider implements vscode.CustomReadonlyEditorProvi
         });
     }
 
-    private async createPreviewModel(uri: vscode.Uri, paletteUri?: vscode.Uri): Promise<ResourcePreviewModel> {
+    private async createPreviewModel(uri: vscode.Uri, state: PreviewSessionState): Promise<ResourcePreviewModel> {
         const bytes = await vscode.workspace.fs.readFile(uri);
         const title = path.posix.basename(uri.path);
         const ext = path.extname(uri.path).toLowerCase();
@@ -90,7 +117,7 @@ export class ResourcePreviewProvider implements vscode.CustomReadonlyEditorProvi
             case '.pcx':
                 return createPcxPreview(bytes, title);
             case '.shp':
-                return createShpPreview(uri, bytes, title, this.previewContext, paletteUri);
+                return createShpPreview(uri, bytes, title, this.previewContext, { frameIndex: state.shpFrameIndex }, state.paletteUri);
             case '.pal':
                 return createPalPreview(bytes, title);
             case '.map':
@@ -98,9 +125,9 @@ export class ResourcePreviewProvider implements vscode.CustomReadonlyEditorProvi
             case '.yrm':
                 return createMapPreview(bytes, title);
             case '.vxl':
-                return createVxlPreview(uri, bytes, title, this.previewContext);
+                return createVxlPreview(uri, bytes, title, this.previewContext, state.voxel, state.paletteUri);
             case '.hva':
-                return createHvaPreview(uri, bytes, title, this.previewContext);
+                return createHvaPreview(uri, bytes, title, this.previewContext, state.voxel, state.paletteUri);
             default:
                 return {
                     kind: 'text',
@@ -111,12 +138,10 @@ export class ResourcePreviewProvider implements vscode.CustomReadonlyEditorProvi
     }
 }
 
-function renderPreviewHtml(webview: vscode.Webview, model: ResourcePreviewModel, uri: vscode.Uri, paletteUri?: vscode.Uri): string {
-    const baseStyle = `
+function renderPreviewHtml(model: ResourcePreviewModel, uri: vscode.Uri, paletteUri?: vscode.Uri): string {
+    const style = `
         <style>
-            :root {
-                color-scheme: light dark;
-            }
+            :root { color-scheme: light dark; }
             html, body {
                 margin: 0;
                 height: 100%;
@@ -134,18 +159,19 @@ function renderPreviewHtml(webview: vscode.Webview, model: ResourcePreviewModel,
                 gap: 10px;
                 padding: 10px 14px;
                 border-bottom: 1px solid var(--vscode-panel-border);
-                background: color-mix(in srgb, var(--vscode-editor-background) 90%, var(--vscode-editorWidget-background) 10%);
+                background: var(--vscode-editor-background);
                 position: sticky;
                 top: 0;
                 z-index: 10;
+                flex-wrap: wrap;
             }
             .toolbar-title {
                 font-size: 12px;
                 color: var(--vscode-descriptionForeground);
                 margin-right: auto;
             }
-            .toolbar-actions {
-                display: flex;
+            .toolbar-group {
+                display: inline-flex;
                 gap: 8px;
                 align-items: center;
                 flex-wrap: wrap;
@@ -162,11 +188,11 @@ function renderPreviewHtml(webview: vscode.Webview, model: ResourcePreviewModel,
             button:hover {
                 background: var(--vscode-button-hoverBackground);
             }
-            .secondary {
+            button.secondary {
                 background: var(--vscode-button-secondaryBackground);
                 color: var(--vscode-button-secondaryForeground);
             }
-            .secondary:hover {
+            button.secondary:hover {
                 background: var(--vscode-button-secondaryHoverBackground);
             }
             .badge {
@@ -205,7 +231,6 @@ function renderPreviewHtml(webview: vscode.Webview, model: ResourcePreviewModel,
                 display: inline-flex;
                 flex-direction: column;
                 align-items: center;
-                justify-content: center;
                 gap: 12px;
             }
             .canvas-frame {
@@ -214,7 +239,6 @@ function renderPreviewHtml(webview: vscode.Webview, model: ResourcePreviewModel,
                 justify-content: center;
                 border: 1px solid var(--vscode-panel-border);
                 background: var(--vscode-editor-background);
-                box-shadow: 0 8px 30px rgba(0, 0, 0, 0.18);
                 max-width: calc(100vw - 72px);
                 max-height: calc(100vh - 180px);
                 padding: 12px;
@@ -259,169 +283,84 @@ function renderPreviewHtml(webview: vscode.Webview, model: ResourcePreviewModel,
                 border-radius: 10px;
                 box-sizing: border-box;
             }
-            .info-card h2 {
-                margin: 0 0 12px;
-                font-size: 16px;
-            }
-            .info-card pre {
-                margin: 0;
-                white-space: pre-wrap;
-                word-break: break-word;
-                color: var(--vscode-editor-foreground);
-                background: transparent;
-            }
             .html-body {
                 width: min(960px, calc(100vw - 72px));
-            }
-            .html-body table {
-                border-collapse: collapse;
-            }
-            .html-body td, .html-body th {
-                padding: 6px 10px;
-                border: 1px solid var(--vscode-panel-border);
             }
         </style>
     `;
 
-    const toolbar = renderToolbar(webview, model, uri, paletteUri);
+    const toolbar = renderToolbar(model, uri, paletteUri);
     const details = renderDetails(model);
 
     if (model.kind === 'rgba-image') {
         const pixels = JSON.stringify(Array.from(model.pixels));
-        return `<!DOCTYPE html>
-<html>
-<head>
-<meta charset="utf-8" />
-${baseStyle}
-</head>
-<body>
-${toolbar}
-<div class="viewport">
-    <div class="surface">
-        ${details}
-        <div class="canvas-frame alpha-board">
-            <canvas id="preview" class="${model.pixelated === false ? '' : 'pixelated'}" width="${model.width}" height="${model.height}"></canvas>
-        </div>
-    </div>
-</div>
-<script>
-const vscode = acquireVsCodeApi();
-const pixels = new Uint8ClampedArray(${pixels});
-const canvas = document.getElementById('preview');
-const ctx = canvas.getContext('2d');
-const imageData = new ImageData(pixels, ${model.width}, ${model.height});
-ctx.putImageData(imageData, 0, 0);
-bindPreviewToolbar(vscode);
-</script>
-</body>
-</html>`;
+        return `<!DOCTYPE html><html><head><meta charset="utf-8" />${style}</head><body>${toolbar}<div class="viewport"><div class="surface">${details}<div class="canvas-frame alpha-board"><canvas id="preview" class="${model.pixelated === false ? '' : 'pixelated'}" width="${model.width}" height="${model.height}"></canvas></div></div></div><script>${toolbarScript()}const pixels = new Uint8ClampedArray(${pixels});const canvas = document.getElementById('preview');const ctx = canvas.getContext('2d');ctx.putImageData(new ImageData(pixels, ${model.width}, ${model.height}), 0, 0);</script></body></html>`;
     }
 
     if (model.kind === 'palette') {
-        return `<!DOCTYPE html>
-<html>
-<head>
-<meta charset="utf-8" />
-${baseStyle}
-</head>
-<body>
-${toolbar}
-<div class="viewport">
-    <div class="surface">
-        ${details}
-        <div class="canvas-frame">
-            <div class="palette">
-            ${model.colors.map(color => `<div class="swatch" style="background:${color}" title="${color}"></div>`).join('')}
-            </div>
-        </div>
-    </div>
-</div>
-<script>bindPreviewToolbar(acquireVsCodeApi());</script>
-</body>
-</html>`;
+        return `<!DOCTYPE html><html><head><meta charset="utf-8" />${style}</head><body>${toolbar}<div class="viewport"><div class="surface">${details}<div class="canvas-frame"><div class="palette">${model.colors.map(color => `<div class="swatch" style="background:${color}" title="${color}"></div>`).join('')}</div></div></div></div><script>${toolbarScript()}</script></body></html>`;
     }
 
     if (model.kind === 'html') {
-        return `<!DOCTYPE html>
-<html>
-<head>
-<meta charset="utf-8" />
-${baseStyle}
-</head>
-<body>
-${toolbar}
-<div class="viewport">
-    <div class="surface html-body">
-        ${details}
-        ${model.bodyHtml}
-    </div>
-</div>
-<script>bindPreviewToolbar(acquireVsCodeApi());</script>
-</body>
-</html>`;
+        return `<!DOCTYPE html><html><head><meta charset="utf-8" />${style}</head><body>${toolbar}<div class="viewport"><div class="surface html-body">${details}${model.bodyHtml}</div></div><script>${toolbarScript()}</script></body></html>`;
     }
 
-    return `<!DOCTYPE html>
-<html>
-<head>
-<meta charset="utf-8" />
-${baseStyle}
-</head>
-<body>
-${toolbar}
-<div class="viewport">
-    <div class="surface">
-        ${details}
-        <div class="info-card">
-            <pre>${escapeHtml(model.content)}</pre>
-        </div>
-    </div>
-</div>
-<script>bindPreviewToolbar(acquireVsCodeApi());</script>
-</body>
-</html>`;
+    return `<!DOCTYPE html><html><head><meta charset="utf-8" />${style}</head><body>${toolbar}<div class="viewport"><div class="surface">${details}<div class="info-card"><pre>${escapeHtml(model.content)}</pre></div></div></div><script>${toolbarScript()}</script></body></html>`;
 }
 
-function renderToolbar(webview: vscode.Webview, model: ResourcePreviewModel, uri: vscode.Uri, paletteUri?: vscode.Uri): string {
+function renderToolbar(model: ResourcePreviewModel, uri: vscode.Uri, paletteUri?: vscode.Uri): string {
     const ext = path.extname(uri.path).toLowerCase();
-    const actions: string[] = [];
+    const groups: string[] = [];
 
     if (ext === '.shp' || ext === '.vxl' || ext === '.hva') {
-        actions.push(`<button type="button" data-action="choosePalette">${escapeHtml(localize('preview.palette.choose', 'Choose Palette'))}</button>`);
-        actions.push(`<button type="button" class="secondary" data-action="resetPalette">${escapeHtml(localize('preview.palette.reset', 'Auto Palette'))}</button>`);
+        groups.push(`<div class="toolbar-group"><button type="button" data-action="choosePalette">${escapeHtml(localize('preview.palette.choose', 'Choose Palette'))}</button><button type="button" class="secondary" data-action="resetPalette">${escapeHtml(localize('preview.palette.reset', 'Auto Palette'))}</button>${paletteUri ? `<span class="badge">${escapeHtml(path.posix.basename(paletteUri.path))}</span>` : ''}</div>`);
     }
 
-    if (paletteUri) {
-        actions.push(`<span class="badge">${escapeHtml(path.posix.basename(paletteUri.path))}</span>`);
+    if (isShpPreview(model)) {
+        groups.push(`<div class="toolbar-group"><button type="button" data-action="shpPrevFrame">${escapeHtml(localize('preview.shp.prevFrame', 'Prev Frame'))}</button><span class="badge">${model.frameIndex + 1}/${model.totalFrames}</span><button type="button" data-action="shpNextFrame">${escapeHtml(localize('preview.shp.nextFrame', 'Next Frame'))}</button></div>`);
     }
 
-    return `<div class="toolbar">
-    <div class="toolbar-title">${escapeHtml(model.title)}</div>
-    <div class="toolbar-actions">${actions.join('')}</div>
-</div>
-<script>
-function bindPreviewToolbar(vscode) {
-    for (const button of document.querySelectorAll('[data-action]')) {
-        button.addEventListener('click', () => {
-            vscode.postMessage({ type: button.dataset.action });
-        });
+    if (isVoxelPreview(model)) {
+        groups.push(`<div class="toolbar-group"><button type="button" data-action="voxelPrevSlice">${escapeHtml(localize('preview.voxel.prevSlice', 'Prev Slice'))}</button><span class="badge">${model.sliceIndex + 1}/${model.sliceCount}</span><button type="button" data-action="voxelNextSlice">${escapeHtml(localize('preview.voxel.nextSlice', 'Next Slice'))}</button></div>`);
+        groups.push(`<div class="toolbar-group"><button type="button" class="${model.viewType === 'front' ? '' : 'secondary'}" data-action="voxelSetView" data-view="front">${escapeHtml(localize('preview.voxel.view.front', 'Front'))}</button><button type="button" class="${model.viewType === 'side' ? '' : 'secondary'}" data-action="voxelSetView" data-view="side">${escapeHtml(localize('preview.voxel.view.side', 'Side'))}</button><button type="button" class="${model.viewType === 'top' ? '' : 'secondary'}" data-action="voxelSetView" data-view="top">${escapeHtml(localize('preview.voxel.view.top', 'Top'))}</button></div>`);
     }
-}
-</script>`;
+
+    return `<div class="toolbar"><div class="toolbar-title">${escapeHtml(model.title)}</div>${groups.join('')}</div>`;
 }
 
 function renderDetails(model: ResourcePreviewModel): string {
-    const detailItems = model.details ?? [];
+    const detailItems = [...(model.details ?? [])];
     const description = 'description' in model ? model.description : undefined;
     if (description) {
         detailItems.unshift(description);
     }
-
     if (detailItems.length === 0) {
         return '';
     }
-
     return `<div class="details">${detailItems.map(item => `<span>${escapeHtml(item)}</span>`).join('')}</div>`;
+}
+
+function toolbarScript(): string {
+    return `
+const vscode = acquireVsCodeApi();
+for (const button of document.querySelectorAll('[data-action]')) {
+    button.addEventListener('click', () => {
+        const payload = { type: button.dataset.action };
+        if (button.dataset.view) {
+            payload.viewType = button.dataset.view;
+        }
+        vscode.postMessage(payload);
+    });
+}
+`;
+}
+
+function isShpPreview(model: ResourcePreviewModel): model is ShpPreviewModel {
+    return model.kind === 'rgba-image' && 'totalFrames' in model && 'frameIndex' in model;
+}
+
+function isVoxelPreview(model: ResourcePreviewModel): model is VoxelPreviewModel {
+    return model.kind === 'rgba-image' && 'sliceCount' in model && 'viewType' in model;
 }
 
 function escapeHtml(value: string): string {

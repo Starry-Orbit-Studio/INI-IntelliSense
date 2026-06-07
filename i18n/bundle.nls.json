@@ -236,5 +236,12 @@
     "preview.palette.pick.title": "Choose Palette",
     "preview.palette.pick.placeholder": "Select a palette for the current preview",
     "preview.palette.choose": "Choose Palette",
-    "preview.palette.reset": "Auto Palette"
+    "preview.palette.reset": "Auto Palette",
+    "preview.shp.prevFrame": "Prev Frame",
+    "preview.shp.nextFrame": "Next Frame",
+    "preview.voxel.prevSlice": "Prev Slice",
+    "preview.voxel.nextSlice": "Next Slice",
+    "preview.voxel.view.front": "Front",
+    "preview.voxel.view.side": "Side",
+    "preview.voxel.view.top": "Top"
 }

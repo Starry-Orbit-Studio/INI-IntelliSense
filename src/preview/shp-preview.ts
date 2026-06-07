@@ -2,7 +2,6 @@ import * as path from 'path';
 import * as vscode from 'vscode';
 import { PreviewContext } from './preview-context';
 import { RgbaImagePreview } from './preview-types';
-import { PaletteColor } from './palette-utils';
 
 interface ShpFrameHeader {
     x: number;
@@ -13,26 +12,37 @@ interface ShpFrameHeader {
     offset: number;
 }
 
+export interface ShpPreviewState {
+    frameIndex: number;
+}
+
+export interface ShpPreviewModel extends RgbaImagePreview {
+    totalFrames: number;
+    frameIndex: number;
+}
+
 export async function createShpPreview(
     uri: vscode.Uri,
     bytes: Uint8Array,
     title: string,
     previewContext: PreviewContext,
+    state: ShpPreviewState,
     paletteUri?: vscode.Uri
-): Promise<RgbaImagePreview> {
+): Promise<ShpPreviewModel> {
     const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
     if (bytes.byteLength < 8) {
         throw new Error('Invalid SHP file.');
     }
 
-    const width = view.getUint16(2, true);
-    const height = view.getUint16(4, true);
+    const canvasWidth = view.getUint16(2, true);
+    const canvasHeight = view.getUint16(4, true);
     const frameCount = view.getUint16(6, true);
     if (frameCount <= 0) {
         throw new Error('SHP file contains no frames.');
     }
 
-    const frame = readFrameHeader(bytes, 8);
+    const safeFrameIndex = clamp(state.frameIndex, 0, frameCount - 1);
+    const frame = readFrameHeader(bytes, 8 + safeFrameIndex * 24);
     const framePixels = decodeFrame(bytes, frame);
     const paletteSelection = paletteUri
         ? {
@@ -53,16 +63,10 @@ export async function createShpPreview(
             continue;
         }
 
-        const color = palette?.[value];
-        if (color) {
-            pixels[dst] = color.r;
-            pixels[dst + 1] = color.g;
-            pixels[dst + 2] = color.b;
-        } else {
-            pixels[dst] = value;
-            pixels[dst + 1] = value;
-            pixels[dst + 2] = value;
-        }
+        const color = palette[value];
+        pixels[dst] = color?.r ?? value;
+        pixels[dst + 1] = color?.g ?? value;
+        pixels[dst + 2] = color?.b ?? value;
         pixels[dst + 3] = 255;
     }
 
@@ -74,12 +78,15 @@ export async function createShpPreview(
         pixels,
         description: `${frameCount} frame(s)`,
         details: [
-            `Canvas ${width} x ${height}`,
-            `Frame 1 ${frame.width} x ${frame.height}`,
+            `Canvas ${canvasWidth} x ${canvasHeight}`,
+            `Frame ${safeFrameIndex + 1}/${frameCount}`,
+            `Bounds ${frame.x},${frame.y} ${frame.width} x ${frame.height}`,
             `Palette ${paletteSelection.label}`,
             paletteSelection.source === 'manual' ? 'Manual palette' : paletteSelection.source === 'fallback' ? 'Fallback palette' : 'Auto palette',
         ],
         pixelated: true,
+        totalFrames: frameCount,
+        frameIndex: safeFrameIndex,
     };
 }
 
@@ -121,4 +128,8 @@ function decodeFrame(bytes: Uint8Array, frame: ShpFrameHeader): Uint8Array {
     }
 
     return output;
+}
+
+function clamp(value: number, min: number, max: number): number {
+    return Math.min(max, Math.max(min, value));
 }

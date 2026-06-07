@@ -212,5 +212,12 @@
     "preview.palette.pick.title": "选择调色板",
     "preview.palette.pick.placeholder": "为当前预览选择一个调色板",
     "preview.palette.choose": "选择调色板",
-    "preview.palette.reset": "自动调色板"
+    "preview.palette.reset": "自动调色板",
+    "preview.shp.prevFrame": "上一帧",
+    "preview.shp.nextFrame": "下一帧",
+    "preview.voxel.prevSlice": "上一切片",
+    "preview.voxel.nextSlice": "下一切片",
+    "preview.voxel.view.front": "正视图",
+    "preview.voxel.view.side": "侧视图",
+    "preview.voxel.view.top": "顶视图"
 }

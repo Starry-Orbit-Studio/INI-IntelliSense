@@ -3,15 +3,20 @@ import * as vscode from 'vscode';
 import { INIManager } from '../parser';
 import { localize } from '../i18n';
 import { MixUriCodec } from '../mix/fs/mix-uri-codec';
-import { MixWorkspaceManager } from '../mix/fs/mix-workspace-manager';
 import { decodeLocalText } from '../mix/core/local-encoding';
 import { PaletteColor, createGrayscalePalette, readPalette } from './palette-utils';
 
 interface ResourceEntry {
     uri: vscode.Uri;
     name: string;
-    baseName: string;
     extension: string;
+    containerKey: string;
+}
+
+interface ResolverIndex {
+    byLowerName: Map<string, ResourceEntry[]>;
+    byExtension: Map<string, ResourceEntry[]>;
+    builtForRoot: string;
 }
 
 export interface PaletteSelection {
@@ -23,12 +28,11 @@ export interface PaletteSelection {
 
 export interface PreviewContextServices {
     iniManager: INIManager;
-    mixWorkspaceManager: MixWorkspaceManager;
 }
 
 export class PreviewContext {
-    private readonly directoryCache = new Map<string, vscode.Uri[]>();
     private readonly paletteCache = new Map<string, PaletteColor[]>();
+    private readonly resolverCache = new Map<string, ResolverIndex>();
 
     constructor(private readonly services: PreviewContextServices) {}
 
@@ -43,24 +47,14 @@ export class PreviewContext {
                 if (customPalette) {
                     const resolved = await this.findPaletteByName(uri, ensurePalExtension(customPalette));
                     if (resolved) {
-                        return {
-                            uri: resolved,
-                            label: path.posix.basename(resolved.path),
-                            colors: await this.readPalette(resolved),
-                            source: 'auto',
-                        };
+                        return this.createPaletteSelection(resolved, 'auto');
                     }
                 }
 
                 if (hasKeyIgnoreCase(section.properties, 'AltPalette')) {
-                    const altPalette = await this.findPaletteByName(uri, 'unittem.pal');
-                    if (altPalette) {
-                        return {
-                            uri: altPalette,
-                            label: path.posix.basename(altPalette.path),
-                            colors: await this.readPalette(altPalette),
-                            source: 'auto',
-                        };
+                    const resolved = await this.findPaletteByName(uri, 'unittem.pal');
+                    if (resolved) {
+                        return this.createPaletteSelection(resolved, 'auto');
                     }
                 }
 
@@ -70,12 +64,7 @@ export class PreviewContext {
                         ? await this.findPaletteByName(uri, paletteValue)
                         : await this.findPaletteByWildcard(uri, paletteValue);
                     if (resolved) {
-                        return {
-                            uri: resolved,
-                            label: path.posix.basename(resolved.path),
-                            colors: await this.readPalette(resolved),
-                            source: 'auto',
-                        };
+                        return this.createPaletteSelection(resolved, 'auto');
                     }
                 }
             }
@@ -85,36 +74,21 @@ export class PreviewContext {
         if (rulesDocument) {
             const ownerSectionName = findOwnerSectionByImage(rulesDocument, shpBaseName);
             if (ownerSectionName && isAnimationSection(rulesDocument, ownerSectionName)) {
-                const animPalette = await this.findPaletteByName(uri, 'anim.pal');
-                if (animPalette) {
-                    return {
-                        uri: animPalette,
-                        label: path.posix.basename(animPalette.path),
-                        colors: await this.readPalette(animPalette),
-                        source: 'auto',
-                    };
+                const resolved = await this.findPaletteByName(uri, 'anim.pal');
+                if (resolved) {
+                    return this.createPaletteSelection(resolved, 'auto');
                 }
             }
         }
 
-        const sameNamePalette = await this.findPaletteByName(uri, `${shpBaseName}.pal`);
-        if (sameNamePalette) {
-            return {
-                uri: sameNamePalette,
-                label: path.posix.basename(sameNamePalette.path),
-                colors: await this.readPalette(sameNamePalette),
-                source: 'auto',
-            };
+        const sameName = await this.findPaletteByName(uri, `${shpBaseName}.pal`);
+        if (sameName) {
+            return this.createPaletteSelection(sameName, 'auto');
         }
 
-        const defaultPalette = await this.findPaletteByName(uri, 'unittem.pal');
-        if (defaultPalette) {
-            return {
-                uri: defaultPalette,
-                label: path.posix.basename(defaultPalette.path),
-                colors: await this.readPalette(defaultPalette),
-                source: 'auto',
-            };
+        const unittem = await this.findPaletteByName(uri, 'unittem.pal');
+        if (unittem) {
+            return this.createPaletteSelection(unittem, 'auto');
         }
 
         return {
@@ -125,7 +99,8 @@ export class PreviewContext {
     }
 
     public async choosePalette(uri: vscode.Uri): Promise<PaletteSelection | undefined> {
-        const palettes = await this.findAllPalettes(uri);
+        const index = await this.getResolverIndex(uri);
+        const palettes = index.byExtension.get('.pal') ?? [];
         if (palettes.length === 0) {
             vscode.window.showWarningMessage(localize('preview.palette.notFound', 'No palette files were found in the current workspace.'));
             return undefined;
@@ -146,12 +121,7 @@ export class PreviewContext {
             return undefined;
         }
 
-        return {
-            uri: selected.entry.uri,
-            label: selected.entry.name,
-            colors: await this.readPalette(selected.entry.uri),
-            source: 'manual',
-        };
+        return this.createPaletteSelection(selected.entry.uri, 'manual');
     }
 
     public async readPalette(uri: vscode.Uri): Promise<PaletteColor[]> {
@@ -168,24 +138,42 @@ export class PreviewContext {
     }
 
     public async readSiblingBytes(uri: vscode.Uri, siblingName: string): Promise<Uint8Array | undefined> {
-        const sibling = uri.with({
-            path: replaceLeafName(uri.path, siblingName),
-        });
+        const siblingUri = await this.findSiblingUri(uri, siblingName);
+        if (!siblingUri) {
+            return undefined;
+        }
+
         try {
-            return await vscode.workspace.fs.readFile(sibling);
+            return await vscode.workspace.fs.readFile(siblingUri);
         } catch {
             return undefined;
         }
     }
 
+    public async findSiblingUri(uri: vscode.Uri, siblingName: string): Promise<vscode.Uri | undefined> {
+        const siblings = await this.findByName(uri, siblingName);
+        const localSibling = siblings.find(entry => sameParent(entry.uri, uri));
+        return localSibling?.uri ?? siblings[0]?.uri;
+    }
+
     public clearCaches(): void {
-        this.directoryCache.clear();
         this.paletteCache.clear();
+        this.resolverCache.clear();
+    }
+
+    private async createPaletteSelection(uri: vscode.Uri, source: 'auto' | 'manual'): Promise<PaletteSelection> {
+        return {
+            uri,
+            label: path.posix.basename(uri.path),
+            colors: await this.readPalette(uri),
+            source,
+        };
     }
 
     private async findPaletteByWildcard(uri: vscode.Uri, prefix: string): Promise<vscode.Uri | undefined> {
-        const palettes = await this.findAllPalettes(uri);
+        const index = await this.getResolverIndex(uri);
         const loweredPrefix = prefix.toLowerCase();
+        const palettes = index.byExtension.get('.pal') ?? [];
         const match = palettes.find(entry =>
             entry.name.toLowerCase().startsWith(loweredPrefix)
             && entry.name.toLowerCase().endsWith('.pal')
@@ -194,26 +182,27 @@ export class PreviewContext {
     }
 
     private async findPaletteByName(uri: vscode.Uri, name: string): Promise<vscode.Uri | undefined> {
-        const exactName = path.posix.basename(name).toLowerCase();
-        const currentDirectory = await this.listDirectory(uri);
-        const localMatch = currentDirectory.find(entry => path.posix.basename(entry.path).toLowerCase() === exactName);
-        if (localMatch) {
-            return localMatch;
+        const match = await this.findByName(uri, name);
+        return match[0]?.uri;
+    }
+
+    private async findByName(uri: vscode.Uri, name: string): Promise<ResourceEntry[]> {
+        const index = await this.getResolverIndex(uri);
+        const key = path.posix.basename(name).toLowerCase();
+        const entries = index.byLowerName.get(key) ?? [];
+        return prioritizeEntries(entries, uri);
+    }
+
+    private async getResolverIndex(uri: vscode.Uri): Promise<ResolverIndex> {
+        const root = this.getSearchRoot(uri);
+        const key = root.toString();
+        const cached = this.resolverCache.get(key);
+        if (cached) {
+            return cached;
         }
 
-        const palettes = await this.findAllPalettes(uri);
-        const exactMatch = palettes.find(entry => entry.name.toLowerCase() === exactName);
-        return exactMatch?.uri;
-    }
-
-    private async findAllPalettes(uri: vscode.Uri): Promise<ResourceEntry[]> {
-        const root = this.getSearchRoot(uri);
-        const entries = await this.walkFiles(root);
-        return entries.filter(entry => entry.extension === '.pal');
-    }
-
-    private async walkFiles(root: vscode.Uri): Promise<ResourceEntry[]> {
-        const results: ResourceEntry[] = [];
+        const byLowerName = new Map<string, ResourceEntry[]>();
+        const byExtension = new Map<string, ResourceEntry[]>();
         const queue: vscode.Uri[] = [root];
 
         while (queue.length > 0) {
@@ -232,32 +221,24 @@ export class PreviewContext {
                     continue;
                 }
 
-                results.push({
+                const entry: ResourceEntry = {
                     uri: child,
                     name,
-                    baseName: basenameWithoutExtension(child),
                     extension: path.extname(name).toLowerCase(),
-                });
+                    containerKey: getContainerKey(child),
+                };
+                pushIndexed(byLowerName, name.toLowerCase(), entry);
+                pushIndexed(byExtension, entry.extension, entry);
             }
         }
 
-        return results;
-    }
-
-    private async listDirectory(uri: vscode.Uri): Promise<vscode.Uri[]> {
-        const parent = parentDirectoryUri(uri);
-        const key = parent.toString();
-        const cached = this.directoryCache.get(key);
-        if (cached) {
-            return cached;
-        }
-
-        const entries = await vscode.workspace.fs.readDirectory(parent);
-        const children = entries
-            .filter(([, type]) => type === vscode.FileType.File)
-            .map(([name]) => vscode.Uri.joinPath(parent, name));
-        this.directoryCache.set(key, children);
-        return children;
+        const index = {
+            byLowerName,
+            byExtension,
+            builtForRoot: key,
+        };
+        this.resolverCache.set(key, index);
+        return index;
     }
 
     private async findWorkspaceIniDocument(originUri: vscode.Uri, prefix: string) {
@@ -276,6 +257,9 @@ export class PreviewContext {
                     if (left.containerUri.toString() !== right.containerUri.toString()) {
                         continue;
                     }
+                    if (left.nestedChain.join(':').toLowerCase() !== right.nestedChain.join(':').toLowerCase()) {
+                        continue;
+                    }
                 } else {
                     const folder = vscode.workspace.getWorkspaceFolder(uri);
                     const originFolder = vscode.workspace.getWorkspaceFolder(originUri);
@@ -284,9 +268,9 @@ export class PreviewContext {
                     }
                 }
             }
+
             return document;
         }
-
         return undefined;
     }
 
@@ -299,6 +283,55 @@ export class PreviewContext {
         const folder = vscode.workspace.getWorkspaceFolder(uri);
         return folder?.uri ?? parentDirectoryUri(uri);
     }
+}
+
+function pushIndexed(map: Map<string, ResourceEntry[]>, key: string, entry: ResourceEntry): void {
+    const existing = map.get(key);
+    if (existing) {
+        existing.push(entry);
+        return;
+    }
+    map.set(key, [entry]);
+}
+
+function prioritizeEntries(entries: ResourceEntry[], relativeTo: vscode.Uri): ResourceEntry[] {
+    const currentParent = parentDirectoryUri(relativeTo).toString();
+    const currentContainer = getContainerKey(relativeTo);
+    return [...entries].sort((left, right) => {
+        const leftLocal = sameParent(left.uri, relativeTo) ? 0 : 1;
+        const rightLocal = sameParent(right.uri, relativeTo) ? 0 : 1;
+        if (leftLocal !== rightLocal) {
+            return leftLocal - rightLocal;
+        }
+
+        const leftContainer = left.containerKey === currentContainer ? 0 : 1;
+        const rightContainer = right.containerKey === currentContainer ? 0 : 1;
+        if (leftContainer !== rightContainer) {
+            return leftContainer - rightContainer;
+        }
+
+        const leftPath = left.uri.path.startsWith(currentParent) ? 0 : 1;
+        const rightPath = right.uri.path.startsWith(currentParent) ? 0 : 1;
+        if (leftPath !== rightPath) {
+            return leftPath - rightPath;
+        }
+
+        return left.uri.path.localeCompare(right.uri.path);
+    });
+}
+
+function sameParent(left: vscode.Uri, right: vscode.Uri): boolean {
+    return parentDirectoryUri(left).toString() === parentDirectoryUri(right).toString();
+}
+
+function getContainerKey(uri: vscode.Uri): string {
+    if (uri.scheme !== MixUriCodec.scheme) {
+        const folder = vscode.workspace.getWorkspaceFolder(uri);
+        return folder?.uri.toString() ?? uri.scheme;
+    }
+
+    const decoded = MixUriCodec.decode(uri);
+    return `${decoded.containerUri.toString()}::${decoded.nestedChain.join(':')}`;
 }
 
 function describeUri(target: vscode.Uri, relativeTo: vscode.Uri): string {
@@ -319,7 +352,7 @@ function describeUri(target: vscode.Uri, relativeTo: vscode.Uri): string {
 
 function getValueIgnoreCase(properties: Map<string, string>, key: string): string | undefined {
     for (const [entryKey, value] of properties) {
-        if (entryKey.localeCompare(key, undefined, { sensitivity: 'accent' }) === 0 || entryKey.toLowerCase() === key.toLowerCase()) {
+        if (entryKey.toLowerCase() === key.toLowerCase()) {
             return value;
         }
     }
@@ -363,14 +396,6 @@ function parentDirectoryUri(uri: vscode.Uri): vscode.Uri {
     const index = currentPath.lastIndexOf('/');
     const parentPath = index <= 0 ? '/' : currentPath.slice(0, index);
     return uri.with({ path: parentPath });
-}
-
-function replaceLeafName(filePath: string, newName: string): string {
-    const index = filePath.lastIndexOf('/');
-    if (index === -1) {
-        return `/${newName}`;
-    }
-    return `${filePath.slice(0, index + 1)}${newName}`;
 }
 
 function basenameWithoutExtension(uri: vscode.Uri): string {
