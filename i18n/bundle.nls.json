@@ -243,5 +243,8 @@
     "preview.voxel.nextSlice": "Next Slice",
     "preview.voxel.view.front": "Front",
     "preview.voxel.view.side": "Side",
-    "preview.voxel.view.top": "Top"
+    "preview.voxel.view.top": "Top",
+    "preview.voxel.mode.slice": "Slice",
+    "preview.voxel.mode.game": "Game View",
+    "preview.voxel.mode.perspective": "Perspective"
 }

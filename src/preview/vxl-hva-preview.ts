@@ -5,6 +5,7 @@ import { HtmlPreview, RgbaImagePreview } from './preview-types';
 import { PaletteColor } from './palette-utils';
 
 type VoxelViewType = 'front' | 'side' | 'top';
+export type VoxelRenderMode = 'slice' | 'game' | 'perspective';
 
 interface Voxel {
     color: number;
@@ -43,6 +44,7 @@ export interface VoxelPreviewState {
     limbIndex: number;
     sliceIndex: number;
     viewType: VoxelViewType;
+    renderMode: VoxelRenderMode;
 }
 
 export interface VoxelPreviewModel extends RgbaImagePreview {
@@ -51,6 +53,7 @@ export interface VoxelPreviewModel extends RgbaImagePreview {
     viewType: VoxelViewType;
     limbIndex: number;
     limbCount: number;
+    renderMode: VoxelRenderMode;
 }
 
 export async function createVxlPreview(
@@ -78,7 +81,11 @@ export async function createVxlPreview(
         }
         : await resolveVoxelPalette(uri, previewContext);
 
-    const image = generateSliceImage(model, limbIndex, sliceIndex, state.viewType, paletteSelection.colors);
+    const image = state.renderMode === 'game'
+        ? generateGameViewImage(model, limbIndex, paletteSelection.colors)
+        : state.renderMode === 'perspective'
+            ? generatePerspectiveImage(model, limbIndex, paletteSelection.colors)
+            : generateSliceImage(model, limbIndex, sliceIndex, state.viewType, paletteSelection.colors);
     return {
         kind: 'rgba-image',
         title,
@@ -95,10 +102,11 @@ export async function createVxlPreview(
         ],
         pixelated: true,
         sliceIndex,
-        sliceCount,
+        sliceCount: state.renderMode === 'slice' ? sliceCount : 1,
         viewType: state.viewType,
         limbIndex,
         limbCount: model.limbCount,
+        renderMode: state.renderMode,
     };
 }
 
@@ -311,6 +319,219 @@ function generateSliceImage(
     }
 
     return { width, height, pixels };
+}
+
+function generateGameViewImage(
+    model: VxlModel,
+    limbIndex: number,
+    palette: PaletteColor[]
+): { width: number; height: number; pixels: Uint8ClampedArray } {
+    const tailer = model.tailers[limbIndex];
+    const width = 512;
+    const height = 512;
+    const pixels = new Uint8ClampedArray(width * height * 4);
+    const depthBuffer = new Float32Array(width * height);
+    depthBuffer.fill(Number.POSITIVE_INFINITY);
+
+    const zoom = Math.max(4, Math.floor(240 / Math.max(tailer.sizeX, tailer.sizeY, tailer.sizeZ, 1)));
+    const centerX = width / 2;
+    const centerY = height / 2;
+
+    const pitch = degToRad(-35.264);
+    const yaw = degToRad(45.0);
+    const lightDirection = normalize3({ x: -0.8, y: 1.2, z: 0.6 });
+    const ambient = 0.42;
+    const diffuseStrength = 0.58;
+
+    for (let z = 0; z < tailer.sizeX; z++) {
+        for (let y = 0; y < tailer.sizeZ; y++) {
+            for (let x = 0; x < tailer.sizeY; x++) {
+                const voxel = voxelLh(model, limbIndex, x, y, z);
+                if (voxel.color === 0) {
+                    continue;
+                }
+
+                const localX = x - tailer.sizeY / 2;
+                const localY = y - tailer.sizeZ / 2;
+                const localZ = z - tailer.sizeX / 2;
+                const rotated = rotateY(rotateX({ x: localX, y: localY, z: localZ }, pitch), yaw);
+                const screenX = rotated.x * zoom + centerX;
+                const screenY = -rotated.y * zoom + centerY;
+                const depth = rotated.z;
+
+                const shade = computeApproximateShade(voxel.normal, lightDirection, ambient, diffuseStrength);
+                const base = palette[voxel.color] ?? { r: voxel.color, g: voxel.color, b: voxel.color };
+                const color = {
+                    r: clamp255(Math.round(base.r * shade)),
+                    g: clamp255(Math.round(base.g * shade)),
+                    b: clamp255(Math.round(base.b * shade)),
+                };
+
+                drawBlock(pixels, depthBuffer, width, height, screenX, screenY, depth, Math.max(1, zoom), color);
+            }
+        }
+    }
+
+    return { width, height, pixels };
+}
+
+function generatePerspectiveImage(
+    model: VxlModel,
+    limbIndex: number,
+    palette: PaletteColor[]
+): { width: number; height: number; pixels: Uint8ClampedArray } {
+    const tailer = model.tailers[limbIndex];
+    const width = 512;
+    const height = 512;
+    const pixels = new Uint8ClampedArray(width * height * 4);
+    const depthBuffer = new Float32Array(width * height);
+    depthBuffer.fill(Number.POSITIVE_INFINITY);
+
+    const distance = Math.max(tailer.sizeX, tailer.sizeY, tailer.sizeZ) * 2.6 + 8;
+    const fov = degToRad(50);
+    const focal = (height * 0.5) / Math.tan(fov * 0.5);
+    const centerX = width / 2;
+    const centerY = height / 2;
+    const pitch = degToRad(-28);
+    const yaw = degToRad(35);
+    const lightDirection = normalize3({ x: -0.7, y: 1.0, z: 0.4 });
+
+    for (let z = 0; z < tailer.sizeX; z++) {
+        for (let y = 0; y < tailer.sizeZ; y++) {
+            for (let x = 0; x < tailer.sizeY; x++) {
+                const voxel = voxelLh(model, limbIndex, x, y, z);
+                if (voxel.color === 0) {
+                    continue;
+                }
+
+                const localX = x - tailer.sizeY / 2;
+                const localY = y - tailer.sizeZ / 2;
+                const localZ = z - tailer.sizeX / 2;
+                const rotated = rotateY(rotateX({ x: localX, y: localY, z: localZ }, pitch), yaw);
+                const cameraZ = rotated.z + distance;
+                if (cameraZ <= 0.01) {
+                    continue;
+                }
+
+                const perspectiveScale = focal / cameraZ;
+                const screenX = rotated.x * perspectiveScale + centerX;
+                const screenY = -rotated.y * perspectiveScale + centerY;
+                const shade = computeApproximateShade(voxel.normal, lightDirection, 0.35, 0.65);
+                const base = palette[voxel.color] ?? { r: voxel.color, g: voxel.color, b: voxel.color };
+                const color = {
+                    r: clamp255(Math.round(base.r * shade)),
+                    g: clamp255(Math.round(base.g * shade)),
+                    b: clamp255(Math.round(base.b * shade)),
+                };
+                const blockSize = Math.max(1, Math.round(perspectiveScale));
+                drawBlock(pixels, depthBuffer, width, height, screenX, screenY, cameraZ, blockSize, color);
+            }
+        }
+    }
+
+    return { width, height, pixels };
+}
+
+function drawBlock(
+    pixels: Uint8ClampedArray,
+    depthBuffer: Float32Array,
+    width: number,
+    height: number,
+    screenX: number,
+    screenY: number,
+    depth: number,
+    blockSize: number,
+    color: { r: number; g: number; b: number }
+): void {
+    const centerX = Math.round(screenX);
+    const centerY = Math.round(screenY);
+    const half = Math.floor(blockSize / 2);
+
+    for (let py = 0; py < blockSize; py++) {
+        const y = centerY - half + py;
+        if (y < 0 || y >= height) {
+            continue;
+        }
+        for (let px = 0; px < blockSize; px++) {
+            const x = centerX - half + px;
+            if (x < 0 || x >= width) {
+                continue;
+            }
+            const index = y * width + x;
+            if (depth >= depthBuffer[index]) {
+                continue;
+            }
+            depthBuffer[index] = depth;
+            const dst = index * 4;
+            pixels[dst] = color.r;
+            pixels[dst + 1] = color.g;
+            pixels[dst + 2] = color.b;
+            pixels[dst + 3] = 255;
+        }
+    }
+}
+
+function voxelLh(model: VxlModel, limbIndex: number, x: number, y: number, z: number): Voxel {
+    return voxelRh(model, limbIndex, z, x, y);
+}
+
+function computeApproximateShade(normalIndex: number, lightDirection: Vec3, ambient: number, diffuseStrength: number): number {
+    const normal = voxelNormalApprox(normalIndex);
+    const diffuse = Math.max(0, dot3(normal, lightDirection));
+    return ambient + diffuse * diffuseStrength;
+}
+
+type Vec3 = { x: number; y: number; z: number };
+
+function rotateX(vector: Vec3, angle: number): Vec3 {
+    const c = Math.cos(angle);
+    const s = Math.sin(angle);
+    return {
+        x: vector.x,
+        y: vector.y * c - vector.z * s,
+        z: vector.y * s + vector.z * c,
+    };
+}
+
+function rotateY(vector: Vec3, angle: number): Vec3 {
+    const c = Math.cos(angle);
+    const s = Math.sin(angle);
+    return {
+        x: vector.x * c + vector.z * s,
+        y: vector.y,
+        z: -vector.x * s + vector.z * c,
+    };
+}
+
+function normalize3(vector: Vec3): Vec3 {
+    const length = Math.hypot(vector.x, vector.y, vector.z) || 1;
+    return {
+        x: vector.x / length,
+        y: vector.y / length,
+        z: vector.z / length,
+    };
+}
+
+function dot3(a: Vec3, b: Vec3): number {
+    return a.x * b.x + a.y * b.y + a.z * b.z;
+}
+
+function voxelNormalApprox(normalIndex: number): Vec3 {
+    const theta = ((normalIndex % 16) / 16) * Math.PI * 2;
+    const phi = (Math.floor(normalIndex / 16) / 15) * Math.PI;
+    return normalize3({
+        x: Math.cos(theta) * Math.sin(phi),
+        y: Math.cos(phi),
+        z: Math.sin(theta) * Math.sin(phi),
+    });
+}
+
+function degToRad(value: number): number {
+    return value * Math.PI / 180;
+}
+
+function clamp255(value: number): number {
+    return Math.max(0, Math.min(255, value));
 }
 
 function voxelRh(model: VxlModel, limbIndex: number, x: number, y: number, z: number): Voxel {

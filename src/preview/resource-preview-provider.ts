@@ -47,6 +47,7 @@ export class ResourcePreviewProvider implements vscode.CustomReadonlyEditorProvi
                 limbIndex: 0,
                 sliceIndex: 0,
                 viewType: 'top',
+                renderMode: 'slice',
             },
         };
         this.stateByUri.set(key, state);
@@ -96,6 +97,12 @@ export class ResourcePreviewProvider implements vscode.CustomReadonlyEditorProvi
                 case 'voxelSetView':
                     if (message.viewType === 'front' || message.viewType === 'side' || message.viewType === 'top') {
                         state.voxel.viewType = message.viewType;
+                        await refresh();
+                    }
+                    return;
+                case 'voxelSetMode':
+                    if (message.mode === 'slice' || message.mode === 'game' || message.mode === 'perspective') {
+                        state.voxel.renderMode = message.mode;
                         await refresh();
                     }
                     return;
@@ -321,8 +328,11 @@ function renderToolbar(model: ResourcePreviewModel, uri: vscode.Uri, paletteUri?
     }
 
     if (isVoxelPreview(model)) {
-        groups.push(`<div class="toolbar-group"><button type="button" data-action="voxelPrevSlice">${escapeHtml(localize('preview.voxel.prevSlice', 'Prev Slice'))}</button><span class="badge">${model.sliceIndex + 1}/${model.sliceCount}</span><button type="button" data-action="voxelNextSlice">${escapeHtml(localize('preview.voxel.nextSlice', 'Next Slice'))}</button></div>`);
-        groups.push(`<div class="toolbar-group"><button type="button" class="${model.viewType === 'front' ? '' : 'secondary'}" data-action="voxelSetView" data-view="front">${escapeHtml(localize('preview.voxel.view.front', 'Front'))}</button><button type="button" class="${model.viewType === 'side' ? '' : 'secondary'}" data-action="voxelSetView" data-view="side">${escapeHtml(localize('preview.voxel.view.side', 'Side'))}</button><button type="button" class="${model.viewType === 'top' ? '' : 'secondary'}" data-action="voxelSetView" data-view="top">${escapeHtml(localize('preview.voxel.view.top', 'Top'))}</button></div>`);
+        groups.push(`<div class="toolbar-group"><button type="button" class="${model.renderMode === 'slice' ? '' : 'secondary'}" data-action="voxelSetMode" data-mode="slice">${escapeHtml(localize('preview.voxel.mode.slice', 'Slice'))}</button><button type="button" class="${model.renderMode === 'game' ? '' : 'secondary'}" data-action="voxelSetMode" data-mode="game">${escapeHtml(localize('preview.voxel.mode.game', 'Game View'))}</button><button type="button" class="${model.renderMode === 'perspective' ? '' : 'secondary'}" data-action="voxelSetMode" data-mode="perspective">${escapeHtml(localize('preview.voxel.mode.perspective', 'Perspective'))}</button></div>`);
+        if (model.renderMode === 'slice') {
+            groups.push(`<div class="toolbar-group"><button type="button" data-action="voxelPrevSlice">${escapeHtml(localize('preview.voxel.prevSlice', 'Prev Slice'))}</button><span class="badge">${model.sliceIndex + 1}/${model.sliceCount}</span><button type="button" data-action="voxelNextSlice">${escapeHtml(localize('preview.voxel.nextSlice', 'Next Slice'))}</button></div>`);
+            groups.push(`<div class="toolbar-group"><button type="button" class="${model.viewType === 'front' ? '' : 'secondary'}" data-action="voxelSetView" data-view="front">${escapeHtml(localize('preview.voxel.view.front', 'Front'))}</button><button type="button" class="${model.viewType === 'side' ? '' : 'secondary'}" data-action="voxelSetView" data-view="side">${escapeHtml(localize('preview.voxel.view.side', 'Side'))}</button><button type="button" class="${model.viewType === 'top' ? '' : 'secondary'}" data-action="voxelSetView" data-view="top">${escapeHtml(localize('preview.voxel.view.top', 'Top'))}</button></div>`);
+        }
     }
 
     return `<div class="toolbar"><div class="toolbar-title">${escapeHtml(model.title)}</div>${groups.join('')}</div>`;
@@ -348,6 +358,9 @@ for (const button of document.querySelectorAll('[data-action]')) {
         const payload = { type: button.dataset.action };
         if (button.dataset.view) {
             payload.viewType = button.dataset.view;
+        }
+        if (button.dataset.mode) {
+            payload.mode = button.dataset.mode;
         }
         vscode.postMessage(payload);
     });
