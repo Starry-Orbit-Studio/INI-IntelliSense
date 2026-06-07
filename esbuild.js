@@ -40,6 +40,8 @@ const copyStaticFilesPlugin = {
                 await fs.mkdir(outDir, { recursive: true });
                 // 复制 i18n 目录
                 await fs.cp('i18n', path.join(outDir, 'i18n'), { recursive: true });
+                // 复制 assets 目录
+                await fs.cp('assets', path.join(outDir, 'assets'), { recursive: true });
                 console.log('[copy] i18n files copied successfully.');
             } catch (err) {
                 console.error('Failed to copy static files:', err);

@@ -9,6 +9,46 @@ export interface RgbaImagePreview {
     pixelated?: boolean;
 }
 
+export interface VoxelSceneState {
+    limbIndex: number;
+    sliceIndex: number;
+    viewType: 'front' | 'side' | 'top';
+    renderMode: 'slice' | 'game' | 'perspective';
+    cameraYaw: number;
+    cameraPitch: number;
+    cameraZoom: number;
+    cameraPanX: number;
+    cameraPanY: number;
+}
+
+export interface VoxelSceneLimb {
+    name: string;
+    sizeX: number;
+    sizeY: number;
+    sizeZ: number;
+    voxels: number[];
+}
+
+export interface VoxelSceneData {
+    signature: string;
+    remapStart: number;
+    remapEnd: number;
+    palette: number[];
+    vplPalette: number[];
+    vplLookup: number[];
+    gameNormals: number[];
+    limbs: VoxelSceneLimb[];
+}
+
+export interface VoxelScenePreview {
+    kind: 'voxel-scene';
+    title: string;
+    description?: string;
+    details?: string[];
+    scene: VoxelSceneData;
+    state: VoxelSceneState;
+}
+
 export interface PalettePreview {
     kind: 'palette';
     title: string;
@@ -33,6 +73,7 @@ export interface TextPreview {
 
 export type ResourcePreviewModel =
     | RgbaImagePreview
+    | VoxelScenePreview
     | PalettePreview
     | HtmlPreview
     | TextPreview;

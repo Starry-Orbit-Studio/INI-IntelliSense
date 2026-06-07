@@ -28,6 +28,7 @@ export interface PaletteSelection {
 
 export interface PreviewContextServices {
     iniManager: INIManager;
+    extensionUri: vscode.Uri;
 }
 
 export class PreviewContext {
@@ -92,15 +93,15 @@ export class PreviewContext {
         }
 
         return {
-            label: localize('preview.palette.grayscale', 'Grayscale Fallback'),
-            colors: createGrayscalePalette(),
+            label: 'unittem.pal',
+            colors: await this.readDefaultUnittemPalette(),
             source: 'fallback',
         };
     }
 
     public async choosePalette(uri: vscode.Uri): Promise<PaletteSelection | undefined> {
         const index = await this.getResolverIndex(uri);
-        const palettes = index.byExtension.get('.pal') ?? [];
+        const palettes = prioritizeEntries(index.byExtension.get('.pal') ?? [], uri);
         if (palettes.length === 0) {
             vscode.window.showWarningMessage(localize('preview.palette.notFound', 'No palette files were found in the current workspace.'));
             return undefined;
@@ -161,6 +162,20 @@ export class PreviewContext {
         this.resolverCache.clear();
     }
 
+    public async readBundledAsset(relativeSegments: string[]): Promise<Uint8Array> {
+        const uri = vscode.Uri.joinPath(this.services.extensionUri, ...relativeSegments);
+        return vscode.workspace.fs.readFile(uri);
+    }
+
+    private async readDefaultUnittemPalette(): Promise<PaletteColor[]> {
+        const uri = vscode.Uri.joinPath(this.services.extensionUri, 'assets', 'palettes', 'unittem.pal');
+        try {
+            return await this.readPalette(uri);
+        } catch {
+            return createGrayscalePalette();
+        }
+    }
+
     private async createPaletteSelection(uri: vscode.Uri, source: 'auto' | 'manual'): Promise<PaletteSelection> {
         return {
             uri,
@@ -173,7 +188,7 @@ export class PreviewContext {
     private async findPaletteByWildcard(uri: vscode.Uri, prefix: string): Promise<vscode.Uri | undefined> {
         const index = await this.getResolverIndex(uri);
         const loweredPrefix = prefix.toLowerCase();
-        const palettes = index.byExtension.get('.pal') ?? [];
+        const palettes = prioritizeEntries(index.byExtension.get('.pal') ?? [], uri);
         const match = palettes.find(entry =>
             entry.name.toLowerCase().startsWith(loweredPrefix)
             && entry.name.toLowerCase().endsWith('.pal')

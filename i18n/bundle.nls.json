@@ -241,10 +241,14 @@
     "preview.shp.nextFrame": "Next Frame",
     "preview.voxel.prevSlice": "Prev Slice",
     "preview.voxel.nextSlice": "Next Slice",
+    "preview.voxel.prevLimb": "Prev Limb",
+    "preview.voxel.nextLimb": "Next Limb",
     "preview.voxel.view.front": "Front",
     "preview.voxel.view.side": "Side",
     "preview.voxel.view.top": "Top",
     "preview.voxel.mode.slice": "Slice",
     "preview.voxel.mode.game": "Game View",
-    "preview.voxel.mode.perspective": "Perspective"
+    "preview.voxel.mode.perspective": "Perspective",
+    "preview.voxel.resetCamera": "Reset Camera",
+    "preview.voxel.interaction.hint": "Drag to orbit, Shift+Drag to pan, and use the mouse wheel to zoom."
 }

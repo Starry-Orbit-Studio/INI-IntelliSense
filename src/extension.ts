@@ -59,6 +59,7 @@ export async function activate(context: vscode.ExtensionContext) {
     const mixTreeDnD = new MixTreeDragAndDropController(importExportService);
     const resourcePreviewProvider = new ResourcePreviewProvider({
         iniManager,
+        extensionUri: context.extensionUri,
     });
     
     // 等待CSF管理器初始化完成，然后刷新树状视图
