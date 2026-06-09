@@ -12,7 +12,7 @@
 Going beyond traditional static syntax files, this extension provides more accurate and richer coloring through dynamic code analysis.
 - **Multi-level Keys**: Applies different colors to different parts of `Key.Part1.Part2`.
 - **Complex Section Syntax**: Accurately highlights the `[Section]:[Inherits]` structure.
-- **Fully Customizable**: All colors can be freely configured in VS Code settings.
+- **Semantic Colors Enabled by Default**: The extension ships with semantic token defaults for RA2 INI files and dedicated token colors for `.llf` resources.
 
 ### 2. Schema-Driven IntelliSense
 The core capabilities of this extension are driven by a configurable rule file (`INICodingCheck.ini`), providing unparalleled contextual awareness.
@@ -39,7 +39,13 @@ The core capabilities of this extension are driven by a configurable rule file (
 - **Find All References**: Right-click a section name to find all places that reference or inherit from it.
 
 ### 5. More Handy Features
-- **CSF File Support**: Native support for parsing binary `.csf` string files in your workspace, powering hover previews and potential future features.
+- **MIX Archive Explorer**: Browse `.mix` archives from a dedicated explorer view, open them as workspaces, or open them in a new window.
+- **MIX Resource Operations**: Import, export, rename, delete, and organize archive contents without leaving VS Code.
+- **Resource Previews**: Open `pcx`, `pal`, `map`, `mpr`, `yrm`, `shp`, `vxl`, and `hva` files in a built-in preview editor.
+- **Voxel Preview Workflow**: Inspect voxel assets in slice mode or a gameplay-style 3D preview with orbit, pan, zoom, limb switching, and camera reset controls.
+- **Resource Comparison**: Compare folders and MIX archives recursively, filter the result set, and jump straight into diffs or direct file opens.
+- **CSF File Support**: Native support for parsing binary `.csf` string files in your workspace, powering hover previews and a dedicated CSF outline view.
+- **LLF File Support**: Dedicated grammar support for `.llf` files with readable highlighting for labels, comments, and multiline values.
 - **Color Picker**: Provides a visual color picker and preview for `R,G,B` formatted color values.
 - **INI Project Explorer**: A dedicated view in the activity bar that clearly displays all indexed INI files and their internal structure (sections, keys) in a tree, for quick navigation.
 - **Code Folding**: Supports folding code blocks by `[Section]`.
@@ -50,7 +56,7 @@ The core capabilities of this extension are driven by a configurable rule file (
 ## Installation & Configuration
 
 ### Installation
-1. Download the latest `.vsix` file from the release page.
+1. Install from the Visual Studio Marketplace, or download the latest `.vsix` file from the release page.
 2. In VS Code, open the Extensions view (`Ctrl+Shift+X`).
 3. Click the three-dots menu (`...`) in the top-right corner and select "**Install from VSIX...**".
 4. Choose the `.vsix` file you downloaded and install it.
@@ -103,14 +109,13 @@ You can configure this extension in detail in your VS Code `settings.json` file 
 | `ra2-ini-intellisense.codeLens.enabled` | Shows CodeLens (reference counts) above sections. | `true` |
 | | |
 | `ra2-ini-intellisense.diagnostics.enabled` | Enables all built-in diagnostic checks. | `true` |
-| `ra2-ini-intellisense.diagnostics.disable` | An array of error codes to disable specific checks, e.g., `["STYLE-101"]`. | `[]` |
 | `ra2-ini-intellisense.diagnostics.severity` | Customize severity for specific error codes (e.g. `{"STYLE-101": "Information"}`). | `{}` |
 | `ra2-ini-intellisense.diagnostics.spacesBeforeComment` | The number of spaces required before a `;` comment symbol. Set to `null` to disable. | `1` |
 | | |
 | `ra2-ini-intellisense.exePath` | Absolute path to `INIValidator.exe`. | `null` |
 | `ra2-ini-intellisense.validationFiles` | List of files for `INIValidator.exe` to check. | `{...}` |
-| | |
-| `ra2-ini-intellisense.colors.*` | A series of color settings to customize dynamic syntax highlighting. | ... |
+
+Semantic colors for RA2 INI tokens and the default TextMate colors for `.llf` can also be overridden through VS Code's standard `editor.semanticTokenColorCustomizations` and `editor.tokenColorCustomizations` settings.
 
 ---
 

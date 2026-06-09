@@ -12,7 +12,7 @@
 超越传统静态语法文件，本扩展通过代码动态分析，提供更精确、更丰富的着色效果。
 - **支持多级键**: 为 `Key.Part1.Part2` 的不同部分应用不同颜色。
 - **复杂节语法**: 精确高亮 `[Section]:[Inherits]` 结构。
-- **完全可定制**: 所有颜色均可在 VS Code 设置中自由配置。
+- **默认启用语义着色**: 为 RA2 INI 提供开箱即用的语义 Token 配色，并为 `.llf` 资源提供专门的高亮规则。
 
 ### 2. Schema 驱动的智能感知 (Schema-Driven IntelliSense)
 本扩展的核心能力由一个可配置的规则文件 (`INICodingCheck.ini`) 驱动，提供无与伦比的上下文感知能力。
@@ -39,7 +39,13 @@
 - **查找所有引用 (Find All References)**: 右键点击一个节名，即可找到所有引用或继承它的地方。
 
 ### 5. 其他实用功能 (More Handy Features)
-- **CSF 文件原生支持**: 内置 `.csf` 二进制文件解析器，自动索引工作区内的字符串表，为悬停预览和补全提供数据支持。
+- **MIX 档案浏览器**: 在专属视图中浏览 `.mix` 档案，并可直接作为工作区打开，或在新窗口中打开。
+- **MIX 资源操作**: 可直接在 VS Code 中导入、导出、重命名、删除和整理档案内容。
+- **资源预览器**: 内置预览 `pcx`、`pal`、`map`、`mpr`、`yrm`、`shp`、`vxl` 和 `hva` 文件。
+- **体素预览工作流**: 既支持切片模式，也支持更接近游戏内观感的 3D 预览，并提供旋转、平移、缩放、部件切换和相机重置等操作。
+- **资源对比**: 可递归比较文件夹与 MIX 档案，支持筛选结果并直接跳转到差异视图或文件打开操作。
+- **CSF 文件原生支持**: 内置 `.csf` 二进制文件解析器，自动索引工作区内的字符串表，为悬停预览、补全和专属 CSF 大纲视图提供数据支持。
+- **LLF 文件支持**: 为 `.llf` 文件提供专门语法高亮，改善标签、注释和多行文本的可读性。
 - **颜色拾取器**: 为 `R,G,B` 格式的颜色值提供可视化颜色选择器和预览。
 - **INI 项目浏览器**: 在活动栏提供一个专属视图，以树状结构清晰地展示您工作区内所有被索引的 INI 文件及其内部结构（节、键），方便快速导航。
 - **代码折叠**: 支持按 `[Section]` 折叠代码块。
@@ -50,7 +56,7 @@
 ## 安装与配置 (Installation & Configuration)
 
 ### 安装 (Installation)
-1. 从发布页面下载最新的 `.vsix` 文件。
+1. 从 Visual Studio Marketplace 安装，或从发布页面下载最新的 `.vsix` 文件。
 2. 在 VS Code 中，打开扩展面板 (`Ctrl+Shift+X`)。
 3. 点击右上角的三点菜单 (`...`)，选择 “**从 VSIX 安装...**” (Install from VSIX...)。
 4. 选择您下载的 `.vsix` 文件并安装。
@@ -103,14 +109,13 @@
 | `ra2-ini-intellisense.codeLens.enabled` | 是否在节上方显示代码透镜（引用计数）。 | `true` |
 | | |
 | `ra2-ini-intellisense.diagnostics.enabled` | 是否启用所有内置的诊断检查。 | `true` |
-| `ra2-ini-intellisense.diagnostics.disable` | 一个错误码数组，用于禁用特定的诊断检查。例如 `["STYLE-101"]`。 | `[]` |
 | `ra2-ini-intellisense.diagnostics.severity` | 自定义特定错误码的等级（如 `{"STYLE-101": "Information"}`）。 | `{}` |
 | `ra2-ini-intellisense.diagnostics.spacesBeforeComment` | 注释符号 `;` 前应有的空格数。设为 `null` 可禁用。 | `1` |
 | | |
 | `ra2-ini-intellisense.exePath` | `INIValidator.exe` 的绝对路径。 | `null` |
 | `ra2-ini-intellisense.validationFiles` | `INIValidator.exe` 需要校验的文件列表。 | `{...}` |
-| | |
-| `ra2-ini-intellisense.colors.*` | 用于自定义动态语法高亮的一系列颜色配置。 | ... |
+
+RA2 INI 的语义着色，以及 `.llf` 的默认 TextMate 配色，也可以通过 VS Code 标准的 `editor.semanticTokenColorCustomizations` 与 `editor.tokenColorCustomizations` 进一步覆盖。
 
 ---
 

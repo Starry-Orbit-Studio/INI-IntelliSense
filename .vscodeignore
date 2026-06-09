@@ -3,6 +3,7 @@
 out/**
 node_modules/**
 src/**
+AGENTS.md
 .gitignore
 .yarnrc
 esbuild.js

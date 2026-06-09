@@ -8,7 +8,7 @@
     "url": "https://github.com/Super-StarX/INI-IntelliSense.git"
   },
   "private": true,
-  "version": "0.0.3",
+  "version": "0.0.4",
   "engines": {
     "vscode": "^1.96.0"
   },
