@@ -515,11 +515,11 @@ for (const button of document.querySelectorAll('[data-action]')) {
         if (button.tagName === 'INPUT') {
             payload.value = Number(button.value);
             if (button.dataset.action === 'voxelSetModelYaw') {
-                voxelState.modelYaw = payload.value;
+                state.modelYaw = payload.value;
                 requestRender();
                 scheduleSyncState();
             } else if (button.dataset.action === 'voxelSetModelPitch') {
-                voxelState.modelPitch = payload.value;
+                state.modelPitch = payload.value;
                 requestRender();
                 scheduleSyncState();
             }
@@ -831,9 +831,8 @@ function renderVoxelView(limb) {
     depthBuffer.fill(Number.POSITIVE_INFINITY);
     const rawLightDirection = normalize({ x: 0.2013022, y: -0.9101138, z: -0.3621709 });
     const gameLightDirection = rawLightDirection;
-    const perspectiveSunDirection = normalize(invert(rawLightDirection));
-    const perspectiveFillDirection = rawLightDirection;
-    const ambient = state.renderMode === 'game' ? 0.3 : 0.35;
+    const perspectiveCameraLightDirection = { x: 0, y: 0, z: 1 };
+    const ambient = state.renderMode === 'game' ? 0.3 : 0.48;
     const yaw = (state.renderMode === 'game' ? 45 : state.cameraYaw) * Math.PI / 180;
     const pitch = clamp(state.renderMode === 'game' ? -35.264 : state.cameraPitch, -89, 89) * Math.PI / 180;
     const modelYaw = state.modelYaw * Math.PI / 180;
@@ -901,13 +900,11 @@ function renderVoxelView(limb) {
                 b: Math.max(0, Math.min(255, Math.round(baseColor.b))),
             };
         } else {
-            const sunShade = Math.max(0, dot(perspectiveNormal, perspectiveSunDirection)) * 1.0;
-            const fillShade = Math.max(0, dot(perspectiveNormal, perspectiveFillDirection)) * 0.25;
-            const shade = ambient + sunShade + fillShade;
+            const shade = ambient + Math.max(0, dot(perspectiveNormal, perspectiveCameraLightDirection)) * 0.82;
             color = {
-                r: Math.max(0, Math.min(255, Math.round(base.r * shade))),
-                g: Math.max(0, Math.min(255, Math.round(base.g * shade))),
-                b: Math.max(0, Math.min(255, Math.round(base.b * shade))),
+                r: Math.max(0, Math.min(255, Math.round(base.r * Math.min(shade, 1.3)))),
+                g: Math.max(0, Math.min(255, Math.round(base.g * Math.min(shade, 1.3)))),
+                b: Math.max(0, Math.min(255, Math.round(base.b * Math.min(shade, 1.3)))),
             };
         }
 
