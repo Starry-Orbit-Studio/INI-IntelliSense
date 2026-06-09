@@ -50,6 +50,8 @@ export interface VoxelPreviewState {
     cameraZoom: number;
     cameraPanX: number;
     cameraPanY: number;
+    modelYaw: number;
+    modelPitch: number;
 }
 
 export type VoxelPreviewModel = VoxelScenePreview;
@@ -60,14 +62,18 @@ const DEFAULT_PERSPECTIVE_CAMERA = {
     zoom: 1,
     panX: 0,
     panY: 0,
+    modelYaw: 0,
+    modelPitch: 0,
 };
 
 const GAME_VIEW_CAMERA = {
-    yaw: -45,
+    yaw: 45,
     pitch: -35.264,
     zoom: 1,
     panX: 0,
     panY: 0,
+    modelYaw: 0,
+    modelPitch: 0,
 };
 
 let bundledVplDataPromise: Promise<{ palette: number[]; lookup: number[] }> | undefined;
@@ -663,12 +669,14 @@ export function createDefaultVoxelPreviewState(): VoxelPreviewState {
         limbIndex: 0,
         sliceIndex: 0,
         viewType: 'top',
-        renderMode: 'slice',
-        cameraYaw: DEFAULT_PERSPECTIVE_CAMERA.yaw,
-        cameraPitch: DEFAULT_PERSPECTIVE_CAMERA.pitch,
-        cameraZoom: DEFAULT_PERSPECTIVE_CAMERA.zoom,
-        cameraPanX: DEFAULT_PERSPECTIVE_CAMERA.panX,
-        cameraPanY: DEFAULT_PERSPECTIVE_CAMERA.panY,
+        renderMode: 'game',
+        cameraYaw: GAME_VIEW_CAMERA.yaw,
+        cameraPitch: GAME_VIEW_CAMERA.pitch,
+        cameraZoom: GAME_VIEW_CAMERA.zoom,
+        cameraPanX: GAME_VIEW_CAMERA.panX,
+        cameraPanY: GAME_VIEW_CAMERA.panY,
+        modelYaw: GAME_VIEW_CAMERA.modelYaw,
+        modelPitch: GAME_VIEW_CAMERA.modelPitch,
     };
 }
 
@@ -679,6 +687,8 @@ export function resetVoxelCamera(state: VoxelPreviewState, mode: VoxelRenderMode
     state.cameraZoom = preset.zoom;
     state.cameraPanX = preset.panX;
     state.cameraPanY = preset.panY;
+    state.modelYaw = preset.modelYaw;
+    state.modelPitch = preset.modelPitch;
 }
 
 function escapeHtml(value: string): string {

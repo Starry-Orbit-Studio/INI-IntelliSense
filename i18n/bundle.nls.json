@@ -249,6 +249,8 @@
     "preview.voxel.mode.slice": "Slice",
     "preview.voxel.mode.game": "Game View",
     "preview.voxel.mode.perspective": "Perspective",
+    "preview.voxel.modelYaw": "Horizontal",
+    "preview.voxel.modelPitch": "Vertical",
     "preview.voxel.resetCamera": "Reset Camera",
     "preview.voxel.interaction.hint": "Drag to orbit, Shift+Drag to pan, and use the mouse wheel to zoom."
 }

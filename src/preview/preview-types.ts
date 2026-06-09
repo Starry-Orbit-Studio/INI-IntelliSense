@@ -19,6 +19,8 @@ export interface VoxelSceneState {
     cameraZoom: number;
     cameraPanX: number;
     cameraPanY: number;
+    modelYaw: number;
+    modelPitch: number;
 }
 
 export interface VoxelSceneLimb {

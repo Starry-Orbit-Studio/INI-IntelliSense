@@ -76,10 +76,6 @@ export class ResourcePreviewProvider implements vscode.CustomReadonlyEditorProvi
                     }
                     return;
                 }
-                case 'resetPalette':
-                    state.paletteUri = undefined;
-                    await refresh();
-                    return;
                 case 'shpPrevFrame':
                     state.shpFrameIndex = Math.max(0, state.shpFrameIndex - 1);
                     await refresh();
@@ -117,14 +113,31 @@ export class ResourcePreviewProvider implements vscode.CustomReadonlyEditorProvi
                     state.voxel.limbIndex += 1;
                     await refresh();
                     return;
-                case 'voxelResetCamera':
-                    resetVoxelCamera(state.voxel);
-                    await refresh();
+                case 'voxelSetLimb':
+                    if (typeof message.limbIndex === 'number') {
+                        state.voxel.limbIndex = Math.max(0, Math.trunc(message.limbIndex));
+                        await refresh();
+                    }
+                    return;
+                case 'voxelSetModelYaw':
+                    if (typeof message.value === 'number') {
+                        state.voxel.modelYaw = clamp(message.value, -180, 180);
+                    }
+                    return;
+                case 'voxelSetModelPitch':
+                    if (typeof message.value === 'number') {
+                        state.voxel.modelPitch = clamp(message.value, -89, 89);
+                    }
                     return;
                 case 'voxelOrbit':
                     if (typeof message.deltaX === 'number' && typeof message.deltaY === 'number') {
-                        state.voxel.cameraYaw += message.deltaX * 0.35;
-                        state.voxel.cameraPitch = clamp(state.voxel.cameraPitch + message.deltaY * 0.28, -89, 89);
+                        if (state.voxel.renderMode === 'game') {
+                            state.voxel.modelYaw += message.deltaX * 0.35;
+                            state.voxel.modelPitch = clamp(state.voxel.modelPitch + message.deltaY * 0.28, -89, 89);
+                        } else {
+                            state.voxel.cameraYaw += message.deltaX * 0.35;
+                            state.voxel.cameraPitch = clamp(state.voxel.cameraPitch + message.deltaY * 0.28, -89, 89);
+                        }
                     }
                     return;
                 case 'voxelPan':
@@ -200,6 +213,7 @@ function renderPreviewHtml(model: ResourcePreviewModel, uri: vscode.Uri, palette
             body {
                 display: flex;
                 flex-direction: column;
+                overflow: hidden;
             }
             .toolbar {
                 display: flex;
@@ -223,6 +237,28 @@ function renderPreviewHtml(model: ResourcePreviewModel, uri: vscode.Uri, palette
                 gap: 8px;
                 align-items: center;
                 flex-wrap: wrap;
+            }
+            .toolbar-group.range-group {
+                gap: 10px;
+            }
+            .range-control {
+                display: inline-flex;
+                align-items: center;
+                gap: 8px;
+            }
+            .range-control label {
+                font-size: 12px;
+                color: var(--vscode-descriptionForeground);
+            }
+            .range-control input[type="range"] {
+                width: 160px;
+            }
+            .range-value {
+                min-width: 42px;
+                text-align: right;
+                font-size: 12px;
+                color: var(--vscode-descriptionForeground);
+                font-variant-numeric: tabular-nums;
             }
             button {
                 border: 1px solid var(--vscode-button-border, transparent);
@@ -268,18 +304,25 @@ function renderPreviewHtml(model: ResourcePreviewModel, uri: vscode.Uri, palette
             }
             .viewport {
                 flex: 1;
+                min-height: 0;
                 display: flex;
                 align-items: center;
                 justify-content: center;
-                overflow: auto;
-                padding: 24px;
+                overflow: hidden;
+                padding: 16px;
                 box-sizing: border-box;
             }
             .surface {
-                display: inline-flex;
+                display: flex;
                 flex-direction: column;
                 align-items: center;
                 gap: 12px;
+                width: 100%;
+                height: 100%;
+                min-height: 0;
+            }
+            .surface.centered {
+                justify-content: center;
             }
             .canvas-frame {
                 display: inline-flex;
@@ -287,10 +330,13 @@ function renderPreviewHtml(model: ResourcePreviewModel, uri: vscode.Uri, palette
                 justify-content: center;
                 border: 1px solid var(--vscode-panel-border);
                 background: var(--vscode-editor-background);
-                max-width: calc(100vw - 72px);
-                max-height: calc(100vh - 180px);
+                max-width: 100%;
+                max-height: 100%;
                 padding: 12px;
                 border-radius: 8px;
+                box-sizing: border-box;
+                position: relative;
+                overflow: hidden;
             }
             .alpha-board {
                 display: inline-flex;
@@ -304,13 +350,13 @@ function renderPreviewHtml(model: ResourcePreviewModel, uri: vscode.Uri, palette
                     var(--vscode-editor-background);
             }
             canvas {
-                max-width: min(100%, 1600px);
-                max-height: min(100%, 1200px);
+                max-width: 100%;
+                max-height: 100%;
                 height: auto;
             }
             canvas.interactive {
                 cursor: grab;
-                width: min(100%, 960px);
+                width: auto;
                 height: auto;
             }
             canvas.interactive.dragging {
@@ -347,6 +393,30 @@ function renderPreviewHtml(model: ResourcePreviewModel, uri: vscode.Uri, palette
                 font-size: 12px;
                 text-align: center;
             }
+            .frame-overlay {
+                position: absolute;
+                top: 12px;
+                right: 12px;
+                display: flex;
+                flex-direction: column;
+                gap: 6px;
+                z-index: 2;
+                max-height: calc(100% - 24px);
+                overflow: auto;
+            }
+            .limb-button {
+                text-align: left;
+                min-width: 160px;
+                max-width: 240px;
+                padding: 6px 10px;
+                border-radius: 8px;
+                background: color-mix(in srgb, var(--vscode-editorWidget-background) 88%, transparent);
+                backdrop-filter: blur(6px);
+            }
+            .limb-button.active {
+                background: var(--vscode-button-background);
+                color: var(--vscode-button-foreground);
+            }
         </style>
     `;
 
@@ -356,18 +426,18 @@ function renderPreviewHtml(model: ResourcePreviewModel, uri: vscode.Uri, palette
     if (model.kind === 'rgba-image') {
         const pixels = JSON.stringify(Array.from(model.pixels));
         const canvasClass = model.pixelated === false ? '' : 'pixelated';
-        return `<!DOCTYPE html><html><head><meta charset="utf-8" />${style}</head><body>${toolbar}<div class="viewport"><div class="surface">${details}<div class="canvas-frame alpha-board"><canvas id="preview" class="${canvasClass}" width="${model.width}" height="${model.height}"></canvas></div></div></div><script>${toolbarScript()}const pixels = new Uint8ClampedArray(${pixels});const canvas = document.getElementById('preview');const ctx = canvas.getContext('2d');ctx.putImageData(new ImageData(pixels, ${model.width}, ${model.height}), 0, 0);</script></body></html>`;
+        return `<!DOCTYPE html><html><head><meta charset="utf-8" />${style}</head><body>${toolbar}<div class="viewport"><div class="surface centered">${details}<div class="canvas-frame alpha-board"><canvas id="preview" class="${canvasClass}" width="${model.width}" height="${model.height}"></canvas></div></div></div><script>${toolbarScript()}const pixels = new Uint8ClampedArray(${pixels});const canvas = document.getElementById('preview');const ctx = canvas.getContext('2d');ctx.putImageData(new ImageData(pixels, ${model.width}, ${model.height}), 0, 0);</script></body></html>`;
     }
 
     if (model.kind === 'voxel-scene') {
         const scene = JSON.stringify(model.scene);
         const state = JSON.stringify(model.state);
-        const interactionHint = `<div class="hint">${escapeHtml(localize('preview.voxel.interaction.hint', 'Drag to orbit, Shift+Drag to pan, and use the mouse wheel to zoom.'))}</div>`;
-        return `<!DOCTYPE html><html><head><meta charset="utf-8" />${style}</head><body>${toolbar}<div class="viewport"><div class="surface">${details}${interactionHint}<div class="canvas-frame alpha-board"><canvas id="voxel-preview" class="interactive" width="960" height="960"></canvas></div></div></div><script>${toolbarScript()}const voxelScene = ${scene};const voxelState = ${state};${voxelSceneScript()}</script></body></html>`;
+        const limbOverlay = renderVoxelLimbOverlay(model);
+        return `<!DOCTYPE html><html><head><meta charset="utf-8" />${style}</head><body>${toolbar}<div class="viewport"><div class="surface${model.state.renderMode === 'slice' ? ' centered' : ''}">${details}<div class="canvas-frame alpha-board">${limbOverlay}<canvas id="voxel-preview" class="interactive" width="960" height="960"></canvas></div></div></div><script>${toolbarScript()}const voxelScene = ${scene};const voxelState = ${state};${voxelSceneScript()}</script></body></html>`;
     }
 
     if (model.kind === 'palette') {
-        return `<!DOCTYPE html><html><head><meta charset="utf-8" />${style}</head><body>${toolbar}<div class="viewport"><div class="surface">${details}<div class="canvas-frame"><div class="palette">${model.colors.map(color => `<div class="swatch" style="background:${color}" title="${color}"></div>`).join('')}</div></div></div></div><script>${toolbarScript()}</script></body></html>`;
+        return `<!DOCTYPE html><html><head><meta charset="utf-8" />${style}</head><body>${toolbar}<div class="viewport"><div class="surface centered">${details}<div class="canvas-frame"><div class="palette">${model.colors.map(color => `<div class="swatch" style="background:${color}" title="${color}"></div>`).join('')}</div></div></div></div><script>${toolbarScript()}</script></body></html>`;
     }
 
     if (model.kind === 'html') {
@@ -382,7 +452,7 @@ function renderToolbar(model: ResourcePreviewModel, uri: vscode.Uri, paletteUri?
     const groups: string[] = [];
 
     if (ext === '.shp' || ext === '.vxl' || ext === '.hva') {
-        groups.push(`<div class="toolbar-group"><button type="button" data-action="choosePalette">${escapeHtml(localize('preview.palette.choose', 'Choose Palette'))}</button><button type="button" class="secondary" data-action="resetPalette">${escapeHtml(localize('preview.palette.reset', 'Auto Palette'))}</button>${paletteUri ? `<span class="badge">${escapeHtml(path.posix.basename(paletteUri.path))}</span>` : ''}</div>`);
+        groups.push(`<div class="toolbar-group"><button type="button" data-action="choosePalette">${escapeHtml(localize('preview.palette.choose', 'Choose Palette'))}</button>${paletteUri ? `<span class="badge">${escapeHtml(path.posix.basename(paletteUri.path))}</span>` : ''}</div>`);
     }
 
     if (isShpPreview(model)) {
@@ -394,12 +464,11 @@ function renderToolbar(model: ResourcePreviewModel, uri: vscode.Uri, paletteUri?
         const activeLimb = model.scene.limbs[clamp(model.state.limbIndex, 0, Math.max(0, limbCount - 1))];
         const sliceCount = activeLimb ? getVoxelSliceCount(activeLimb, model.state.viewType) : 1;
         groups.push(`<div class="toolbar-group"><button type="button" class="${model.state.renderMode === 'slice' ? '' : 'secondary'}" data-action="voxelSetMode" data-mode="slice">${escapeHtml(localize('preview.voxel.mode.slice', 'Slice'))}</button><button type="button" class="${model.state.renderMode === 'game' ? '' : 'secondary'}" data-action="voxelSetMode" data-mode="game">${escapeHtml(localize('preview.voxel.mode.game', 'Game View'))}</button><button type="button" class="${model.state.renderMode === 'perspective' ? '' : 'secondary'}" data-action="voxelSetMode" data-mode="perspective">${escapeHtml(localize('preview.voxel.mode.perspective', 'Perspective'))}</button></div>`);
-        groups.push(`<div class="toolbar-group"><button type="button" data-action="voxelPrevLimb">${escapeHtml(localize('preview.voxel.prevLimb', 'Prev Limb'))}</button><span class="badge">${model.state.limbIndex + 1}/${limbCount}</span><button type="button" data-action="voxelNextLimb">${escapeHtml(localize('preview.voxel.nextLimb', 'Next Limb'))}</button></div>`);
         if (model.state.renderMode === 'slice') {
-            groups.push(`<div class="toolbar-group"><button type="button" data-action="voxelPrevSlice">${escapeHtml(localize('preview.voxel.prevSlice', 'Prev Slice'))}</button><span class="badge">${model.state.sliceIndex + 1}/${sliceCount}</span><button type="button" data-action="voxelNextSlice">${escapeHtml(localize('preview.voxel.nextSlice', 'Next Slice'))}</button></div>`);
+            groups.push(`<div class="toolbar-group"><button type="button" data-action="voxelPrevSlice" title="${escapeHtml(localize('preview.voxel.prevSlice', 'Previous Slice'))}">&lt;</button><span class="badge">${model.state.sliceIndex + 1}/${sliceCount}</span><button type="button" data-action="voxelNextSlice" title="${escapeHtml(localize('preview.voxel.nextSlice', 'Next Slice'))}">&gt;</button></div>`);
             groups.push(`<div class="toolbar-group"><button type="button" class="${model.state.viewType === 'front' ? '' : 'secondary'}" data-action="voxelSetView" data-view="front">${escapeHtml(localize('preview.voxel.view.front', 'Front'))}</button><button type="button" class="${model.state.viewType === 'side' ? '' : 'secondary'}" data-action="voxelSetView" data-view="side">${escapeHtml(localize('preview.voxel.view.side', 'Side'))}</button><button type="button" class="${model.state.viewType === 'top' ? '' : 'secondary'}" data-action="voxelSetView" data-view="top">${escapeHtml(localize('preview.voxel.view.top', 'Top'))}</button></div>`);
-        } else {
-            groups.push(`<div class="toolbar-group"><button type="button" class="secondary" data-action="voxelResetCamera">${escapeHtml(localize('preview.voxel.resetCamera', 'Reset Camera'))}</button></div>`);
+        } else if (model.state.renderMode === 'game') {
+            groups.push(`<div class="toolbar-group range-group"><div class="range-control"><label for="model-yaw">${escapeHtml(localize('preview.voxel.modelYaw', 'Horizontal'))}</label><input id="model-yaw" type="range" min="-180" max="180" step="1" value="${Math.round(model.state.modelYaw)}" data-action="voxelSetModelYaw" /><span class="range-value" id="model-yaw-value">${Math.round(model.state.modelYaw)}°</span></div><div class="range-control"><label for="model-pitch">${escapeHtml(localize('preview.voxel.modelPitch', 'Vertical'))}</label><input id="model-pitch" type="range" min="-89" max="89" step="1" value="${Math.round(model.state.modelPitch)}" data-action="voxelSetModelPitch" /><span class="range-value" id="model-pitch-value">${Math.round(model.state.modelPitch)}°</span></div></div>`);
         }
     }
 
@@ -418,18 +487,48 @@ function renderDetails(model: ResourcePreviewModel): string {
     return `<div class="details">${detailItems.map(item => `<span>${escapeHtml(item)}</span>`).join('')}</div>`;
 }
 
+function renderVoxelLimbOverlay(model: VoxelPreviewModel): string {
+    if (model.scene.limbs.length <= 1) {
+        return '';
+    }
+
+    return `<div class="frame-overlay">${model.scene.limbs.map((limb, index) => `<button type="button" class="limb-button${index === model.state.limbIndex ? ' active' : ' secondary'}" data-action="voxelSetLimb" data-limb-index="${index}" title="${escapeHtml(limb.name)}">${escapeHtml(limb.name)}</button>`).join('')}</div>`;
+}
+
 function toolbarScript(): string {
     return `
 const vscode = window.__ra2PreviewVsCode ?? acquireVsCodeApi();
 window.__ra2PreviewVsCode = vscode;
 for (const button of document.querySelectorAll('[data-action]')) {
-    button.addEventListener('click', () => {
+    const eventName = button.tagName === 'INPUT' ? 'input' : 'click';
+    button.addEventListener(eventName, () => {
         const payload = { type: button.dataset.action };
         if (button.dataset.view) {
             payload.viewType = button.dataset.view;
         }
         if (button.dataset.mode) {
             payload.mode = button.dataset.mode;
+        }
+        if (button.dataset.limbIndex) {
+            payload.limbIndex = Number(button.dataset.limbIndex);
+        }
+        if (button.tagName === 'INPUT') {
+            payload.value = Number(button.value);
+            if (button.dataset.action === 'voxelSetModelYaw') {
+                voxelState.modelYaw = payload.value;
+                requestRender();
+                scheduleSyncState();
+            } else if (button.dataset.action === 'voxelSetModelPitch') {
+                voxelState.modelPitch = payload.value;
+                requestRender();
+                scheduleSyncState();
+            }
+            const valueTarget = document.getElementById(button.id + '-value');
+            if (valueTarget) {
+                valueTarget.textContent = Math.round(Number(button.value)) + '°';
+            }
+        } else if (button.dataset.value) {
+            payload.value = Number(button.dataset.value);
         }
         vscode.postMessage(payload);
     });
@@ -480,6 +579,12 @@ function applyViewRotation(vector, yaw, pitch) {
     return rotateX(rotateY(vector, yaw), pitch);
 }
 
+function applyLocalModelRotation(vector, yaw, pitch) {
+    const yawRotated = rotateY(vector, yaw);
+    const localRight = normalize(rotateY({ x: 1, y: 0, z: 0 }, yaw));
+    return rotateAroundAxis(yawRotated, localRight, pitch);
+}
+
 function applyInverseViewRotation(vector, yaw, pitch) {
     return rotateY(rotateX(vector, -pitch), -yaw);
 }
@@ -517,6 +622,23 @@ function applyMatrix3(matrix, vector) {
         x: matrix[0][0] * vector.x + matrix[0][1] * vector.y + matrix[0][2] * vector.z,
         y: matrix[1][0] * vector.x + matrix[1][1] * vector.y + matrix[1][2] * vector.z,
         z: matrix[2][0] * vector.x + matrix[2][1] * vector.y + matrix[2][2] * vector.z,
+    };
+}
+
+function rotateAroundAxis(vector, axis, angle) {
+    const unitAxis = normalize(axis);
+    const c = Math.cos(angle);
+    const s = Math.sin(angle);
+    const projection = dot(unitAxis, vector);
+    const cross = {
+        x: unitAxis.y * vector.z - unitAxis.z * vector.y,
+        y: unitAxis.z * vector.x - unitAxis.x * vector.z,
+        z: unitAxis.x * vector.y - unitAxis.y * vector.x,
+    };
+    return {
+        x: vector.x * c + cross.x * s + unitAxis.x * projection * (1 - c),
+        y: vector.y * c + cross.y * s + unitAxis.y * projection * (1 - c),
+        z: vector.z * c + cross.z * s + unitAxis.z * projection * (1 - c),
     };
 }
 
@@ -572,6 +694,14 @@ function readGameNormal(normalIndex) {
         y: -(scene.gameNormals[offset + 2] ?? 1),
         z: scene.gameNormals[offset + 1] ?? 0,
     });
+}
+
+function invert(vector) {
+    return {
+        x: -vector.x,
+        y: -vector.y,
+        z: -vector.z,
+    };
 }
 
 function readVplColor(lightLevelIndex, colorIndex) {
@@ -699,13 +829,15 @@ function renderVoxelView(limb) {
     const pixels = image.data;
     const depthBuffer = new Float32Array(canvas.width * canvas.height);
     depthBuffer.fill(Number.POSITIVE_INFINITY);
-    const lightDirection = normalize(state.renderMode === 'game'
-        ? { x: 0.2013022, y: -0.9101138, z: -0.3621709 }
-        : { x: -0.7, y: 1.0, z: 0.4 });
+    const rawLightDirection = normalize({ x: 0.2013022, y: -0.9101138, z: -0.3621709 });
+    const gameLightDirection = rawLightDirection;
+    const perspectiveSunDirection = normalize(invert(rawLightDirection));
+    const perspectiveFillDirection = rawLightDirection;
     const ambient = state.renderMode === 'game' ? 0.3 : 0.35;
-    const diffuseStrength = state.renderMode === 'game' ? 0.7 : 0.65;
-    const yaw = state.cameraYaw * Math.PI / 180;
-    const pitch = clamp(state.cameraPitch, -89, 89) * Math.PI / 180;
+    const yaw = (state.renderMode === 'game' ? 45 : state.cameraYaw) * Math.PI / 180;
+    const pitch = clamp(state.renderMode === 'game' ? -35.264 : state.cameraPitch, -89, 89) * Math.PI / 180;
+    const modelYaw = state.modelYaw * Math.PI / 180;
+    const modelPitch = clamp(state.modelPitch, -89, 89) * Math.PI / 180;
     const maxDimension = Math.max(limb.sizeX, limb.sizeY, limb.sizeZ, 1);
     const centerX = canvas.width / 2 + state.cameraPanX;
     const centerY = canvas.height / 2 + state.cameraPanY;
@@ -731,8 +863,11 @@ function renderVoxelView(limb) {
             y: voxel.y - limb.sizeY / 2,
             z: voxel.z - limb.sizeZ / 2,
         };
+        const modelRotated = state.renderMode === 'game'
+            ? applyLocalModelRotation(local, modelYaw, modelPitch)
+            : local;
         const rotated = state.renderMode === 'game'
-            ? applyGameViewRotation(local, yaw, pitch)
+            ? applyGameViewRotation(modelRotated, yaw, pitch)
             : applyViewRotation(local, yaw, pitch);
         const paletteOffset = voxel.color * 3;
         const base = {
@@ -742,30 +877,33 @@ function renderVoxelView(limb) {
         };
         const normal = readGameNormal(voxel.normal);
         let color;
+        const perspectiveNormal = normalize(applyViewRotation(normal, yaw, pitch));
 
         if (state.renderMode === 'game') {
             const lPlusU = {
-                x: lightDirection.x + worldU.x,
-                y: lightDirection.y + worldU.y,
-                z: lightDirection.z + worldU.z,
+                x: gameLightDirection.x + worldU.x,
+                y: gameLightDirection.y + worldU.y,
+                z: gameLightDirection.z + worldU.z,
             };
             const l2 = dot(lPlusU, lPlusU) > 1e-6 ? normalize(lPlusU) : { x: 0, y: 0, z: 0 };
-            const f1 = dot(normal, lightDirection);
-            const f2Dot = dot(normal, l2);
+            const worldNormal = normalize(applyLocalModelRotation(normal, modelYaw, modelPitch));
+            const f1 = dot(worldNormal, gameLightDirection);
+            const f2Dot = dot(worldNormal, l2);
             const d = 3.0;
             const f2Denominator = d - (d - 1.0) * f2Dot;
             const f2 = f2Denominator > 1e-6 ? (f2Dot / f2Denominator) : 0.0;
             let lightLevelIndex = Math.floor(16.0 * (Math.max(0, f1) + Math.max(0, f2)));
             lightLevelIndex = clamp(lightLevelIndex, 0, 31);
             const baseColor = readVplColor(lightLevelIndex, voxel.color);
-            const diffuseFactor = 1.0 - ambient;
             color = {
-                r: Math.max(0, Math.min(255, Math.round(baseColor.r * (ambient + diffuseFactor)))),
-                g: Math.max(0, Math.min(255, Math.round(baseColor.g * (ambient + diffuseFactor)))),
-                b: Math.max(0, Math.min(255, Math.round(baseColor.b * (ambient + diffuseFactor)))),
+                r: Math.max(0, Math.min(255, Math.round(baseColor.r))),
+                g: Math.max(0, Math.min(255, Math.round(baseColor.g))),
+                b: Math.max(0, Math.min(255, Math.round(baseColor.b))),
             };
         } else {
-            const shade = ambient + Math.max(0, dot(normal, lightDirection)) * diffuseStrength;
+            const sunShade = Math.max(0, dot(perspectiveNormal, perspectiveSunDirection)) * 1.0;
+            const fillShade = Math.max(0, dot(perspectiveNormal, perspectiveFillDirection)) * 0.25;
+            const shade = ambient + sunShade + fillShade;
             color = {
                 r: Math.max(0, Math.min(255, Math.round(base.r * shade))),
                 g: Math.max(0, Math.min(255, Math.round(base.g * shade))),
@@ -853,8 +991,13 @@ window.addEventListener('mousemove', event => {
         state.cameraPanX -= deltaX;
         state.cameraPanY += deltaY;
     } else {
-        state.cameraYaw -= deltaX * 0.35;
-        state.cameraPitch = clamp(state.cameraPitch - deltaY * 0.28, -89, 89);
+        if (state.renderMode === 'game') {
+            state.modelYaw -= deltaX * 0.35;
+            state.modelPitch = clamp(state.modelPitch - deltaY * 0.28, -89, 89);
+        } else {
+            state.cameraYaw -= deltaX * 0.35;
+            state.cameraPitch = clamp(state.cameraPitch - deltaY * 0.28, -89, 89);
+        }
     }
     requestRender();
     scheduleSyncState();
@@ -909,6 +1052,8 @@ function sanitizeVoxelState(value: unknown): Partial<VoxelPreviewState> {
         cameraZoom: typeof state.cameraZoom === 'number' ? state.cameraZoom : undefined,
         cameraPanX: typeof state.cameraPanX === 'number' ? state.cameraPanX : undefined,
         cameraPanY: typeof state.cameraPanY === 'number' ? state.cameraPanY : undefined,
+        modelYaw: typeof state.modelYaw === 'number' ? state.modelYaw : undefined,
+        modelPitch: typeof state.modelPitch === 'number' ? state.modelPitch : undefined,
     };
 }
 

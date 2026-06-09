@@ -225,6 +225,8 @@
     "preview.voxel.mode.slice": "切片视图",
     "preview.voxel.mode.game": "游戏视图",
     "preview.voxel.mode.perspective": "透视视图",
+    "preview.voxel.modelYaw": "水平旋转",
+    "preview.voxel.modelPitch": "垂直旋转",
     "preview.voxel.resetCamera": "重置视角",
     "preview.voxel.interaction.hint": "拖拽可旋转视角，按住 Shift 拖拽可平移，滚轮可缩放。"
 }
