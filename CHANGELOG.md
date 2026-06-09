@@ -18,3 +18,4 @@ Check [Keep a Changelog](http://keepachangelog.com/) for recommendations on how 
 - Simplified the resource preview UI by removing redundant reset/auto-palette affordances, moving multi-limb selection into an in-frame overlay list, and tightening preview layout so the canvas adapts better to smaller editor sizes.
 - Refined voxel preview presentation with centered slice canvases, compact slice step buttons, and more consistent perspective-mode lighting based on rotated world-space normals.
 - Switched the default VXL/HVA opening mode from slice view to game view so voxel resources open directly into the more representative gameplay-style preview.
+- Added a dedicated resource comparison workflow for MIX archives and folders, including recursive scanning, modern result summaries, change filtering, and one-click text diffs or direct file opens from the comparison panel.

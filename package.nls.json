@@ -18,6 +18,8 @@
     "command.mix.rename.title": "MIX: Rename",
     "command.mix.delete.title": "MIX: Delete",
     "command.mix.saveAll.title": "MIX: Save All Modified Archives",
+    "command.mix.compareWith.title": "MIX: Compare With...",
+    "command.compareResources.title": "Resources: Compare Two Sources",
     "command.showDebugInfo.title": "INI: Show Current Context Debug Info",
     "command.configureSchemaPath.title": "INI: Set INI Dictionary File Path",
     "command.jumpToOverride.title": "INI: Go to Overridden Definition",

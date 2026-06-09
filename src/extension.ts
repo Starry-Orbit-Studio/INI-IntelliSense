@@ -33,6 +33,9 @@ import { ImportExportService } from './services/import-export-service';
 import { MixTreeDragAndDropController } from './views/mix-tree-drag-and-drop';
 import { MixDetectorService } from './services/mix-detector-service';
 import { ResourcePreviewProvider } from './preview/resource-preview-provider';
+import { CompareService } from './compare/compare-service';
+import { CompareResultsPanel } from './compare/compare-results-panel';
+import { CompareSource } from './compare/types';
 
 const LANGUAGE_ID = 'ra2-ini';
 
@@ -57,6 +60,7 @@ export async function activate(context: vscode.ExtensionContext) {
     const workspaceIndexer = new WorkspaceIndexer();
     const importExportService = new ImportExportService();
     const mixTreeDnD = new MixTreeDragAndDropController(importExportService);
+    const compareService = new CompareService(textContentService);
     const resourcePreviewProvider = new ResourcePreviewProvider({
         iniManager,
         extensionUri: context.extensionUri,
@@ -257,6 +261,37 @@ export async function activate(context: vscode.ExtensionContext) {
             await vscode.workspace.fs.delete(target.uri, { recursive: true });
         }
         mixFilesProvider.refresh();
+    }));
+    context.subscriptions.push(vscode.commands.registerCommand('ra2-ini-intellisense.mix.compareWith', async (node?: ResourceNode) => {
+        const leftSource = await createCompareSourceFromNode(node)
+            ?? await pickCompareSource(localize('compare.pick.left.title', 'Select the left source'));
+        if (!leftSource) {
+            return;
+        }
+
+        const rightSource = await pickCompareSource(
+            localize('compare.pick.right.title', 'Select the source to compare against')
+        );
+        if (!rightSource) {
+            return;
+        }
+
+        await runComparison(leftSource, rightSource);
+    }));
+    context.subscriptions.push(vscode.commands.registerCommand('ra2-ini-intellisense.compareResources', async () => {
+        const leftSource = await pickCompareSource(localize('compare.pick.left.title', 'Select the left source'));
+        if (!leftSource) {
+            return;
+        }
+
+        const rightSource = await pickCompareSource(
+            localize('compare.pick.right.title', 'Select the right source')
+        );
+        if (!rightSource) {
+            return;
+        }
+
+        await runComparison(leftSource, rightSource);
     }));
     context.subscriptions.push(vscode.commands.registerCommand('ra2-ini-intellisense.mix.saveAll', async () => {
         await mixWorkspaceManager.flushAll();
@@ -486,6 +521,7 @@ export async function activate(context: vscode.ExtensionContext) {
 			{ label: "$(folder) 设置Mod根目录...", description: modPathDesc },
 			{ label: "$(book) 设置INI Dictionary文件...", description: dictPathDesc },
 			{ label: "$(bug) 管理INI Validator...", description: validatorDesc },
+            { label: "$(git-compare) 比较资源源...", description: localize('mainMenu.description.compareResources', 'Compare two MIX archives or folders recursively') },
 			{ label: "$(refresh) 重新索引工作区", description: "手动强制刷新所有文件的索引" },
 			{ label: "$(json) 打开插件设置 (JSON)", description: "查看所有高级配置" },
 		];
@@ -504,6 +540,8 @@ export async function activate(context: vscode.ExtensionContext) {
 			vscode.commands.executeCommand('ra2-ini-intellisense.configureSchemaPath');
 		} else if (selection.label.includes("INI Validator")) {
 			iniValidator.showQuickPick();
+        } else if (selection.label.includes("比较资源")) {
+            vscode.commands.executeCommand('ra2-ini-intellisense.compareResources');
 		} else if (selection.label.includes("重新索引")) {
 			await indexWorkspaceFiles();
 			vscode.window.showInformationMessage("工作区已重新索引。");
@@ -1085,6 +1123,150 @@ export async function activate(context: vscode.ExtensionContext) {
 			}
 		}
 	}
+
+    async function pickCompareSource(title: string): Promise<CompareSource | undefined> {
+        const items: Array<vscode.QuickPickItem & { target: 'mix' | 'folder' | 'workspace' }> = [
+            {
+                label: localize('compare.pick.option.mix', 'MIX Archive or Nested MIX'),
+                description: localize('compare.pick.option.mix.description', 'Choose a .mix file from disk'),
+                target: 'mix',
+            },
+            {
+                label: localize('compare.pick.option.folder', 'Folder'),
+                description: localize('compare.pick.option.folder.description', 'Choose a directory from disk'),
+                target: 'folder',
+            },
+        ];
+
+        if (vscode.workspace.workspaceFolders && vscode.workspace.workspaceFolders.length > 0) {
+            items.push({
+                label: localize('compare.pick.option.workspace', 'Current Workspace Root'),
+                description: localize('compare.pick.option.workspace.description', 'Use the active workspace folder'),
+                target: 'workspace',
+            });
+        }
+
+        const selection = await vscode.window.showQuickPick(items, {
+            title,
+            placeHolder: localize('compare.pick.placeholder', 'Select the kind of source to compare'),
+        });
+
+        if (!selection) {
+            return undefined;
+        }
+
+        if (selection.target === 'mix') {
+            const fileUris = await vscode.window.showOpenDialog({
+                canSelectFiles: true,
+                canSelectFolders: false,
+                canSelectMany: false,
+                openLabel: localize('compare.pick.mix.openLabel', 'Select archive file'),
+            });
+            if (!fileUris?.[0]) {
+                return undefined;
+            }
+
+            const targetUri = fileUris[0];
+            const isMixLike = await mixDetectorService.isMixLike(targetUri);
+            if (!isMixLike) {
+                vscode.window.showWarningMessage(localize('compare.pick.mix.invalid', 'The selected file is not recognized as a MIX-like archive.'));
+                return undefined;
+            }
+
+            return createFileMixCompareSource(targetUri);
+        }
+
+        if (selection.target === 'folder') {
+            const folderUris = await vscode.window.showOpenDialog({
+                canSelectFiles: false,
+                canSelectFolders: true,
+                canSelectMany: false,
+                openLabel: localize('compare.pick.folder.openLabel', 'Select folder'),
+            });
+            if (!folderUris?.[0]) {
+                return undefined;
+            }
+            return createDirectoryCompareSource(folderUris[0]);
+        }
+
+        const rootFolder = vscode.workspace.workspaceFolders?.[0];
+        if (!rootFolder) {
+            return undefined;
+        }
+        return createDirectoryCompareSource(rootFolder.uri, rootFolder.name);
+    }
+
+    async function createCompareSourceFromNode(node?: ResourceNode): Promise<CompareSource | undefined> {
+        if (!node) {
+            return undefined;
+        }
+
+        if (node.uri.scheme === MixUriCodec.scheme) {
+            if (node.kind === 'mixDirectory') {
+                return createMixCompareSource(node.uri, node.label, node.uri);
+            }
+
+            if (node.kind === 'mixFile') {
+                const sourceUri = node.sourceUri ?? node.uri;
+                if (sourceUri.scheme === MixUriCodec.scheme) {
+                    return createMixCompareSource(node.uri, node.label, node.uri);
+                }
+                return createFileMixCompareSource(sourceUri);
+            }
+        }
+
+        if (node.kind === 'directory' || node.kind === 'workspaceRoot') {
+            return createDirectoryCompareSource(node.uri, node.label);
+        }
+
+        return undefined;
+    }
+
+    function createDirectoryCompareSource(uri: vscode.Uri, label?: string): CompareSource {
+        return {
+            kind: 'directory',
+            rootUri: uri,
+            openUri: uri,
+            label: label ?? (path.basename(uri.fsPath || uri.path) || uri.toString()),
+            description: uri.fsPath || uri.path,
+        };
+    }
+
+    function createFileMixCompareSource(uri: vscode.Uri): CompareSource {
+        const rootUri = MixUriCodec.toRootUri(uri);
+        return createMixCompareSource(rootUri, path.basename(uri.fsPath || uri.path), uri);
+    }
+
+    function createMixCompareSource(rootUri: vscode.Uri, label: string, openUri: vscode.Uri): CompareSource {
+        return {
+            kind: 'mix',
+            rootUri,
+            openUri,
+            label,
+            description: describeCompareUri(openUri),
+        };
+    }
+
+    function describeCompareUri(uri: vscode.Uri): string {
+        if (uri.scheme !== MixUriCodec.scheme) {
+            return uri.fsPath || uri.path;
+        }
+
+        const decoded = MixUriCodec.decode(uri);
+        const chain = decoded.nestedChain.length > 0 ? ` :: ${decoded.nestedChain.join(' / ')}` : '';
+        const virtualPath = decoded.virtualPath && decoded.virtualPath !== '/' ? ` :: ${decoded.virtualPath}` : '';
+        return `${decoded.containerUri.fsPath || decoded.containerUri.path}${chain}${virtualPath}`;
+    }
+
+    async function runComparison(leftSource: CompareSource, rightSource: CompareSource): Promise<void> {
+        const result = await vscode.window.withProgress({
+            location: vscode.ProgressLocation.Notification,
+            title: localize('compare.progress.title', 'Comparing resources...'),
+            cancellable: false,
+        }, progress => compareService.compare(leftSource, rightSource, progress));
+
+        CompareResultsPanel.show(context.extensionUri, result);
+    }
 }
 
 	export function deactivate() {

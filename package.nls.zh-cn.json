@@ -18,6 +18,8 @@
     "command.mix.rename.title": "MIX: 重命名",
     "command.mix.delete.title": "MIX: 删除",
     "command.mix.saveAll.title": "MIX: 保存全部已修改归档",
+    "command.mix.compareWith.title": "MIX: 与其他源比较...",
+    "command.compareResources.title": "资源: 比较两个源",
     "command.showDebugInfo.title": "INI: 显示当前上下文调试信息",
     "command.configureSchemaPath.title": "INI: 设置 INI Dictionary 文件路径",
     "command.jumpToOverride.title": "INI: 跳转到覆盖的定义",

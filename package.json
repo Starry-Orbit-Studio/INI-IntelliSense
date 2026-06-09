@@ -169,6 +169,11 @@
           "when": "resourceExtname == .mix",
           "command": "ra2-ini-intellisense.mix.openAsWorkspaceInNewWindow",
           "group": "navigation@2"
+        },
+        {
+          "when": "resourceExtname == .mix",
+          "command": "ra2-ini-intellisense.mix.compareWith",
+          "group": "navigation@3"
         }
       ],
       "view/item/context": [
@@ -181,6 +186,11 @@
           "when": "view == mix-files && viewItem =~ /mixFile|mixEntryMixFile/",
           "command": "ra2-ini-intellisense.mix.openAsWorkspaceInNewWindow",
           "group": "navigation@2"
+        },
+        {
+          "when": "view == mix-files && viewItem =~ /mixFile|mixDirectory/",
+          "command": "ra2-ini-intellisense.mix.compareWith",
+          "group": "navigation@3"
         },
         {
           "when": "view == mix-files && viewItem =~ /mixFile|mixDirectory/",
@@ -280,6 +290,16 @@
       {
         "command": "ra2-ini-intellisense.mix.saveAll",
         "title": "%command.mix.saveAll.title%",
+        "category": "%command.category%"
+      },
+      {
+        "command": "ra2-ini-intellisense.mix.compareWith",
+        "title": "%command.mix.compareWith.title%",
+        "category": "%command.category%"
+      },
+      {
+        "command": "ra2-ini-intellisense.compareResources",
+        "title": "%command.compareResources.title%",
         "category": "%command.category%"
       },
       {
