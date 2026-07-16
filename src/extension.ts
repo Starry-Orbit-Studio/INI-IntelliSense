@@ -492,7 +492,7 @@ export async function activate(context: vscode.ExtensionContext) {
 	
 	registerExtractSuperclassCommand(iniManager);
 	registerRegisterIdCommand(iniManager, schemaManager);
-	registerFormattingCommands();
+	registerFormattingCommands(context);
 
 	context.subscriptions.push(vscode.commands.registerCommand('ra2-ini-intellisense.showMainQuickPick', async () => {
 		const config = vscode.workspace.getConfiguration('ra2-ini-intellisense');

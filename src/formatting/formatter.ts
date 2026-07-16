@@ -2,42 +2,16 @@ import * as vscode from 'vscode';
 import { localize } from '../i18n';
 
 /**
- * 注册格式化相关的命令。
- */
-export function registerFormattingCommands() {
-    vscode.commands.registerCommand('ra2-ini-intellisense.format.document', async () => {
-        const editor = vscode.window.activeTextEditor;
-        if (editor && editor.document.languageId === 'ra2-ini') {
-            const document = editor.document;
-            const lastLine = document.lineAt(document.lineCount - 1);
-            const fullRange = new vscode.Range(0, 0, lastLine.lineNumber, lastLine.range.end.character);
-            await formatRange(editor, fullRange);
-        }
-    });
-
-    vscode.commands.registerCommand('ra2-ini-intellisense.format.selection', async () => {
-        const editor = vscode.window.activeTextEditor;
-        if (editor && editor.document.languageId === 'ra2-ini') {
-            const range = editor.selection.isEmpty 
-                ? editor.document.lineAt(editor.selection.active.line).range 
-                : editor.selection;
-            await formatRange(editor, range);
-        }
-    });
-}
-
-/**
- * 格式化指定编辑器的指定范围。
- * @param editor 文本编辑器实例
+ * 计算 INI 文档指定范围内的格式化文本编辑。
+ * 该函数不直接应用编辑，仅返回 TextEdit 列表，可同时供命令和格式化 Provider 使用。
+ * @param document 文本文档
  * @param range 要格式化的范围
+ * @param config 诊断/格式化配置对象
+ * @returns 文本编辑列表
  */
-async function formatRange(editor: vscode.TextEditor, range: vscode.Range) {
-    const document = editor.document;
-    const edit = new vscode.WorkspaceEdit();
-    const config = vscode.workspace.getConfiguration('ra2-ini-intellisense.diagnostics');
-
+function computeFormatEdits(document: vscode.TextDocument, range: vscode.Range, config: vscode.WorkspaceConfiguration): vscode.TextEdit[] {
+    const edits: vscode.TextEdit[] = [];
     const startLine = range.start.line;
-    // 确保 endLine 不会超出文档范围
     const endLine = Math.min(range.end.line, document.lineCount - 1);
 
     for (let i = startLine; i <= endLine; i++) {
@@ -48,11 +22,11 @@ async function formatRange(editor: vscode.TextEditor, range: vscode.Range) {
         }
         const newText = formatLine(line.text, config);
         if (newText !== line.text) {
-            edit.replace(document.uri, line.range, newText);
+            edits.push(vscode.TextEdit.replace(line.range, newText));
         }
     }
 
-    await vscode.workspace.applyEdit(edit);
+    return edits;
 }
 
 /**
@@ -104,4 +78,72 @@ function formatLine(text: string, config: vscode.WorkspaceConfiguration): string
     const separator = typeof spacesBefore === 'number' ? ' '.repeat(spacesBefore) : ' ';
     
     return `${formattedCode}${separator}${formattedComment}`;
+}
+
+/**
+ * INI 文档格式化编辑 Provider，接入 VS Code 的格式化 API。
+ * 使 "Format Document" (Shift+Alt+F)、"Format Selection" 以及 "Format On Save" 可用。
+ */
+class IniFormattingEditProvider implements vscode.DocumentFormattingEditProvider, vscode.DocumentRangeFormattingEditProvider {
+    provideDocumentFormattingEdits(document: vscode.TextDocument): vscode.ProviderResult<vscode.TextEdit[]> {
+        const lastLine = document.lineAt(document.lineCount - 1);
+        const fullRange = new vscode.Range(0, 0, lastLine.lineNumber, lastLine.range.end.character);
+        const config = vscode.workspace.getConfiguration('ra2-ini-intellisense.diagnostics');
+        return computeFormatEdits(document, fullRange, config);
+    }
+
+    provideDocumentRangeFormattingEdits(document: vscode.TextDocument, range: vscode.Range): vscode.ProviderResult<vscode.TextEdit[]> {
+        const config = vscode.workspace.getConfiguration('ra2-ini-intellisense.diagnostics');
+        return computeFormatEdits(document, range, config);
+    }
+}
+
+/**
+ * 注册格式化相关的命令与格式化 Provider。
+ * @param context 扩展上下文，用于管理 Disposable 生命周期
+ */
+export function registerFormattingCommands(context: vscode.ExtensionContext) {
+    const selector: vscode.DocumentSelector = { scheme: 'file', language: 'ra2-ini' };
+    const provider = new IniFormattingEditProvider();
+
+    // 接入 VS Code 格式化 API，使 Format Document / Format Selection / Format On Save 生效
+    context.subscriptions.push(
+        vscode.languages.registerDocumentFormattingEditProvider(selector, provider)
+    );
+    context.subscriptions.push(
+        vscode.languages.registerDocumentRangeFormattingEditProvider(selector, provider)
+    );
+
+    // 同时保留为独立命令，便于从命令面板或键绑定显式调用
+    context.subscriptions.push(vscode.commands.registerCommand('ra2-ini-intellisense.format.document', async () => {
+        const editor = vscode.window.activeTextEditor;
+        if (editor && editor.document.languageId === 'ra2-ini') {
+            const document = editor.document;
+            const lastLine = document.lineAt(document.lineCount - 1);
+            const fullRange = new vscode.Range(0, 0, lastLine.lineNumber, lastLine.range.end.character);
+            const config = vscode.workspace.getConfiguration('ra2-ini-intellisense.diagnostics');
+            const edits = computeFormatEdits(document, fullRange, config);
+            if (edits.length > 0) {
+                const edit = new vscode.WorkspaceEdit();
+                edit.set(document.uri, edits);
+                await vscode.workspace.applyEdit(edit);
+            }
+        }
+    }));
+
+    context.subscriptions.push(vscode.commands.registerCommand('ra2-ini-intellisense.format.selection', async () => {
+        const editor = vscode.window.activeTextEditor;
+        if (editor && editor.document.languageId === 'ra2-ini') {
+            const range = editor.selection.isEmpty 
+                ? editor.document.lineAt(editor.selection.active.line).range 
+                : editor.selection;
+            const config = vscode.workspace.getConfiguration('ra2-ini-intellisense.diagnostics');
+            const edits = computeFormatEdits(editor.document, range, config);
+            if (edits.length > 0) {
+                const edit = new vscode.WorkspaceEdit();
+                edit.set(editor.document.uri, edits);
+                await vscode.workspace.applyEdit(edit);
+            }
+        }
+    }));
 }

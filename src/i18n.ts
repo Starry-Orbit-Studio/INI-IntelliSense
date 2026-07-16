@@ -48,20 +48,14 @@ export function initializeNls(context: ExtensionContext) {
 /**
  * 本地化一个字符串。
  * @param key 字符串的唯一键。
- * @param _message 默认的英文消息（只在提取时使用，运行时被忽略）。
+ * @param message 默认的英文消息。在 vscode-nls-dev 提取时作为来源；运行时当语言包中缺少该键时作为回退值。
  * @param args 用于替换占位符（如 {0}, {1}）的参数。
  */
-export function localize(key: string, _message: string, ...args: any[]): string {
-    const localized = messages[key];
-    
-    if (localized === undefined) {
-        // 如果在语言包中找不到对应的键，返回一个带 key 的特殊字符串。
-        // 这有助于在开发过程中快速发现丢失的翻译键。
-        return `!${key}!`;
-    }
+export function localize(key: string, message: string, ...args: any[]): string {
+    const text = messages[key] ?? message;
 
     // 处理占位符，例如 "{0}", "{1}"
-    return localized.replace(/\{(\d+)\}/g, (match, index) => {
+    return text.replace(/\{(\d+)\}/g, (match, index) => {
         const argIndex = parseInt(index, 10);
         return args[argIndex] !== undefined ? String(args[argIndex]) : match;
     });

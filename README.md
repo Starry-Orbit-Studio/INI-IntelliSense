@@ -76,23 +76,24 @@ You can use these codes in `ra2-ini-intellisense.diagnostics.severity` to custom
 
 | Code | Category | Description |
 | :--- | :--- | :--- |
-| **STYLE-101** | Style | Unnecessary leading whitespace at the beginning of the line. |
-| **STYLE-102** | Style | Extra spaces before the `=` sign. |
-| **STYLE-103** | Style | Extra spaces after the `=` sign. |
-| **STYLE-104** | Style | Incorrect number of spaces before a comment (`;`). |
-| **STYLE-105** | Style | Missing space after a comment (`;`). |
+| **S001** | Style | Unnecessary leading whitespace at the beginning of the line. |
+| **S002** | Style | Extra spaces before the `=` sign. |
+| **S003** | Style | Extra spaces after the `=` sign. |
+| **S004** | Style | Incorrect number of spaces before a comment (`;`). |
+| **S005** | Style | Missing space after a comment (`;`). |
 | | | |
-| **TYPE-201** | Type | Invalid integer value. |
-| **TYPE-202** | Type | Invalid floating-point value. |
-| **TYPE-203** | Type | Number out of range (min/max). |
-| **TYPE-204** | Type | Value not in allowed list (Enumeration). |
-| **TYPE-205** | Type | Value does not match required prefix. |
-| **TYPE-206** | Type | Value does not match required suffix. |
-| **TYPE-207** | Type | List has invalid length (too short/long). |
+| **T001** | Type | Invalid integer value. |
+| **T002** | Type | Invalid floating-point value. |
+| **T003** | Type | Number out of range (min/max). |
+| **T004** | Type | Value not in allowed list (Enumeration). |
+| **T005** | Type | Value does not match required prefix. |
+| **T006** | Type | Value does not match required suffix. |
+| **T007** | Type | List has invalid length (too short/long). |
 | | | |
-| **LOGIC-301** | Logic | Reference to an undefined section. |
-| **LOGIC-303** | Logic | Key has an empty value. |
-| **LOGIC-304** | Logic | Duplicate key in a registry list (e.g., `0=A`, `0=B`). |
+| **L001** | Logic | Reference to an undefined section. |
+| **L002** | Logic | Unregistered section in an ID list (currently inactive — reserved). |
+| **L003** | Logic | Key has an empty value. |
+| **L004** | Logic | Duplicate key in a registry list (e.g., `0=A`, `0=B`). |
 
 ## Settings
 You can configure this extension in detail in your VS Code `settings.json` file (`Ctrl+,`).
@@ -109,7 +110,7 @@ You can configure this extension in detail in your VS Code `settings.json` file 
 | `ra2-ini-intellisense.codeLens.enabled` | Shows CodeLens (reference counts) above sections. | `true` |
 | | |
 | `ra2-ini-intellisense.diagnostics.enabled` | Enables all built-in diagnostic checks. | `true` |
-| `ra2-ini-intellisense.diagnostics.severity` | Customize severity for specific error codes (e.g. `{"STYLE-101": "Information"}`). | `{}` |
+| `ra2-ini-intellisense.diagnostics.severity` | Customize severity for specific error codes (e.g. `{"S001": "Information"}`). | `{}` |
 | `ra2-ini-intellisense.diagnostics.spacesBeforeComment` | The number of spaces required before a `;` comment symbol. Set to `null` to disable. | `1` |
 | | |
 | `ra2-ini-intellisense.exePath` | Absolute path to `INIValidator.exe`. | `null` |

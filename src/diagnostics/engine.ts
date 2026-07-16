@@ -91,7 +91,11 @@ export class DiagnosticManager implements vscode.Disposable {
      * 核心：分析指定范围内的行
      * 这是局部计算，速度极快。
      */
-    private analyzeRanges(document: vscode.TextDocument, ranges: readonly vscode.Range[]) {
+    private analyzeRanges(
+        document: vscode.TextDocument,
+        ranges: readonly vscode.Range[],
+        tracker: { sectionName: string | null; seenRegistryKeys: Set<string> } = { sectionName: null, seenRegistryKeys: new Set<string>() }
+    ) {
         const uriKey = document.uri.toString();
         let lineCache = this.fileCache.get(uriKey);
         if (!lineCache) {
@@ -137,6 +141,13 @@ export class DiagnosticManager implements vscode.Disposable {
                 const codePart = commentIndex === -1 ? line.text : line.text.substring(0, commentIndex);
                 const commentPart = commentIndex === -1 ? null : line.text.substring(commentIndex);
 
+                // 跟踪当前节：节切换时重置已见键集合，使重复注册键检测可在同一节内跨行累积
+                const sectionName = sectionContext.name;
+                if (sectionName !== tracker.sectionName) {
+                    tracker.seenRegistryKeys.clear();
+                    tracker.sectionName = sectionName;
+                }
+
                 const lineContext = {
                     ...contextBase,
                     line,
@@ -144,7 +155,7 @@ export class DiagnosticManager implements vscode.Disposable {
                     codePart,
                     commentPart,
                     currentSection: sectionContext,
-                    seenRegistryKeys: new Set<string>() // 局部检查难以做完整的重复键检查，暂时置空或仅检查当行
+                    seenRegistryKeys: tracker.seenRegistryKeys
                 };
 
                 // 运行规则
@@ -236,10 +247,12 @@ export class DiagnosticManager implements vscode.Disposable {
      */
     private async analyzeRangesBatched(document: vscode.TextDocument) {
         const chunkSize = 500;
+        // 共享同一个 tracker，使跨 chunk 的同一节内重复键检测保持连续
+        const tracker = { sectionName: null as string | null, seenRegistryKeys: new Set<string>() };
         for (let i = 0; i < document.lineCount; i += chunkSize) {
             const end = Math.min(i + chunkSize - 1, document.lineCount - 1);
             const range = new vscode.Range(i, 0, end, 0);
-            this.analyzeRanges(document, [range]);
+            this.analyzeRanges(document, [range], tracker);
             
             // 让出主线程
             await new Promise(resolve => setTimeout(resolve, 0));
