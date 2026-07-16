@@ -3,6 +3,7 @@
   "displayName": "%extension.displayName%",
   "publisher": "Astralette",
   "description": "%extension.description%",
+  "icon": "assets/icon.png",
   "repository": {
     "type": "git",
     "url": "https://github.com/Super-StarX/INI-IntelliSense.git"
@@ -360,7 +361,7 @@
       {
         "command": "ra2-ini-intellisense.refactor.extractSuperclass",
         "title": "%command.extractSuperclass.title%",
-        "category": "%command.category%.refactor"
+        "category": "%command.category.refactor%"
       },
       {
         "command": "ra2-ini-intellisense.format.selection",
