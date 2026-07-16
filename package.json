@@ -17,7 +17,22 @@
     "onCustomEditor:ra2-resource-preview.viewer"
   ],
   "categories": [
+    "Programming Languages",
     "Other"
+  ],
+  "keywords": [
+    "ra2",
+    "red alert 2",
+    "yuri's revenge",
+    "ini",
+    "intellisense",
+    "modding",
+    "mix",
+    "csf",
+    "shp",
+    "vxl",
+    "hva",
+    "westwood"
   ],
   "main": "./dist/extension.js",
   "contributes": {

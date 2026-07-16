@@ -6,10 +6,6 @@ All notable changes to the "ra2-ini-intellisense" extension will be documented i
 
 Check [Keep a Changelog](http://keepachangelog.com/) for recommendations on how to structure this file.
 
-## [Unreleased]
-
-- 暂无未发布变更。
-
 ## [0.0.4] - 2026-06-09
 
 - 新增 `.llf` 语言支持，提供标签、值、注释和多行续行内容的专用语法高亮。

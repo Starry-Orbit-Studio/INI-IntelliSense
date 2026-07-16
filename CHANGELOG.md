@@ -6,10 +6,6 @@ All notable changes to the "ra2-ini-intellisense" extension will be documented i
 
 Check [Keep a Changelog](http://keepachangelog.com/) for recommendations on how to structure this file.
 
-## [Unreleased]
-
-- No unreleased changes yet.
-
 ## [0.0.4] - 2026-06-09
 
 - Added LLF language support with its own grammar and token colors for labels, values, comments, and multiline continuations.
