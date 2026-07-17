@@ -35,7 +35,7 @@ function computeFormatEdits(document: vscode.TextDocument, range: vscode.Range, 
  * @param config 配置对象
  * @returns 格式化后的行文本
  */
-function formatLine(text: string, config: vscode.WorkspaceConfiguration): string {
+export function formatLine(text: string, config: vscode.WorkspaceConfiguration): string {
     // 1. 将行分解为代码部分和注释部分
     const commentIndex = text.indexOf(';');
     const codePart = commentIndex === -1 ? text : text.substring(0, commentIndex);

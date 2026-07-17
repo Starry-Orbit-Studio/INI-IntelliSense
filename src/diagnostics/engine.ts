@@ -114,8 +114,7 @@ export class DiagnosticManager implements vscode.Disposable {
             iniManager: this.iniManager,
             config,
             disabledErrorCodes: this.getDisabledCodes(config),
-            severityOverrides: this.getSeverityOverrides(config),
-            outputChannel: undefined as any // 暂时不需要输出通道
+            severityOverrides: this.getSeverityOverrides(config)
         };
 
         // 获取文档对应的 INI Document Model，用于快速查找 Section

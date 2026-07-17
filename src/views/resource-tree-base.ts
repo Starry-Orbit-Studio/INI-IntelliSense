@@ -1,6 +1,7 @@
 import * as vscode from 'vscode';
 import { ResourceNode } from '../resources/resource-node';
 import { ResourceService } from '../resources/resource-service';
+import { localize } from '../i18n';
 
 export abstract class ResourceTreeBase implements vscode.TreeDataProvider<ResourceNode> {
     private readonly changeEmitter = new vscode.EventEmitter<ResourceNode | undefined | null | void>();
@@ -50,7 +51,7 @@ export abstract class ResourceTreeBase implements vscode.TreeDataProvider<Resour
         if (isPreviewableResource(element)) {
             return {
                 command: 'vscode.openWith',
-                title: 'Preview',
+                title: localize('resourceTree.command.preview', 'Preview'),
                 arguments: [element.uri, 'ra2-resource-preview.viewer'],
             };
         }
@@ -58,7 +59,7 @@ export abstract class ResourceTreeBase implements vscode.TreeDataProvider<Resour
         if (element.kind === 'iniFile' || element.kind === 'mixEntryFile' || element.kind === 'unknownFile') {
             return {
                 command: 'vscode.open',
-                title: 'Open',
+                title: localize('resourceTree.command.open', 'Open'),
                 arguments: [element.uri],
             };
         }

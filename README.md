@@ -15,7 +15,7 @@ Going beyond traditional static syntax files, this extension provides more accur
 - **Semantic Colors Enabled by Default**: The extension ships with semantic token defaults for RA2 INI files and dedicated token colors for `.llf` resources.
 
 ### 2. Schema-Driven IntelliSense
-The core capabilities of this extension are driven by a configurable rule file (`INICodingCheck.ini`), providing unparalleled contextual awareness.
+The core capabilities of this extension are driven by a configurable rule file (`INIDictionary.ini`), providing unparalleled contextual awareness.
 - **Auto-Completion**:
     - **Keys**: Intelligently suggests all available keys based on the current section's type (including inheritance).
     - **Values**: Provides completion for boolean values (`yes`/`no`), colors, and all IDs registered in `[Registries]` (e.g., unit, building, weapon names).
@@ -63,7 +63,7 @@ The core capabilities of this extension are driven by a configurable rule file (
 5. Reload VS Code.
 
 ### Initial Setup
-To get full IntelliSense and diagnostics, you need to configure the dictionary file (`INICodingCheck.ini`) and your Mod root directory.
+To get full IntelliSense and diagnostics, you need to configure the dictionary file (`INIDictionary.ini`) and your Mod root directory.
 1. The extension will prompt you with a **Setup Wizard** upon first activation.
 2. You can also click the `$(rocket) INI: Show Setup Guide` command or use the status bar menu to reopen the wizard.
 3. The wizard helps you download the official dictionary (with latest Ares/Phobos support) and set up your workspace paths automatically.
@@ -95,12 +95,32 @@ You can use these codes in `ra2-ini-intellisense.diagnostics.severity` to custom
 | **L003** | Logic | Key has an empty value. |
 | **L004** | Logic | Duplicate key in a registry list (e.g., `0=A`, `0=B`). |
 
+## Commands
+
+| Command | Title | Description |
+| :--- | :--- | :--- |
+| `ra2-ini-intellisense.showMainQuickPick` | INI: Show Main Menu | Opens the main quick-pick menu for all extension actions. |
+| `ra2-ini-intellisense.showWelcomePage` | INI: Show Setup Guide | Reopens the first-time configuration wizard. |
+| `ra2-ini-intellisense.configureSchemaPath` | INI: Set INI Dictionary File Path | Sets the path to the INI Dictionary file. |
+| `ra2-ini-intellisense.format.document` | Format Document | Formats the active INI document (also via `Shift+Alt+F`). |
+| `ra2-ini-intellisense.format.selection` | Format Selection/Line | Formats the selected lines or the current line. |
+| `ra2-ini-intellisense.refactor.extractSuperclass` | Extract Superclass... | Extracts common key-value pairs into a new parent section. |
+| `ra2-ini-intellisense.registerSectionContext` | Register Section ID to... | Registers the current section into an ID list registry. |
+| `ra2-ini-intellisense.jumpToOverride` | INI: Go to Overridden Definition | Jumps to the parent definition of an overridden key. |
+| `ra2-ini-intellisense.manageValidator` | INI: Manage INI Validator | Opens the INIValidator configuration panel. |
+| `ra2-ini-intellisense.runValidator` | INI: Run INI Validator | Runs INIValidator on the configured validation files. |
+| `ra2-ini-intellisense.compareResources` | Resources: Compare Two Sources | Compares two MIX archives or folders recursively. |
+| `ra2-ini-intellisense.showDebugInfo` | INI: Show Current Context Debug Info | Shows diagnostic info about the current cursor context. |
+| `ra2-ini-intellisense.refreshIniFiles` | Refresh INI Files | Refreshes the INI Files tree view. |
+| `ra2-ini-intellisense.refreshMixFiles` | Refresh MIX Files | Refreshes the MIX Files tree view. |
+| `ra2-ini-intellisense.refreshCsfOutline` | Refresh CSF Outline | Refreshes the CSF Outline tree view. |
+
 ## Settings
 You can configure this extension in detail in your VS Code `settings.json` file (`Ctrl+,`).
 
 | Setting | Description | Default |
 | :--- | :--- | :--- |
-| **`ra2-ini-intellisense.schemaFilePath`** | Absolute path to the INI rule definition file (`INICodingCheck.ini`). This is the core of the IntelliSense. | `null` |
+| **`ra2-ini-intellisense.schemaFilePath`** | Absolute path to the INI rule definition file (`INIDictionary.ini`). This is the core of the IntelliSense. | `null` |
 | **`ra2-ini-intellisense.validationFolderPath`** | Root directory for `INIValidator.exe` and file indexing (usually your Mod's root directory). | `null` |
 | | |
 | `ra2-ini-intellisense.indexing.fileCategories` | Defines file categories (e.g., Rules, Art) and their corresponding Glob patterns. Used for context-aware IntelliSense. | `{ "rules": ["rules*.ini"], ... }` |
@@ -111,10 +131,17 @@ You can configure this extension in detail in your VS Code `settings.json` file 
 | | |
 | `ra2-ini-intellisense.diagnostics.enabled` | Enables all built-in diagnostic checks. | `true` |
 | `ra2-ini-intellisense.diagnostics.severity` | Customize severity for specific error codes (e.g. `{"S001": "Information"}`). | `{}` |
+| `ra2-ini-intellisense.diagnostics.spaceBeforeEquals` | Check and warn about extra spaces before `=`. | `true` |
+| `ra2-ini-intellisense.diagnostics.spaceAfterEquals` | Check and warn about extra spaces after `=`. | `true` |
+| `ra2-ini-intellisense.diagnostics.leadingWhitespace` | Check and warn about unnecessary leading whitespace on lines. | `true` |
+| `ra2-ini-intellisense.diagnostics.spaceAfterComment` | Check and warn about missing space after `;`. | `true` |
 | `ra2-ini-intellisense.diagnostics.spacesBeforeComment` | The number of spaces required before a `;` comment symbol. Set to `null` to disable. | `1` |
 | | |
 | `ra2-ini-intellisense.exePath` | Absolute path to `INIValidator.exe`. | `null` |
 | `ra2-ini-intellisense.validationFiles` | List of files for `INIValidator.exe` to check. | `{...}` |
+| `ra2-ini-intellisense.iniValidator.downloadUrl` | Download page URL for INIValidator. Override if the default mirror is inaccessible. | `"https://..."` |
+| `ra2-ini-intellisense.dontAskToConfigureValidator` | Suppress the startup prompt to configure INIValidator. | `false` |
+| `ra2-ini-intellisense.dontAskToConfigureProject` | Suppress the startup prompt to configure the project. | `false` |
 
 Semantic colors for RA2 INI tokens and the default TextMate colors for `.llf` can also be overridden through VS Code's standard `editor.semanticTokenColorCustomizations` and `editor.tokenColorCustomizations` settings.
 

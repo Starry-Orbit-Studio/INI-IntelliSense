@@ -75,12 +75,6 @@ export class OverrideDecorator implements vscode.Disposable {
         if (!this.isEnabled || !editor) {
             return;
         }
-        
-        // 如果传入的是 URI（兼容旧调用），找到对应的编辑器
-        if (editor instanceof vscode.Uri) {
-             const found = vscode.window.visibleTextEditors.find(e => e.document.uri.toString() === (editor as any).toString());
-             if (found) { editor = found; } else { return; }
-        }
 
         if (this.timeout) {
             clearTimeout(this.timeout);

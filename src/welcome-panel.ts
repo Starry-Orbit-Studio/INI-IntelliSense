@@ -27,7 +27,7 @@ export class WelcomePanel {
 
         const panel = vscode.window.createWebviewPanel(
             WelcomePanel.viewType,
-            'INI IntelliSense 设置向导',
+            'INI IntelliSense ' + localize('welcome.panel.title', 'Setup Wizard'),
             column || vscode.ViewColumn.One,
             {
                 enableScripts: true,
@@ -87,7 +87,7 @@ export class WelcomePanel {
                         valueToUpdate = JSON.parse(value);
                     } catch (e) {
                         // 如果 JSON 解析失败，暂时不更新或提示错误（Webview端已有校验更好，这里做兜底）
-                        vscode.window.showErrorMessage("Invalid JSON format for File Categories.");
+                        vscode.window.showErrorMessage(localize('welcome.error.invalidJson', 'Invalid JSON format for File Categories.'));
                         return;
                     }
                 }
@@ -130,7 +130,7 @@ export class WelcomePanel {
             if (vscode.workspace.workspaceFolders && vscode.workspace.workspaceFolders.length > 0) {
                 folderPath = vscode.workspace.workspaceFolders[0].uri.fsPath;
             } else {
-                vscode.window.showErrorMessage("当前没有打开的文件夹。请手动选择。");
+                vscode.window.showErrorMessage(localize('welcome.error.noWorkspace', 'No folder is currently open. Please select manually.'));
                 this._panel.webview.postMessage({ command: 'pathSelectionFailed' });
                 return;
             }
@@ -139,7 +139,7 @@ export class WelcomePanel {
                 canSelectFiles: false,
                 canSelectFolders: true,
                 canSelectMany: false,
-                openLabel: '选择 Mod 根目录'
+                openLabel: localize('welcome.dialog.selectModRoot', 'Select Mod Root Directory')
             };
             const folderUri = await vscode.window.showOpenDialog(options);
             if (folderUri && folderUri[0]) {
@@ -157,8 +157,8 @@ export class WelcomePanel {
     private async selectDictionary() {
         const options: vscode.OpenDialogOptions = {
             canSelectMany: false,
-            openLabel: '选择 INI Dictionary 文件',
-            filters: { 'INI 文件': ['ini'] }
+            openLabel: localize('welcome.dialog.selectDictionary', 'Select INI Dictionary File'),
+            filters: { [localize('welcome.dialog.iniFilter', 'INI Files')]: ['ini'] }
         };
         const fileUri = await vscode.window.showOpenDialog(options);
         if (fileUri && fileUri[0]) {

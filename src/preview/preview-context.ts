@@ -3,7 +3,6 @@ import * as vscode from 'vscode';
 import { INIManager } from '../parser';
 import { localize } from '../i18n';
 import { MixUriCodec } from '../mix/fs/mix-uri-codec';
-import { decodeLocalText } from '../mix/core/local-encoding';
 import { PaletteColor, createGrayscalePalette, readPalette } from './palette-utils';
 
 interface ResourceEntry {
@@ -415,16 +414,4 @@ function parentDirectoryUri(uri: vscode.Uri): vscode.Uri {
 
 function basenameWithoutExtension(uri: vscode.Uri): string {
     return path.posix.basename(uri.path, path.posix.extname(uri.path));
-}
-
-export function decodeIniBytes(bytes: Uint8Array): string {
-    if (bytes[0] === 0xef && bytes[1] === 0xbb && bytes[2] === 0xbf) {
-        return new TextDecoder('utf-8').decode(bytes.slice(3));
-    }
-
-    try {
-        return new TextDecoder('utf-8', { fatal: true }).decode(bytes);
-    } catch {
-        return decodeLocalText(bytes);
-    }
 }

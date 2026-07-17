@@ -7,7 +7,6 @@ import * as fs from 'fs/promises';
 import { localize } from './i18n';
 
 type ValidatorStatus = 'ready' | 'invalid' | 'unconfigured';
-const DOWNLOAD_URL = 'https://www.bilibili.com/opus/1022686010171981842';
 const CONFIG_SECTION = 'ra2-ini-intellisense';
 const CONFIG_KEY_EXE_PATH = 'ra2-ini-intellisense.exePath';
 const CONFIG_KEY_FOLDER_PATH = 'ra2-ini-intellisense.validationFolderPath';
@@ -51,6 +50,14 @@ export class INIValidatorExt {
 
         await this.validatePath();
         // this.promptIfUnconfigured();
+    }
+
+    /**
+     * 获取 INIValidator 的下载页面 URL（可由用户在配置中覆盖）。
+     */
+    private getDownloadUrl(): string {
+        return vscode.workspace.getConfiguration(CONFIG_SECTION).get<string>('iniValidator.downloadUrl')
+            || 'https://www.bilibili.com/opus/1022686010171981842';
     }
 
     /**
@@ -192,7 +199,7 @@ export class INIValidatorExt {
         } else if (selection.label.startsWith('$(play)')) {
             vscode.commands.executeCommand('ra2-ini-intellisense.runValidator');
         } else if (selection.label.startsWith('$(cloud-download)')) {
-            vscode.env.openExternal(vscode.Uri.parse(DOWNLOAD_URL));
+            vscode.env.openExternal(vscode.Uri.parse(this.getDownloadUrl()));
         } else if (selection.label.startsWith('$(settings)')) {
             vscode.commands.executeCommand('workbench.action.openSettings', CONFIG_SECTION);
         }
@@ -247,7 +254,7 @@ export class INIValidatorExt {
             if (selection === configureAction) {
                 this.promptToSelectExePath();
             } else if (selection === downloadAction) {
-                vscode.env.openExternal(vscode.Uri.parse(DOWNLOAD_URL));
+                vscode.env.openExternal(vscode.Uri.parse(this.getDownloadUrl()));
             } else if (selection === dontAskAction) {
                 await config.update('dontAskToConfigureValidator', true, vscode.ConfigurationTarget.Workspace);
             }

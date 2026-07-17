@@ -15,7 +15,7 @@
 - **默认启用语义着色**: 为 RA2 INI 提供开箱即用的语义 Token 配色，并为 `.llf` 资源提供专门的高亮规则。
 
 ### 2. Schema 驱动的智能感知 (Schema-Driven IntelliSense)
-本扩展的核心能力由一个可配置的规则文件 (`INICodingCheck.ini`) 驱动，提供无与伦比的上下文感知能力。
+本扩展的核心能力由一个可配置的规则文件 (`INIDictionary.ini`) 驱动，提供无与伦比的上下文感知能力。
 - **代码自动补全 (Auto-Completion)**:
     - **键 (Keys)**: 根据当前节的类型（包含继承），智能提示所有可用的键。
     - **值 (Values)**: 为布尔值 (`yes`/`no`)、颜色、以及所有在 `[Registries]` 中注册的ID（如单位、建筑、武器名等）提供补全。
@@ -63,7 +63,7 @@
 5. 重新加载 VS Code。
 
 ### 初始配置 (Initial Setup)
-为了获得完整的智能提示和诊断功能，您需要配置 Schema 文件 (`INICodingCheck.ini`) 和 Mod 根目录。
+为了获得完整的智能提示和诊断功能，您需要配置 Schema 文件 (`INIDictionary.ini`) 和 Mod 根目录。
 1. 插件首次激活时会自动弹出 **设置向导 (Setup Wizard)**。
 2. 您也可以点击状态栏的 `$(rocket) INI: 显示设置向导` 或使用命令重新打开它。
 3. 向导将帮助您一键下载包含最新 Ares/Phobos 支持的官方字典，并自动识别您的工作区路径。
@@ -95,12 +95,32 @@
 | **L003** | 逻辑 | 键的值为空。 |
 | **L004** | 逻辑 | 注册表列表中存在重复的键 (例如 `0=A`, `0=B`)。 |
 
+## 命令 (Commands)
+
+| 命令 (Command) | 标题 (Title) | 描述 (Description) |
+| :--- | :--- | :--- |
+| `ra2-ini-intellisense.showMainQuickPick` | INI: Show Main Menu | 打开主菜单，包含所有扩展操作。 |
+| `ra2-ini-intellisense.showWelcomePage` | INI: Show Setup Guide | 重新打开首次配置向导。 |
+| `ra2-ini-intellisense.configureSchemaPath` | INI: Set INI Dictionary File Path | 设置 INI Dictionary 文件路径。 |
+| `ra2-ini-intellisense.format.document` | Format Document | 格式化当前 INI 文档（也可用 `Shift+Alt+F`）。 |
+| `ra2-ini-intellisense.format.selection` | Format Selection/Line | 格式化选中的行或当前行。 |
+| `ra2-ini-intellisense.refactor.extractSuperclass` | Extract Superclass... | 将共同的键值对提取到新的父节中。 |
+| `ra2-ini-intellisense.registerSectionContext` | Register Section ID to... | 将当前节注册到 ID 列表中。 |
+| `ra2-ini-intellisense.jumpToOverride` | INI: Go to Overridden Definition | 跳转到被覆盖键的父定义。 |
+| `ra2-ini-intellisense.manageValidator` | INI: Manage INI Validator | 打开 INIValidator 配置面板。 |
+| `ra2-ini-intellisense.runValidator` | INI: Run INI Validator | 对配置的校验文件运行 INIValidator。 |
+| `ra2-ini-intellisense.compareResources` | Resources: Compare Two Sources | 递归比较两个 MIX 存档或文件夹。 |
+| `ra2-ini-intellisense.showDebugInfo` | INI: Show Current Context Debug Info | 显示当前光标上下文的调试信息。 |
+| `ra2-ini-intellisense.refreshIniFiles` | Refresh INI Files | 刷新 INI 文件树视图。 |
+| `ra2-ini-intellisense.refreshMixFiles` | Refresh MIX Files | 刷新 MIX 文件树视图。 |
+| `ra2-ini-intellisense.refreshCsfOutline` | Refresh CSF Outline | 刷新 CSF 大纲树视图。 |
+
 ## 详细配置项 (Settings)
 您可以在 VS Code 的 `settings.json` 文件中对本插件进行详细配置 (`Ctrl+,`)。
 
 | 设置 (Setting) | 描述 (Description) | 默认值 (Default) |
 | :--- | :--- | :--- |
-| **`ra2-ini-intellisense.schemaFilePath`** | INI 规则定义文件 (`INICodingCheck.ini`) 的绝对路径。这是智能感知的核心。 | `null` |
+| **`ra2-ini-intellisense.schemaFilePath`** | INI 规则定义文件 (`INIDictionary.ini`) 的绝对路径。这是智能感知的核心。 | `null` |
 | **`ra2-ini-intellisense.validationFolderPath`** | `INIValidator.exe` 和文件索引的根目录（通常是您的Mod根目录）。 | `null` |
 | | |
 | `ra2-ini-intellisense.indexing.fileCategories` | 定义文件分类（如 Rules, Art）及其对应的 Glob 模式。用于提供上下文感知的智能提示。 | `{ "rules": ["rules*.ini"], ... }` |
@@ -111,10 +131,17 @@
 | | |
 | `ra2-ini-intellisense.diagnostics.enabled` | 是否启用所有内置的诊断检查。 | `true` |
 | `ra2-ini-intellisense.diagnostics.severity` | 自定义特定错误码的等级（如 `{"S001": "Information"}`）。 | `{}` |
+| `ra2-ini-intellisense.diagnostics.spaceBeforeEquals` | 检查 `=` 前的多余空格。 | `true` |
+| `ra2-ini-intellisense.diagnostics.spaceAfterEquals` | 检查 `=` 后的多余空格。 | `true` |
+| `ra2-ini-intellisense.diagnostics.leadingWhitespace` | 检查行首不必要的空白字符。 | `true` |
+| `ra2-ini-intellisense.diagnostics.spaceAfterComment` | 检查 `;` 后缺少空格的情况。 | `true` |
 | `ra2-ini-intellisense.diagnostics.spacesBeforeComment` | 注释符号 `;` 前应有的空格数。设为 `null` 可禁用。 | `1` |
 | | |
 | `ra2-ini-intellisense.exePath` | `INIValidator.exe` 的绝对路径。 | `null` |
 | `ra2-ini-intellisense.validationFiles` | `INIValidator.exe` 需要校验的文件列表。 | `{...}` |
+| `ra2-ini-intellisense.iniValidator.downloadUrl` | INIValidator 下载页面 URL。如果默认镜像无法访问可在此覆盖。 | `"https://..."` |
+| `ra2-ini-intellisense.dontAskToConfigureValidator` | 抑制启动时配置 INIValidator 的提示。 | `false` |
+| `ra2-ini-intellisense.dontAskToConfigureProject` | 抑制启动时配置项目的提示。 | `false` |
 
 RA2 INI 的语义着色，以及 `.llf` 的默认 TextMate 配色，也可以通过 VS Code 标准的 `editor.semanticTokenColorCustomizations` 与 `editor.tokenColorCustomizations` 进一步覆盖。
 

@@ -329,6 +329,11 @@
         "category": "%command.category%"
       },
       {
+        "command": "ra2-ini-intellisense.runValidator",
+        "title": "%command.runValidator.title%",
+        "category": "%command.category%"
+      },
+      {
         "command": "ra2-ini-intellisense.refreshCsfOutline",
         "title": "%command.refreshCsfOutline.title%",
         "icon": "$(refresh)"
@@ -510,6 +515,11 @@
             "type": "string",
             "enum": ["Error", "Warning", "Information", "Hint", "None"]
           }
+        },
+        "ra2-ini-intellisense.iniValidator.downloadUrl": {
+          "type": "string",
+          "default": "https://www.bilibili.com/opus/1022686010171981842",
+          "description": "%configuration.properties.iniValidator.downloadUrl.description%"
         }
       }
     },

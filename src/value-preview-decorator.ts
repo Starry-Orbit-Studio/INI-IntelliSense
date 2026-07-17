@@ -8,6 +8,9 @@ import { CsfManager } from './csf-manager';
  * 采用高性能的视口扫描机制，支持未来扩展更多类型（如 CSF 预览）。
  */
 export class ValuePreviewDecorator implements vscode.Disposable {
+    /** CSF 预览文本的最大显示长度（含省略号），超过则截断 */
+    private static readonly CSF_PREVIEW_MAX_LENGTH = 30;
+
     // 预定义装饰器样式：灰色、不可选中、右侧显示
     private boolTrueDecoration = vscode.window.createTextEditorDecorationType({
         after: { 
@@ -138,8 +141,8 @@ export class ValuePreviewDecorator implements vscode.Disposable {
                             if (csfVal) {
                                 // 截断过长的文本，避免干扰布局
                                 let displayText = csfVal.value.replace(/\r?\n/g, ' ');
-                                if (displayText.length > 30) {
-                                    displayText = displayText.substring(0, 27) + '...';
+                                if (displayText.length > ValuePreviewDecorator.CSF_PREVIEW_MAX_LENGTH) {
+                                    displayText = displayText.substring(0, ValuePreviewDecorator.CSF_PREVIEW_MAX_LENGTH - 3) + '...';
                                 }
                                 csfDecorations.push({
                                     range: valueRange,

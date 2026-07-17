@@ -14,7 +14,6 @@ export interface DiagnosticContext {
     config: vscode.WorkspaceConfiguration;
     disabledErrorCodes: Set<string>;
     severityOverrides: Map<string, vscode.DiagnosticSeverity | null>;
-    outputChannel: vscode.OutputChannel;
 }
 
 /**

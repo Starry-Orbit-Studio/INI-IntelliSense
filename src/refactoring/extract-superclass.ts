@@ -5,8 +5,8 @@ import { localize } from '../i18n';
 /**
  * 注册并实现 "提取超类" 的重构命令。
  */
-export function registerExtractSuperclassCommand(iniManager: INIManager) {
-    vscode.commands.registerCommand('ra2-ini-intellisense.refactor.extractSuperclass', async (contextUri?: vscode.Uri, contextPosition?: vscode.Position) => {
+export function registerExtractSuperclassCommand(iniManager: INIManager, context: vscode.ExtensionContext) {
+    context.subscriptions.push(vscode.commands.registerCommand('ra2-ini-intellisense.refactor.extractSuperclass', async (contextUri?: vscode.Uri, contextPosition?: vscode.Position) => {
         const activeEditor = vscode.window.activeTextEditor;
         if (!activeEditor || activeEditor.document.languageId !== 'ra2-ini') {
             vscode.window.showWarningMessage(localize('refactor.error.noIniFile', 'Please open an INI file to use this refactoring command.'));
@@ -59,7 +59,7 @@ export function registerExtractSuperclassCommand(iniManager: INIManager) {
         // 4. 让用户输入新超类的名称
         const newSuperclassName = await vscode.window.showInputBox({
             prompt: localize('refactor.extract.newClassName.prompt', 'Enter the name for the new superclass'),
-            placeHolder: 'e.g., BaseVehicle',
+            placeHolder: localize('refactor.extract.newClassName.placeholder', 'e.g., BaseVehicle'),
             validateInput: text => {
                 return text.match(/^[a-zA-Z0-9_]+$/) ? null : localize('refactor.extract.newClassName.validation', 'Invalid name. Use letters, numbers, and underscores only.');
             }
@@ -112,7 +112,7 @@ export function registerExtractSuperclassCommand(iniManager: INIManager) {
 
         await vscode.workspace.applyEdit(edit);
         vscode.window.showInformationMessage(localize('refactor.extract.success', 'Successfully extracted superclass "[{0}]".', newSuperclassName));
-    });
+    }));
 }
 
 function findCommonProperties(sections: string[], iniManager: INIManager): Map<string, string> {

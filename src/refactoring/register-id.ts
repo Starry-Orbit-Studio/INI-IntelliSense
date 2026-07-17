@@ -6,8 +6,8 @@ import { localize } from '../i18n';
 /**
  * 注册 "注册节 ID 到..." 的上下文菜单命令。
  */
-export function registerRegisterIdCommand(iniManager: INIManager, schemaManager: SchemaManager) {
-    vscode.commands.registerCommand('ra2-ini-intellisense.registerSectionContext', async (contextUri?: vscode.Uri, contextPosition?: vscode.Position) => {
+export function registerRegisterIdCommand(iniManager: INIManager, schemaManager: SchemaManager, context: vscode.ExtensionContext) {
+    context.subscriptions.push(vscode.commands.registerCommand('ra2-ini-intellisense.registerSectionContext', async (contextUri?: vscode.Uri, contextPosition?: vscode.Position) => {
         const editor = vscode.window.activeTextEditor;
         if (!editor) {return;}
 
@@ -65,5 +65,5 @@ export function registerRegisterIdCommand(iniManager: INIManager, schemaManager:
         
         await vscode.workspace.applyEdit(edit);
         vscode.window.showInformationMessage(localize('codeaction.registerSection.success', 'Successfully registered "[{0}]" in "[{1}]" with index {2}.', sectionName, selectedRegistry, newIndex));
-    });
+    }));
 }

@@ -103,7 +103,7 @@ export class CsfOutlineProvider implements vscode.TreeDataProvider<CsfOutlineIte
                     labelCount > 0 ? vscode.TreeItemCollapsibleState.Collapsed : vscode.TreeItemCollapsibleState.None,
                     {
                         filePath,
-                        description: `(${labelCount} labels)`,
+                        description: localize('csfOutline.fileItemDescription', '({0} labels)', labelCount),
                         tooltip: filePath
                     }
                 );

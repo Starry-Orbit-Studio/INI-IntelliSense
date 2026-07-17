@@ -92,7 +92,7 @@ export class INIOutlineProvider implements vscode.TreeDataProvider<OutlineItem> 
                 .map(doc => doc.uri)
                 .filter(uri => uri.scheme === 'file')
                 .map(uri => uri.fsPath)
-                .filter(p => !p.includes('INIConfigCheck.ini')); 
+                .filter(p => !p.includes('INIDictionary.ini')); 
 
             const tree = this.buildFileTree(fileUris);
             return this.createTreeItemsFromNode(tree, vscode.workspace.workspaceFolders[0].uri.fsPath);

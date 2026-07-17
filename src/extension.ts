@@ -490,8 +490,8 @@ export async function activate(context: vscode.ExtensionContext) {
 		WelcomePanel.createOrShow(context);
 	}));
 	
-	registerExtractSuperclassCommand(iniManager);
-	registerRegisterIdCommand(iniManager, schemaManager);
+	registerExtractSuperclassCommand(iniManager, context);
+	registerRegisterIdCommand(iniManager, schemaManager, context);
 	registerFormattingCommands(context);
 
 	context.subscriptions.push(vscode.commands.registerCommand('ra2-ini-intellisense.showMainQuickPick', async () => {
@@ -516,37 +516,45 @@ export async function activate(context: vscode.ExtensionContext) {
         }
         const validatorDesc = localize('mainMenu.description.validatorStatus', 'Status: {0}', validatorStatusText);
 
-		const items: vscode.QuickPickItem[] = [
-			{ label: "$(rocket) 显示设置向导", description: "重新打开首次配置页面" },
-			{ label: "$(folder) 设置Mod根目录...", description: modPathDesc },
-			{ label: "$(book) 设置INI Dictionary文件...", description: dictPathDesc },
-			{ label: "$(bug) 管理INI Validator...", description: validatorDesc },
-            { label: "$(git-compare) 比较资源源...", description: localize('mainMenu.description.compareResources', 'Compare two MIX archives or folders recursively') },
-			{ label: "$(refresh) 重新索引工作区", description: "手动强制刷新所有文件的索引" },
-			{ label: "$(json) 打开插件设置 (JSON)", description: "查看所有高级配置" },
+		const items: (vscode.QuickPickItem & { id: string })[] = [
+			{ id: 'wizard', label: localize('mainMenu.item.wizard.label', '$(rocket) Show Setup Wizard'), description: localize('mainMenu.item.wizard.desc', 'Reopen the first-time setup page') },
+			{ id: 'modRoot', label: localize('mainMenu.item.modRoot.label', '$(folder) Set Mod Root Directory...'), description: modPathDesc },
+			{ id: 'dict', label: localize('mainMenu.item.dict.label', '$(book) Set INI Dictionary File...'), description: dictPathDesc },
+			{ id: 'validator', label: localize('mainMenu.item.validator.label', '$(bug) Manage INI Validator...'), description: validatorDesc },
+			{ id: 'compare', label: localize('mainMenu.item.compare.label', '$(git-compare) Compare Resources...'), description: localize('mainMenu.description.compareResources', 'Compare two MIX archives or folders recursively') },
+			{ id: 'reindex', label: localize('mainMenu.item.reindex.label', '$(refresh) Re-index Workspace'), description: localize('mainMenu.item.reindex.desc', 'Manually force-refresh all file indexes') },
+			{ id: 'settings', label: localize('mainMenu.item.settings.label', '$(json) Open Extension Settings (JSON)'), description: localize('mainMenu.item.settings.desc', 'View all advanced configuration') },
 		];
 		
 		const selection = await vscode.window.showQuickPick(items, {
-			placeHolder: "INI IntelliSense 主菜单"
+			placeHolder: localize('mainMenu.placeholder', 'INI IntelliSense Main Menu')
 		});
 
 		if (!selection) {return;}
 
-		if (selection.label.includes("设置向导")) {
-			vscode.commands.executeCommand('ra2-ini-intellisense.showWelcomePage');
-		} else if (selection.label.includes("Mod根目录")) {
-			await configureModPath();
-		} else if (selection.label.includes("INI Dictionary")) {
-			vscode.commands.executeCommand('ra2-ini-intellisense.configureSchemaPath');
-		} else if (selection.label.includes("INI Validator")) {
-			iniValidator.showQuickPick();
-        } else if (selection.label.includes("比较资源")) {
-            vscode.commands.executeCommand('ra2-ini-intellisense.compareResources');
-		} else if (selection.label.includes("重新索引")) {
-			await indexWorkspaceFiles();
-			vscode.window.showInformationMessage("工作区已重新索引。");
-		} else if (selection.label.includes("插件设置")) {
-			vscode.commands.executeCommand('workbench.action.openSettings', 'ra2-ini-intellisense');
+		switch (selection.id) {
+			case 'wizard':
+				vscode.commands.executeCommand('ra2-ini-intellisense.showWelcomePage');
+				break;
+			case 'modRoot':
+				await configureModPath();
+				break;
+			case 'dict':
+				vscode.commands.executeCommand('ra2-ini-intellisense.configureSchemaPath');
+				break;
+			case 'validator':
+				iniValidator.showQuickPick();
+				break;
+			case 'compare':
+				vscode.commands.executeCommand('ra2-ini-intellisense.compareResources');
+				break;
+			case 'reindex':
+				await indexWorkspaceFiles();
+				vscode.window.showInformationMessage(localize('mainMenu.info.reindexed', 'Workspace re-indexed.'));
+				break;
+			case 'settings':
+				vscode.commands.executeCommand('workbench.action.openSettings', 'ra2-ini-intellisense');
+				break;
 		}
 	}));
 
@@ -582,7 +590,7 @@ export async function activate(context: vscode.ExtensionContext) {
     }));
 
     // 2. 文档内容变化：热更新当前行 + 增量解析
-	vscode.workspace.onDidChangeTextDocument(async event => {
+	context.subscriptions.push(vscode.workspace.onDidChangeTextDocument(async event => {
 		if (event.document.languageId === LANGUAGE_ID) {
 			await iniManager.updateFile(event.document.uri, event.document.getText());
             // 传入变更范围，触发局部热检查
@@ -591,7 +599,7 @@ export async function activate(context: vscode.ExtensionContext) {
             overrideDecorator.triggerUpdateDecorations(vscode.window.activeTextEditor, true);
             valuePreviewDecorator.triggerUpdate(vscode.window.activeTextEditor, true);
 		}
-	});
+	}));
 
 	loadSchemaFromConfiguration().then(() => {
 		overrideDecorator.triggerUpdateDecorationsForAllVisibleEditors();
@@ -599,7 +607,9 @@ export async function activate(context: vscode.ExtensionContext) {
         if (vscode.window.activeTextEditor) {
             valuePreviewDecorator.triggerUpdate(vscode.window.activeTextEditor);
         }
-	});
+	}).catch(error => {
+        console.error('[Extension] Failed to load schema from configuration.', error);
+    });
 
 	let codeLensProvider: vscode.Disposable | undefined;
 	function updateCodeLensProvider() {
@@ -618,7 +628,7 @@ export async function activate(context: vscode.ExtensionContext) {
                             const valueRefs = iniManager.valueReferences.get(sec.name) || [];
                             const inheritanceRefs = iniManager.inheritanceReferences.get(sec.name) || [];
                             
-                            const range = new vscode.Range(sec.startLine, 0, sec.startLine, 100);
+                            const range = document.lineAt(sec.startLine).range;
                             const parts: string[] = [];
 
                             if (valueRefs.length > 0) {
@@ -673,7 +683,9 @@ export async function activate(context: vscode.ExtensionContext) {
                 if (vscode.window.activeTextEditor) {
                     valuePreviewDecorator.triggerUpdate(vscode.window.activeTextEditor);
                 }
-			});
+			}).catch(error => {
+                console.error('[Extension] Failed to reload schema after configuration change.', error);
+            });
 		}
 	}));
 	updateCodeLensProvider();
