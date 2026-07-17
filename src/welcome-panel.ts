@@ -27,7 +27,7 @@ export class WelcomePanel {
 
         const panel = vscode.window.createWebviewPanel(
             WelcomePanel.viewType,
-            'INI IntelliSense ' + localize('welcome.panel.title', 'Setup Wizard'),
+            localize('welcome.panel.title', 'RA2 Mod IntelliSense Setup Wizard'),
             column || vscode.ViewColumn.One,
             {
                 enableScripts: true,
@@ -198,7 +198,7 @@ export class WelcomePanel {
                 <meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline' ${webview.cspSource}; script-src 'nonce-${nonce}'; font-src 'self' data: https://fonts.gstatic.com; img-src 'self' data: https:;">
 				<meta name="viewport" content="width=device-width, initial-scale=1.0">
 				<link href="${styleUri}" rel="stylesheet">
-				<title>Welcome to INI IntelliSense</title>
+				<title>Welcome to RA2 Mod IntelliSense</title>
 			</head>
 			<body>
                 <div class="main-container">
@@ -213,7 +213,7 @@ export class WelcomePanel {
 
                         <div class="info-module animated" style="animation-delay: 0.1s;">
                             <h3>${localize('welcome.welcome.title', 'A Revolution in INI Modding')}</h3>
-                            <p>${localize('welcome.welcome.p1', 'We know every Red Alert 2 mod author has spent countless nights with Notepad, grappling with errors from a single typo. INI IntelliSense is here to end that.')}</p>
+                            <p>${localize('welcome.welcome.p1', 'We know every Red Alert 2 mod author has spent countless nights with Notepad, grappling with errors from a single typo. RA2 Mod IntelliSense is here to end that.')}</p>
                             <p>${localize('welcome.welcome.p2', 'This is more than a plugin; it\'s a modern development solution crafted by us—Starry Orbit Studio—to bring the power and intelligence of a modern IDE to the classic INI world, letting you focus on creativity, not debugging.')}</p>
                         </div>
 

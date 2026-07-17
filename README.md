@@ -1,8 +1,8 @@
 [Read this in Chinese (简体中文)](./README.zh-cn.md)
 
-# INI IntelliSense for Red Alert 2
+# RA2 Mod IntelliSense for Red Alert 2
 
-**INI IntelliSense** is a powerful, feature-rich Visual Studio Code extension tailor-made for *Command & Conquer: Red Alert 2* mod development. It aims to revolutionize your workflow on `.ini` configuration files by providing a modern coding experience, including dynamic syntax highlighting, deep language intelligence, advanced diagnostics, and intuitive inheritance visualization.
+**RA2 Mod IntelliSense** is a powerful, feature-rich Visual Studio Code extension tailor-made for *Command & Conquer: Red Alert 2* mod development. It aims to revolutionize your workflow on `.ini` configuration files by providing a modern coding experience, including dynamic syntax highlighting, deep language intelligence, advanced diagnostics, and intuitive inheritance visualization.
 
 ---
 

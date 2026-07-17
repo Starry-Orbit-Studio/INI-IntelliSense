@@ -31,7 +31,7 @@
     "command.formatDocument.title": "格式化文档",
     "command.refreshCsfOutline.title": "刷新 CSF 大纲",
     "view.csfOutline.name": "CSF 查看器",
-    "configuration.title": "INI IntelliSense",
+    "configuration.title": "RA2 Mod IntelliSense",
     "configuration.properties.exePath.description": "INIValidator.exe 的绝对路径。推荐通过点击状态栏图标或使用 '管理 INI Validator' 命令进行设置。",
     "configuration.properties.validationFolderPath.description": "要校验的Mod根目录的绝对路径。推荐通过设置向导或状态栏图标进行设置。",
     "configuration.properties.validationFiles.description": "要校验的文件列表。推荐通过点击状态栏图标或使用 '管理 INI Validator' 命令进行交互式编辑。",

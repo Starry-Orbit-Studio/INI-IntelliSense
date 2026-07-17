@@ -41,7 +41,7 @@ const LANGUAGE_ID = 'ra2-ini';
 
 export async function activate(context: vscode.ExtensionContext) {
     initializeNls(context);
-	const outputChannel = vscode.window.createOutputChannel(localize('output.channel.name', 'INI IntelliSense'));
+	const outputChannel = vscode.window.createOutputChannel(localize('output.channel.name', 'RA2 Mod IntelliSense'));
 	
 	const iniManager = new INIManager();
 	const schemaManager = new SchemaManager();
@@ -327,7 +327,7 @@ export async function activate(context: vscode.ExtensionContext) {
 			const projectRoot = getProjectRoot();
 
 			if (!projectRoot) {
-				console.log('INI IntelliSense: 未找到有效项目根目录，跳过文件索引。');
+				console.log('RA2 Mod IntelliSense: 未找到有效项目根目录，跳过文件索引。');
 				await iniManager.indexFiles([]);
                 iniFilesProvider.refresh();
                 mixFilesProvider.refresh();
@@ -347,7 +347,7 @@ export async function activate(context: vscode.ExtensionContext) {
             });
 			await iniManager.indexFiles(iniFiles);
 			const indexedFiles = Array.from(iniManager.documents.values()).map(doc => path.basename(doc.uri.path));
-			console.log(`INI IntelliSense: 已索引 ${iniManager.documents.size} 个INI文件: [${indexedFiles.join(', ')}]`);
+			console.log(`RA2 Mod IntelliSense: 已索引 ${iniManager.documents.size} 个INI文件: [${indexedFiles.join(', ')}]`);
             iniFilesProvider.refresh();
             mixFilesProvider.refresh();
 		} finally {
@@ -397,7 +397,7 @@ export async function activate(context: vscode.ExtensionContext) {
 			mainStatusBar.text = `$(check) INI: ${localize('statusbar.ready', 'Ready')}`;
 			const dictPath = config.get<string>('schemaFilePath')!;
 			
-			let tooltip = localize('statusbar.ready.tooltip.base', 'INI IntelliSense is ready') +
+			let tooltip = localize('statusbar.ready.tooltip.base', 'RA2 Mod IntelliSense is ready') +
 				`\n- ${localize('statusbar.ready.tooltip.project', 'Project')}: ${path.basename(projectRoot)}` +
 				`\n- ${localize('statusbar.ready.tooltip.dictionary', 'Dictionary')}: ${path.basename(dictPath)}` +
 				`\n- ${localize('statusbar.ready.tooltip.indexed', 'Indexed Files')}: ${iniManager.documents.size}`;
@@ -437,12 +437,12 @@ export async function activate(context: vscode.ExtensionContext) {
 					// 从字典文件加载描述
 					const loaded = descriptionManager.loadFromDictionary(schemaPath);
 					if (loaded) {
-						console.log(`[INI IntelliSense] Loaded descriptions for language: ${language}`);
+						console.log(`[RA2 Mod IntelliSense] Loaded descriptions for language: ${language}`);
 					} else {
-						console.log(`[INI IntelliSense] No descriptions loaded for language: ${language}`);
+						console.log(`[RA2 Mod IntelliSense] No descriptions loaded for language: ${language}`);
 					}
 				} catch (descError) {
-					console.error('[INI IntelliSense] Failed to load descriptions:', descError);
+					console.error('[RA2 Mod IntelliSense] Failed to load descriptions:', descError);
 					// 描述加载失败不应阻止主流程
 				}
 			} catch (error) {
@@ -527,7 +527,7 @@ export async function activate(context: vscode.ExtensionContext) {
 		];
 		
 		const selection = await vscode.window.showQuickPick(items, {
-			placeHolder: localize('mainMenu.placeholder', 'INI IntelliSense Main Menu')
+			placeHolder: localize('mainMenu.placeholder', 'RA2 Mod IntelliSense Main Menu')
 		});
 
 		if (!selection) {return;}
@@ -723,7 +723,7 @@ export async function activate(context: vscode.ExtensionContext) {
 		const document = editor.document;
 		
 		outputChannel.clear();
-		outputChannel.appendLine(localize('debug.title', '--- INI IntelliSense Debug Info ---\n'));
+		outputChannel.appendLine(localize('debug.title', '--- RA2 Mod IntelliSense Debug Info ---\n'));
 
 		const idListRegistryNames = schemaManager.getIdListRegistryNames();
 		if (idListRegistryNames.size > 0) {
@@ -1115,7 +1115,7 @@ export async function activate(context: vscode.ExtensionContext) {
             let quickAction: string | undefined;
 
             if (!projectRoot) {
-                message = localize('prompt.configureII.message.root', 'Welcome to INI IntelliSense! Please set your Mod project root directory to enable all features.');
+                message = localize('prompt.configureII.message.root', 'Welcome to RA2 Mod IntelliSense! Please set your Mod project root directory to enable all features.');
             } else {
                 message = localize('prompt.configureII.message.dict', 'INI Dictionary is missing. Would you like to download and configure it automatically?');
                 quickAction = localize('prompt.configureII.action.autoConfig', 'Auto Configure');

@@ -31,7 +31,7 @@
     "command.formatDocument.title": "Format Document",
     "command.refreshCsfOutline.title": "Refresh CSF Outline",
     "view.csfOutline.name": "CSF Viewer",
-    "configuration.title": "INI IntelliSense",
+    "configuration.title": "RA2 Mod IntelliSense",
     "configuration.properties.exePath.description": "Absolute path to INIValidator.exe. It's recommended to set this via the status bar icon or the 'Manage INI Validator' command.",
     "configuration.properties.validationFolderPath.description": "Absolute path to the root directory of the Mod to be validated. It's recommended to set this via the setup guide or the status bar icon.",
     "configuration.properties.validationFiles.description": "List of files to be validated. It's recommended to edit this interactively via the status bar icon or the 'Manage INI Validator' command.",

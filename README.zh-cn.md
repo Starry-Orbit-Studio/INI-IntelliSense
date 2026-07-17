@@ -1,8 +1,8 @@
 [Read this in English](./README.md)
 
-# INI IntelliSense for Red Alert 2
+# RA2 Mod IntelliSense for Red Alert 2
 
-**INI IntelliSense** 是一个为《命令与征服: 红色警戒2》Mod开发量身打造的、功能强大的 Visual Studio Code 扩展。它旨在通过提供现代化的代码编辑体验，如动态语法高亮、深度智能感知、高级诊断和直观的继承关系可视化，来革命性地提升您在 `.ini` 配置文件上的工作效率和代码质量。
+**RA2 Mod IntelliSense** 是一个为《命令与征服: 红色警戒2》Mod开发量身打造的、功能强大的 Visual Studio Code 扩展。它旨在通过提供现代化的代码编辑体验，如动态语法高亮、深度智能感知、高级诊断和直观的继承关系可视化，来革命性地提升您在 `.ini` 配置文件上的工作效率和代码质量。
 
 ---
 
