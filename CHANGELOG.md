@@ -6,6 +6,16 @@ All notable changes to the "ra2-ini-intellisense" extension will be documented i
 
 Check [Keep a Changelog](http://keepachangelog.com/) for recommendations on how to structure this file.
 
+## [0.0.5] - 2026-07-17
+
+- Added format document and format on save support for INI files.
+- Added a "Preview Map" command in the editor title bar; map files (`.map`, `.mpr`, `.yrm`) now open as text by default and can be previewed in a side panel.
+- Improved save performance significantly — saving large INI files no longer causes noticeable lag.
+- Unified the product name to "RA2 Mod IntelliSense" with new extension and activity bar icons.
+- Made the INIValidator download URL configurable.
+- Fixed duplicate registry key detection so it now correctly fires.
+- Fixed missing localized strings displaying as `!key!` instead of readable text.
+
 ## [0.0.4] - 2026-06-09
 
 - Added LLF language support with its own grammar and token colors for labels, values, comments, and multiline continuations.

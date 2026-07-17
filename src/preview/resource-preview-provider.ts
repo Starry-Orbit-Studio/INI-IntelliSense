@@ -5,7 +5,7 @@ import { PreviewContext, PreviewContextServices } from './preview-context';
 import { createMapPreview } from './map-preview';
 import { createPalPreview } from './pal-preview';
 import { createPcxPreview } from './pcx-preview';
-import { ResourcePreviewModel } from './preview-types';
+import { ResourcePreviewModel, TextPreview } from './preview-types';
 import { createShpPreview, ShpPreviewModel } from './shp-preview';
 import {
     createDefaultVoxelPreviewState,
@@ -55,9 +55,19 @@ export class ResourcePreviewProvider implements vscode.CustomReadonlyEditorProvi
         this.stateByUri.set(key, state);
 
         const refresh = async () => {
-            const preview = await this.createPreviewModel(document.uri, state);
-            webviewPanel.title = preview.title;
-            webviewPanel.webview.html = renderPreviewHtml(preview, document.uri, state.paletteUri);
+            try {
+                const preview = await this.createPreviewModel(document.uri, state);
+                webviewPanel.title = preview.title;
+                webviewPanel.webview.html = renderPreviewHtml(preview, document.uri, state.paletteUri);
+            } catch (error) {
+                const errorModel: TextPreview = {
+                    kind: 'text',
+                    title: path.basename(document.uri.path),
+                    content: localize('preview.error', 'Failed to load preview: {0}', error instanceof Error ? error.message : String(error)),
+                };
+                webviewPanel.title = errorModel.title;
+                webviewPanel.webview.html = renderPreviewHtml(errorModel, document.uri, state.paletteUri);
+            }
         };
 
         await refresh();
@@ -195,6 +205,30 @@ export class ResourcePreviewProvider implements vscode.CustomReadonlyEditorProvi
                     title,
                     content: localize('preview.unsupported.content', 'Preview for this file type is not available yet.'),
                 };
+        }
+    }
+
+    public async openMapPreviewToSide(uri: vscode.Uri): Promise<void> {
+        const panel = vscode.window.createWebviewPanel(
+            'ra2-map-preview',
+            path.posix.basename(uri.path),
+            vscode.ViewColumn.Beside,
+            { enableScripts: true }
+        );
+
+        try {
+            const bytes = await vscode.workspace.fs.readFile(uri);
+            const model = createMapPreview(bytes, path.basename(uri.path));
+            panel.title = model.title;
+            panel.webview.html = renderPreviewHtml(model, uri);
+        } catch (error) {
+            const errorModel: TextPreview = {
+                kind: 'text',
+                title: path.basename(uri.path),
+                content: localize('preview.error', 'Failed to load preview: {0}', error instanceof Error ? error.message : String(error)),
+            };
+            panel.title = errorModel.title;
+            panel.webview.html = renderPreviewHtml(errorModel, uri);
         }
     }
 }

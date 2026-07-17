@@ -1,7 +1,7 @@
 {
     "extension.displayName": "RA2 Mod IntelliSense",
     "extension.description": "为红色警戒2与尤里的复仇 Mod 开发提供 INI、MIX、CSF、SHP、VXL 等资源的智能感知、浏览与预览能力",
-    "view.container.title": "RA2 资源",
+    "view.container.title": "RA2 Mod",
     "view.iniFiles.name": "INI 浏览器",
     "view.mixFiles.name": "MIX 浏览器",
     "command.category": "RA2 Mod IntelliSense",
@@ -29,6 +29,7 @@
     "command.extractSuperclass.title": "提取超类...",
     "command.formatSelection.title": "格式化选区/当前行",
     "command.formatDocument.title": "格式化文档",
+    "command.previewMapToSide.title": "预览地图",
     "command.refreshCsfOutline.title": "刷新 CSF 大纲",
     "view.csfOutline.name": "CSF 查看器",
     "configuration.title": "RA2 Mod IntelliSense",

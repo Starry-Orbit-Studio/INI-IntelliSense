@@ -123,6 +123,13 @@ export async function activate(context: vscode.ExtensionContext) {
             retainContextWhenHidden: true,
         },
     }));
+    context.subscriptions.push(vscode.commands.registerCommand('ra2-ini-intellisense.previewMapToSide', async (uri?: vscode.Uri) => {
+        const targetUri = uri ?? vscode.window.activeTextEditor?.document.uri;
+        if (!targetUri) {
+            return;
+        }
+        await resourcePreviewProvider.openMapPreviewToSide(targetUri);
+    }));
     context.subscriptions.push(vscode.commands.registerCommand('ra2-ini-intellisense.refreshCsfOutline', () => csfOutlineProvider.refresh()));
     context.subscriptions.push(vscode.commands.registerCommand('ra2-ini-intellisense.refreshIniFiles', () => {
         resourceService.clearCaches();

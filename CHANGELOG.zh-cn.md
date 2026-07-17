@@ -6,6 +6,16 @@ All notable changes to the "ra2-ini-intellisense" extension will be documented i
 
 Check [Keep a Changelog](http://keepachangelog.com/) for recommendations on how to structure this file.
 
+## [0.0.5] - 2026-07-17
+
+- 新增 INI 文件格式化文档和保存时自动格式化支持。
+- 新增编辑器标题栏"预览地图"按钮；地图文件（`.map`、`.mpr`、`.yrm`）改为默认以文本打开，可在侧栏预览地图图片。
+- 大幅改善保存性能——保存大型 INI 文件时不再有明显卡顿。
+- 统一产品名称为 "RA2 Mod IntelliSense"，更新扩展和活动栏图标。
+- INIValidator 下载地址可自定义。
+- 修复重复注册表键无法被检测的问题。
+- 修复缺少本地化字符串时显示 `!key!` 而非可读文本的问题。
+
 ## [0.0.4] - 2026-06-09
 
 - 新增 `.llf` 语言支持，提供标签、值、注释和多行续行内容的专用语法高亮。

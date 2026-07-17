@@ -6,39 +6,39 @@
 
 ---
 
-## 主要功能 (Key Features)
+## 主要功能
 
-### 1. 动态语法高亮 (Dynamic Syntax Highlighting)
+### 1. 动态语法高亮
 超越传统静态语法文件，本扩展通过代码动态分析，提供更精确、更丰富的着色效果。
 - **支持多级键**: 为 `Key.Part1.Part2` 的不同部分应用不同颜色。
 - **复杂节语法**: 精确高亮 `[Section]:[Inherits]` 结构。
 - **默认启用语义着色**: 为 RA2 INI 提供开箱即用的语义 Token 配色，并为 `.llf` 资源提供专门的高亮规则。
 
-### 2. Schema 驱动的智能感知 (Schema-Driven IntelliSense)
+### 2. Schema 驱动的智能感知
 本扩展的核心能力由一个可配置的规则文件 (`INIDictionary.ini`) 驱动，提供无与伦比的上下文感知能力。
 - **代码自动补全 (Auto-Completion)**:
     - **键 (Keys)**: 根据当前节的类型（包含继承），智能提示所有可用的键。
     - **值 (Values)**: 为布尔值 (`yes`/`no`)、颜色、以及所有在 `[Registries]` 中注册的ID（如单位、建筑、武器名等）提供补全。
 - **悬停信息 (Hover Information)**:
     - **类型与来源**: 悬停在键上时，显示其在 Schema 中定义的类型 (e.g., `TechLevel: int`) 以及**来源**（如 `Ares`, `Phobos` 或原版），让您明确知道该功能来自哪个平台。
-    - **CSF 预览**: 如果一个值引用了 CSF 字符串（例如 `UIName=Name:Apoc`），悬停时将直接显示对应的中文/英文文本（如“天启坦克”）。
+    - **CSF 预览**: 如果一个值引用了 CSF 字符串（例如 `UIName=Name:Apoc`），悬停时将直接显示对应的中文/英文文本（如"天启坦克"）。
     - **继承覆盖详情**: 当一个键覆盖了父节的值时，悬停信息会明确展示**被覆盖的父节名称、所在文件、行号以及旧的值**，并提供一键跳转链接。
 - **跳转到定义 (Go to Definition)**:
     - 按住 `Ctrl` 并单击一个值（如单位ID），即可跨文件跳转到该单位的 `[Section]` 定义处。
 
-### 3. 高级诊断与校验 (Advanced Diagnostics)
+### 3. 高级诊断与校验
 - **内置实时检查**:
     - **代码风格**: 检查等号周围、行首的多余空格；检查注释前后的空格是否规范。
     - **类型校验**: 根据 Schema 实时验证值的类型是否正确（如 `int`, `float`, 数值范围, 枚举值等）。
 - **外部校验器集成**:
     - 与 `INIValidator.exe` 无缝集成，提供更深层次的、跨文件的逻辑有效性检查。可通过状态栏图标或命令轻松管理和运行。
 
-### 4. 继承与引用可视化 (Inheritance & Reference Visualization)
+### 4. 继承与引用可视化
 - **继承覆盖指示器**: 在行号旁显示一个清晰的向上箭头 (↑)，直观地告诉您这一行的键覆盖了父类中的定义。
-- **代码透镜 (CodeLens)**: 在每个节 `[Section]` 的上方，显示该节在整个工作区中被作为“值”引用的次数和被“继承”的次数。
+- **代码透镜 (CodeLens)**: 在每个节 `[Section]` 的上方，显示该节在整个工作区中被作为"值"引用的次数和被"继承"的次数。
 - **查找所有引用 (Find All References)**: 右键点击一个节名，即可找到所有引用或继承它的地方。
 
-### 5. 其他实用功能 (More Handy Features)
+### 5. 其他实用功能
 - **MIX 档案浏览器**: 在专属视图中浏览 `.mix` 档案，并可直接作为工作区打开，或在新窗口中打开。
 - **MIX 资源操作**: 可直接在 VS Code 中导入、导出、重命名、删除和整理档案内容。
 - **资源预览器**: 内置预览 `pcx`、`pal`、`map`、`mpr`、`yrm`、`shp`、`vxl` 和 `hva` 文件。
@@ -53,16 +53,16 @@
 
 ---
 
-## 安装与配置 (Installation & Configuration)
+## 安装与配置
 
-### 安装 (Installation)
+### 安装
 1. 从 Visual Studio Marketplace 安装，或从发布页面下载最新的 `.vsix` 文件。
 2. 在 VS Code 中，打开扩展面板 (`Ctrl+Shift+X`)。
-3. 点击右上角的三点菜单 (`...`)，选择 “**从 VSIX 安装...**” (Install from VSIX...)。
+3. 点击右上角的三点菜单 (`...`)，选择 "**从 VSIX 安装...**" (Install from VSIX...)。
 4. 选择您下载的 `.vsix` 文件并安装。
 5. 重新加载 VS Code。
 
-### 初始配置 (Initial Setup)
+### 初始配置
 为了获得完整的智能提示和诊断功能，您需要配置 Schema 文件 (`INIDictionary.ini`) 和 Mod 根目录。
 1. 插件首次激活时会自动弹出 **设置向导 (Setup Wizard)**。
 2. 您也可以点击状态栏的 `$(rocket) INI: 显示设置向导` 或使用命令重新打开它。
@@ -70,7 +70,7 @@
 
 ---
 
-## 诊断错误码 (Diagnostic Error Codes)
+## 诊断错误码
 
 您可以在 `ra2-ini-intellisense.diagnostics.severity` 设置中使用这些代码来自定义每条规则的报错等级 (Error, Warning, Information, Hint, None)。
 
@@ -95,7 +95,7 @@
 | **L003** | 逻辑 | 键的值为空。 |
 | **L004** | 逻辑 | 注册表列表中存在重复的键 (例如 `0=A`, `0=B`)。 |
 
-## 命令 (Commands)
+## 命令
 
 | 命令 (Command) | 标题 (Title) | 描述 (Description) |
 | :--- | :--- | :--- |
@@ -104,6 +104,7 @@
 | `ra2-ini-intellisense.configureSchemaPath` | INI: Set INI Dictionary File Path | 设置 INI Dictionary 文件路径。 |
 | `ra2-ini-intellisense.format.document` | Format Document | 格式化当前 INI 文档（也可用 `Shift+Alt+F`）。 |
 | `ra2-ini-intellisense.format.selection` | Format Selection/Line | 格式化选中的行或当前行。 |
+| `ra2-ini-intellisense.previewMapToSide` | Preview Map | 在侧栏打开地图预览图（`.map`、`.mpr`、`.yrm`）。 |
 | `ra2-ini-intellisense.refactor.extractSuperclass` | Extract Superclass... | 将共同的键值对提取到新的父节中。 |
 | `ra2-ini-intellisense.registerSectionContext` | Register Section ID to... | 将当前节注册到 ID 列表中。 |
 | `ra2-ini-intellisense.jumpToOverride` | INI: Go to Overridden Definition | 跳转到被覆盖键的父定义。 |
@@ -115,7 +116,7 @@
 | `ra2-ini-intellisense.refreshMixFiles` | Refresh MIX Files | 刷新 MIX 文件树视图。 |
 | `ra2-ini-intellisense.refreshCsfOutline` | Refresh CSF Outline | 刷新 CSF 大纲树视图。 |
 
-## 详细配置项 (Settings)
+## 详细配置项
 您可以在 VS Code 的 `settings.json` 文件中对本插件进行详细配置 (`Ctrl+,`)。
 
 | 设置 (Setting) | 描述 (Description) | 默认值 (Default) |
@@ -147,5 +148,13 @@ RA2 INI 的语义着色，以及 `.llf` 的默认 TextMate 配色，也可以通
 
 ---
 
-## 📄 许可证 (License)
+## 作者
+
+**星轨实验室 (StarryOrbitStudio)**
+
+由 **Astralette (小星星)** 维护。
+
+---
+
+## 许可证
 本项目采用 MIT 许可证。详情请查看 `LICENSE` 文件。

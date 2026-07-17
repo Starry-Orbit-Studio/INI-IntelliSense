@@ -1,35 +1,48 @@
-import { RgbaImagePreview } from './preview-types';
+import { localize } from '../i18n';
+import { RgbaImagePreview, TextPreview } from './preview-types';
 
-export function createMapPreview(bytes: Uint8Array, title: string): RgbaImagePreview {
-    const text = decodeMapText(bytes);
-    const previewSize = parsePreviewSize(text);
-    const packedBase64 = parsePreviewPack(text);
-    if (!previewSize || !packedBase64) {
-        throw new Error('Map preview data not found.');
+export function createMapPreview(bytes: Uint8Array, title: string): RgbaImagePreview | TextPreview {
+    try {
+        const text = decodeMapText(bytes);
+        const previewSize = parsePreviewSize(text);
+        const packedBase64 = parsePreviewPack(text);
+        if (!previewSize || !packedBase64) {
+            return {
+                kind: 'text',
+                title,
+                content: localize('preview.map.noPreviewData', 'No preview image found in this map file.'),
+            };
+        }
+
+        const packedBytes = Uint8Array.from(Buffer.from(packedBase64, 'base64'));
+        const pixelData = decompressBlocks(packedBytes);
+        const expectedLength = previewSize.width * previewSize.height * 3;
+        if (pixelData.byteLength !== expectedLength) {
+            throw new Error(`Data size mismatch: expected ${expectedLength}, got ${pixelData.byteLength}`);
+        }
+
+        const pixels = new Uint8ClampedArray(previewSize.width * previewSize.height * 4);
+        for (let i = 0, src = 0; i < pixels.length; i += 4, src += 3) {
+            pixels[i] = pixelData[src + 2] ?? 0;
+            pixels[i + 1] = pixelData[src + 1] ?? 0;
+            pixels[i + 2] = pixelData[src] ?? 0;
+            pixels[i + 3] = 255;
+        }
+
+        return {
+            kind: 'rgba-image',
+            title,
+            width: previewSize.width,
+            height: previewSize.height,
+            pixels,
+        };
+    } catch (error) {
+        return {
+            kind: 'text',
+            title,
+            content: localize('preview.error', 'Failed to load preview: {0}', error instanceof Error ? error.message : String(error)),
+        };
     }
-
-    const packedBytes = Uint8Array.from(Buffer.from(packedBase64, 'base64'));
-    const pixelData = decompressBlocks(packedBytes);
-    const expectedLength = previewSize.width * previewSize.height * 3;
-    if (pixelData.byteLength !== expectedLength) {
-        throw new Error('Invalid map preview data size.');
-    }
-
-    const pixels = new Uint8ClampedArray(previewSize.width * previewSize.height * 4);
-    for (let i = 0, src = 0; i < pixels.length; i += 4, src += 3) {
-        pixels[i] = pixelData[src + 2] ?? 0;
-        pixels[i + 1] = pixelData[src + 1] ?? 0;
-        pixels[i + 2] = pixelData[src] ?? 0;
-        pixels[i + 3] = 255;
-    }
-
-    return {
-        kind: 'rgba-image',
-        title,
-        width: previewSize.width,
-        height: previewSize.height,
-        pixels,
-    };
 }
 
 function decodeMapText(bytes: Uint8Array): string {

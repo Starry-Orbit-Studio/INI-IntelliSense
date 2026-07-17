@@ -104,6 +104,7 @@ You can use these codes in `ra2-ini-intellisense.diagnostics.severity` to custom
 | `ra2-ini-intellisense.configureSchemaPath` | INI: Set INI Dictionary File Path | Sets the path to the INI Dictionary file. |
 | `ra2-ini-intellisense.format.document` | Format Document | Formats the active INI document (also via `Shift+Alt+F`). |
 | `ra2-ini-intellisense.format.selection` | Format Selection/Line | Formats the selected lines or the current line. |
+| `ra2-ini-intellisense.previewMapToSide` | Preview Map | Opens the map preview image in a side panel (`.map`, `.mpr`, `.yrm`). |
 | `ra2-ini-intellisense.refactor.extractSuperclass` | Extract Superclass... | Extracts common key-value pairs into a new parent section. |
 | `ra2-ini-intellisense.registerSectionContext` | Register Section ID to... | Registers the current section into an ID list registry. |
 | `ra2-ini-intellisense.jumpToOverride` | INI: Go to Overridden Definition | Jumps to the parent definition of an overridden key. |
@@ -147,5 +148,13 @@ Semantic colors for RA2 INI tokens and the default TextMate colors for `.llf` ca
 
 ---
 
-## 📄 License
+## Author
+
+**StarryOrbitStudio (星轨实验室)**
+
+Maintained by **Astralette (小星星)**.
+
+---
+
+## License
 This project is licensed under the MIT License. See the `LICENSE` file for details.

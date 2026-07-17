@@ -9,7 +9,7 @@
     "url": "https://github.com/Super-StarX/INI-IntelliSense.git"
   },
   "private": true,
-  "version": "0.0.4",
+  "version": "0.0.5",
   "engines": {
     "vscode": "^1.96.0"
   },
@@ -43,7 +43,10 @@
           "ini"
         ],
         "extensions": [
-          ".ini"
+          ".ini",
+          ".map",
+          ".mpr",
+          ".yrm"
         ],
         "configuration": "./language-configuration.json"
       },
@@ -107,15 +110,6 @@
           },
           {
             "filenamePattern": "*.pal"
-          },
-          {
-            "filenamePattern": "*.map"
-          },
-          {
-            "filenamePattern": "*.mpr"
-          },
-          {
-            "filenamePattern": "*.yrm"
           },
           {
             "filenamePattern": "*.vxl"
@@ -253,6 +247,13 @@
           "command": "ra2-ini-intellisense.format.document",
           "group": "9_format"
         }
+      ],
+      "editor/title": [
+        {
+          "when": "resourceExtname == '.map' || resourceExtname == '.mpr' || resourceExtname == '.yrm'",
+          "command": "ra2-ini-intellisense.previewMapToSide",
+          "group": "navigation"
+        }
       ]
     },
     "commands": [
@@ -375,6 +376,12 @@
         "command": "ra2-ini-intellisense.format.document",
         "title": "%command.formatDocument.title%",
         "category": "%command.category%"
+      },
+      {
+        "command": "ra2-ini-intellisense.previewMapToSide",
+        "title": "%command.previewMapToSide.title%",
+        "category": "%command.category%",
+        "icon": "$(open-preview)"
       }
     ],
     "configuration": {
@@ -523,7 +530,10 @@
     },
     "configurationDefaults": {
       "files.associations": {
-        "*.ini": "ra2-ini"
+        "*.ini": "ra2-ini",
+        "*.map": "ra2-ini",
+        "*.mpr": "ra2-ini",
+        "*.yrm": "ra2-ini"
       },
       "[ra2-ini]": {
         "editor.semanticHighlighting.enabled": true,

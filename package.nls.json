@@ -1,7 +1,7 @@
 {
     "extension.displayName": "RA2 Mod IntelliSense",
     "extension.description": "IntelliSense, resource exploration, and previews for Red Alert 2 and Yuri's Revenge modding across INI, MIX, CSF, SHP, VXL, and more.",
-    "view.container.title": "RA2 Resources",
+    "view.container.title": "RA2 Mod",
     "view.iniFiles.name": "INI Explorer",
     "view.mixFiles.name": "MIX Explorer",
     "command.category": "RA2 Mod IntelliSense",
@@ -29,6 +29,7 @@
     "command.extractSuperclass.title": "Extract Superclass...",
     "command.formatSelection.title": "Format Selection/Line",
     "command.formatDocument.title": "Format Document",
+    "command.previewMapToSide.title": "Preview Map",
     "command.refreshCsfOutline.title": "Refresh CSF Outline",
     "view.csfOutline.name": "CSF Viewer",
     "configuration.title": "RA2 Mod IntelliSense",

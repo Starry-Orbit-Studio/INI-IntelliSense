@@ -277,6 +277,8 @@
     "compare.panel.generatedAt": "Generated",
     "compare.diff.title": "{0}: Left vs Right",
     "preview.unsupported.content": "Preview for this file type is not available yet.",
+    "preview.map.noPreviewData": "No preview image found in this map file.",
+    "preview.error": "Failed to load preview: {0}",
     "preview.palette.grayscale": "Grayscale Fallback",
     "preview.palette.notFound": "No palette files were found in the current workspace.",
     "preview.palette.pick.title": "Choose Palette",
