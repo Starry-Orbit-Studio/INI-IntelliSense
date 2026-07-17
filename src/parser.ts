@@ -23,7 +23,13 @@ export interface IniSection {
 export class IniDocument {
     public sections: IniSection[] = [];
     private sectionMap: Map<string, IniSection> = new Map();
-    
+
+    /**
+     * 缓存 content 按行切分的结果，避免在 parse / buildCrossReferencesIndex / findKeyLocation 中重复切分。
+     * 每次 update/parse 时同步刷新。
+     */
+    public lines: string[] = [];
+
     constructor(public uri: vscode.Uri, public content: string) {
         this.parse();
     }
@@ -40,15 +46,15 @@ export class IniDocument {
     private parse() {
         this.sections = [];
         this.sectionMap.clear();
-        
-        const lines = this.content.split(/\r?\n/);
+        this.lines = this.content.split(/\r?\n/);
+
         let currentSection: IniSection | null = null;
 
         const sectionRegex = /^\s*\[([^\]:]+)\](?::\[([^\]]+)\])?/;
         const kvRegex = /^\s*([^;=\s][^=]*?)\s*=(.*)/;
 
-        for (let i = 0; i < lines.length; i++) {
-            const line = lines[i];
+        for (let i = 0; i < this.lines.length; i++) {
+            const line = this.lines[i];
             const trimmed = line.trim();
             if (!trimmed || trimmed.startsWith(';')) {
                 continue;
@@ -61,11 +67,11 @@ export class IniDocument {
                 }
                 const name = sectionMatch[1].trim();
                 const parent = sectionMatch[2] ? sectionMatch[2].trim() : undefined;
-                
+
                 currentSection = {
                     name,
                     startLine: i,
-                    endLine: lines.length - 1, // 默认为文件末尾，遇到下个节时更新
+                    endLine: this.lines.length - 1, // 默认为文件末尾，遇到下个节时更新
                     properties: new Map(),
                     parentName: parent
                 };
@@ -79,7 +85,7 @@ export class IniDocument {
                 if (kvMatch) {
                     const key = kvMatch[1].trim();
                     // 简单存储值，去除行内注释
-                    const val = kvMatch[2].split(';')[0].trim(); 
+                    const val = kvMatch[2].split(';')[0].trim();
                     currentSection.properties.set(key, val);
                 }
             }
@@ -117,7 +123,7 @@ export class IniDocument {
  * 重构版：放弃 'ini' 库，使用自定义的 IniDocument 模型。
  * 实现了基于行的增量思维和更高效的索引维护。
  */
-export class INIManager {
+export class INIManager implements vscode.Disposable {
     // 核心数据存储：URI -> Document Model
     public documents: Map<string, IniDocument> = new Map();
     
@@ -147,6 +153,15 @@ export class INIManager {
     
     // 缓存
     private inferredTypeCache = new Map<string, string>();
+
+    // 索引重建防抖：避免每次按键都全量重建跨文件索引
+    private rebuildTimer: NodeJS.Timeout | undefined;
+    private static readonly REBUILD_DEBOUNCE_MS = 500;
+
+    // 文件更新去重：记录最近通过 onDidChangeTextDocument 更新的文件，
+    // 使 FileSystemWatcher 能跳过保存时触发的重复处理
+    private recentlyUpdated: Map<string, number> = new Map();
+    private static readonly RECENT_UPDATE_WINDOW_MS = 1000;
 
     private createCompatParsedObject(doc: IniDocument): any {
         const obj: any = {};
@@ -196,17 +211,25 @@ export class INIManager {
     async updateFile(uri: vscode.Uri, content?: string) {
         try {
             const fileContent = content ?? Buffer.from(await vscode.workspace.fs.readFile(uri)).toString('utf8');
-            const doc = this.documents.get(uri.toString());
-            if (doc) {
-                doc.update(fileContent);
+
+            // 内容未变时跳过重新解析和索引重建（如 Ctrl+S 无修改保存）
+            const existing = this.documents.get(uri.toString());
+            if (existing && existing.content === fileContent) {
+                this.recentlyUpdated.set(uri.toString(), Date.now());
+                return;
+            }
+
+            if (existing) {
+                existing.update(fileContent);
             } else {
                 this.documents.set(uri.toString(), new IniDocument(uri, fileContent));
             }
-            
-            // 策略：为了保证全局引用的正确性，目前仍执行全量索引重建。
-            // 在极限性能优化中，这里可以是下一步的优化点（只更新当前文件的索引贡献）。
-            // 但由于我们已经优化了 parsing 过程（不再生成大对象），这里的重建速度已经大幅提升。
-            this.rebuildAllIndexes();
+
+            // 记录更新时间戳，使 FileSystemWatcher 能跳过保存时触发的重复处理
+            this.recentlyUpdated.set(uri.toString(), Date.now());
+
+            // 解析是即时的（快），跨文件索引重建推迟到空闲时（慢）
+            this.scheduleRebuildIndexes();
         } catch (error) {
             console.error(`Failed to update index for file ${uri.toString()}:`, error);
         }
@@ -215,7 +238,43 @@ export class INIManager {
     removeFile(uri: vscode.Uri) {
         if (this.documents.has(uri.toString())) {
             this.documents.delete(uri.toString());
+            this.recentlyUpdated.delete(uri.toString());
+            this.scheduleRebuildIndexes();
+        }
+    }
+
+    /**
+     * 防抖调度跨文件索引重建。
+     * 多次连续按键/保存只触发一次重建，在 REBUILD_DEBOUNCE_MS 空闲后执行。
+     */
+    private scheduleRebuildIndexes(): void {
+        if (this.rebuildTimer) {
+            clearTimeout(this.rebuildTimer);
+        }
+        this.rebuildTimer = setTimeout(() => {
             this.rebuildAllIndexes();
+            this.rebuildTimer = undefined;
+        }, INIManager.REBUILD_DEBOUNCE_MS);
+    }
+
+    /**
+     * 检查文件是否在 RECENT_UPDATE_WINDOW_MS 内被 updateFile 更新过。
+     * 供 FileSystemWatcher 跳过保存时与 onDidChangeTextDocument 重复的处理。
+     */
+    public wasRecentlyUpdated(uri: vscode.Uri): boolean {
+        const ts = this.recentlyUpdated.get(uri.toString());
+        if (ts === undefined) { return false; }
+        if (Date.now() - ts < INIManager.RECENT_UPDATE_WINDOW_MS) {
+            return true;
+        }
+        this.recentlyUpdated.delete(uri.toString());
+        return false;
+    }
+
+    public dispose() {
+        if (this.rebuildTimer) {
+            clearTimeout(this.rebuildTimer);
+            this.rebuildTimer = undefined;
         }
     }
 
@@ -259,7 +318,7 @@ export class INIManager {
         for (const [filePath, doc] of this.documents) {
             const fileUri = doc.uri;
             const currentFileType = this.fileTypeManager?.getFileType(fileUri) || 'INI';
-            const lines = doc.content.split(/\r?\n/); // 仍需行访问计算精确列号
+            const lines = doc.lines; // 复用缓存的切分结果，避免重复 split
 
             for (const sec of doc.sections) {
                 // 1. 节定义位置
@@ -404,7 +463,7 @@ export class INIManager {
             if (!section) { continue; }
 
             // 只在节的范围内查找
-            const lines = doc.content.split(/\r?\n/);
+            const lines = doc.lines;
             const keyRegex = new RegExp(`^\\s*${keyName.replace(/[-\/\\^$*+?.()|[\]{}]/g, '\\$&')}\\s*=`, 'i');
             
             for (let i = section.startLine + 1; i <= section.endLine; i++) {
@@ -470,7 +529,7 @@ export class INIManager {
                     const allKeys = this.schemaManager.getAllKeysForType(contextTypeName);
                     
                     // 找到引用行的 Key
-                    const line = doc.content.split(/\r?\n/)[loc.range.start.line];
+                    const line = doc.lines[loc.range.start.line];
                     const kvMatch = line.match(/^\s*([^;=\s][^=]*?)\s*=/);
                     if (kvMatch) {
                         const key = kvMatch[1].trim();

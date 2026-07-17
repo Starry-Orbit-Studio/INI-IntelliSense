@@ -10,6 +10,7 @@ import { FileTypeManager } from './file-type-manager';
 export class OverrideDecorator implements vscode.Disposable {
     private decorationType: vscode.TextEditorDecorationType;
     private timeout: NodeJS.Timeout | undefined = undefined;
+    private allEditorsTimeout: NodeJS.Timeout | undefined;
     private disposables: vscode.Disposable[] = [];
     private isEnabled = true;
 
@@ -22,24 +23,11 @@ export class OverrideDecorator implements vscode.Disposable {
         this.decorationType = this.createDecoration();
         this.updateEnabledStatus();
 
-        // 监听活动编辑器变化
+        // onDidChangeTextDocument 和 onDidChangeTextEditorVisibleRanges 由 extension.ts 统一调度，
+        // 此处不再重复注册，避免同一事件触发两遍装饰更新。
         this.disposables.push(vscode.window.onDidChangeActiveTextEditor(editor => {
             if (editor && this.isEnabled) {
                 this.triggerUpdateDecorations(editor);
-            }
-        }));
-
-        // 监听文档内容变化
-        this.disposables.push(vscode.workspace.onDidChangeTextDocument(event => {
-            if (this.isEnabled && vscode.window.activeTextEditor?.document === event.document) {
-                this.triggerUpdateDecorations(vscode.window.activeTextEditor, true);
-            }
-        }));
-
-        // 新增：监听可见范围变化（滚动时触发）
-        this.disposables.push(vscode.window.onDidChangeTextEditorVisibleRanges(event => {
-            if (this.isEnabled && event.textEditor === vscode.window.activeTextEditor) {
-                this.triggerUpdateDecorations(event.textEditor, true);
             }
         }));
     }
@@ -63,11 +51,17 @@ export class OverrideDecorator implements vscode.Disposable {
     }
 
     public triggerUpdateDecorationsForAllVisibleEditors() {
-        vscode.window.visibleTextEditors.forEach(editor => {
-            if (editor.document.languageId === 'ra2-ini') {
-                this.triggerUpdateDecorations(editor);
-            }
-        });
+        if (this.allEditorsTimeout) {
+            clearTimeout(this.allEditorsTimeout);
+        }
+        this.allEditorsTimeout = setTimeout(() => {
+            vscode.window.visibleTextEditors.forEach(editor => {
+                if (editor.document.languageId === 'ra2-ini') {
+                    this.triggerUpdateDecorations(editor);
+                }
+            });
+            this.allEditorsTimeout = undefined;
+        }, 100);
     }
 
     // 修改：不再只接受 URI，而是直接接受 Editor 对象，因为我们需要获取可见范围
@@ -169,6 +163,9 @@ export class OverrideDecorator implements vscode.Disposable {
     public dispose() {
         if (this.timeout) {
             clearTimeout(this.timeout);
+        }
+        if (this.allEditorsTimeout) {
+            clearTimeout(this.allEditorsTimeout);
         }
         this.decorationType.dispose();
         this.disposables.forEach(d => d.dispose());

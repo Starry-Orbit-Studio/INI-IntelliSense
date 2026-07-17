@@ -44,6 +44,7 @@ export async function activate(context: vscode.ExtensionContext) {
 	const outputChannel = vscode.window.createOutputChannel(localize('output.channel.name', 'RA2 Mod IntelliSense'));
 	
 	const iniManager = new INIManager();
+	context.subscriptions.push(iniManager);
 	const schemaManager = new SchemaManager();
     const fileTypeManager = new FileTypeManager();
     const csfManager = new CsfManager();
@@ -595,9 +596,12 @@ export async function activate(context: vscode.ExtensionContext) {
 			await iniManager.updateFile(event.document.uri, event.document.getText());
             // 传入变更范围，触发局部热检查
 			diagnosticManager.handleDocumentChange(event.document, event.contentChanges.map(c => c.range));
-            // 触发装饰器（防抖）
-            overrideDecorator.triggerUpdateDecorations(vscode.window.activeTextEditor, true);
-            valuePreviewDecorator.triggerUpdate(vscode.window.activeTextEditor, true);
+            // 触发装饰器（防抖）—— 仅当变更文档是当前活动编辑器时
+            const activeEditor = vscode.window.activeTextEditor;
+            if (activeEditor && activeEditor.document === event.document) {
+                overrideDecorator.triggerUpdateDecorations(activeEditor, true);
+                valuePreviewDecorator.triggerUpdate(activeEditor, true);
+            }
 		}
 	}));
 
@@ -694,6 +698,12 @@ export async function activate(context: vscode.ExtensionContext) {
 	context.subscriptions.push(watcher);
 	
 	const onFileChange = async (uri: vscode.Uri) => {
+		// 跳过已由 onDidChangeTextDocument 处理的文件（保存时重复触发）
+		// 但仍刷新非活动编辑器的装饰（分屏场景）
+		if (iniManager.wasRecentlyUpdated(uri)) {
+			overrideDecorator.triggerUpdateDecorationsForAllVisibleEditors();
+			return;
+		}
 		console.log(`INI 文件变更: ${uri.fsPath}, 正在增量更新索引...`);
 		await iniManager.updateFile(uri);
         // 外部文件变更（非编辑器输入），触发全量刷新

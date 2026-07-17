@@ -14,8 +14,6 @@
     "vscode": "^1.96.0"
   },
   "activationEvents": [
-    "onLanguage:ra2-ini",
-    "onCustomEditor:ra2-resource-preview.viewer"
   ],
   "categories": [
     "Programming Languages",
