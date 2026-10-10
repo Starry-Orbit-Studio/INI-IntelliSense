@@ -71,7 +71,8 @@ async function main() {
         const send=async value=>{await page.evaluate(state=>window.postMessage(state,'*'),{type:'state',labels,loading:false,pinned:false,inspection:value});await page.waitForFunction(id=>document.getElementById('app')?.dataset.inspection===id&&document.querySelector('.sprite-canvas,.voxel-canvas,audio'),value.id);};
         await send(inspection('sprite',sprite));
         await page.waitForFunction(()=>{const c=document.querySelector('.sprite-canvas');return c?.getContext('2d').getImageData(0,0,2,2).data[3]===255;});
-        assert.equal(await page.locator('.visual select').first().inputValue(),'asset-2','duplicate names must retain selected source');
+        assert.equal(await page.locator('.asset-choice[aria-pressed="true"] .hint').textContent(),'local/','duplicate names must retain selected source');
+        assert.equal(await page.locator('.asset-choice').count(),2,'all candidates must be visible');
         await page.getByRole('button',{name:'Contact sheet',exact:true}).click();
         await page.waitForFunction(()=>document.querySelector('.contact-thumbnail')?.width===2);
         await page.getByRole('combobox').filter({has:page.locator('option[value="-1"]')}).selectOption('0');
@@ -85,7 +86,27 @@ async function main() {
         await page.getByRole('button',{name:'Export PNG / WAV',exact:true}).click();
         assert.ok(await page.evaluate(()=>window.messages.some(m=>m.type==='export'&&m.width===2&&m.pixels)));
         await send(inspection('voxel',voxel));
+        assert.equal(await page.getByRole('button',{name:'Play / Pause',exact:true}).count(),0,'static VXL must hide HVA playback');
         await page.waitForFunction(()=>{const c=document.querySelector('.voxel-canvas');const g=c?.getContext('webgl2');if(!g)return false;const p=new Uint8Array(c.width*c.height*4);g.readPixels(0,0,c.width,c.height,g.RGBA,g.UNSIGNED_BYTE,p);return p.some((v,i)=>i%4===3&&v>0);});
+        const gameWidth = await page.locator('.voxel-canvas').evaluate(canvas => {
+            const gl = canvas.getContext('webgl2');
+            const pixels = new Uint8Array(canvas.width * canvas.height * 4);
+            gl.readPixels(0, 0, canvas.width, canvas.height, gl.RGBA, gl.UNSIGNED_BYTE, pixels);
+            let left = canvas.width, right = 0;
+            for (let y = 0; y < canvas.height; y++) for (let x = 0; x < canvas.width; x++) {
+                if (pixels[(y * canvas.width + x) * 4 + 3]) { left = Math.min(left, x); right = Math.max(right, x); }
+            }
+            return right - left + 1;
+        });
+        assert.ok(gameWidth >= 10 && gameWidth <= 40, 'game view must preserve model pixel scale instead of filling the viewport');
+        await page.getByRole('combobox').filter({has:page.locator('option[value="PrimaryFireFLH"]')}).selectOption('PrimaryFireFLH');
+        await page.getByLabel(labels.showPoints,{exact:true}).uncheck();
+        assert.ok(await page.locator('.voxel-overlay').evaluate(canvas=>{
+            const pixels=canvas.getContext('2d').getImageData(0,0,canvas.width,canvas.height).data;
+            return !pixels.some((value,index)=>index%4===0&&value===114&&pixels[index+1]===185&&pixels[index+2]===255);
+        }),'FLH visibility toggle must hide edit axes');
+        await page.getByLabel(labels.showPoints,{exact:true}).check();
+        await page.locator('.voxel-overlay').first().scrollIntoViewIfNeeded();
         const handle=await page.locator('.voxel-overlay').first().evaluate(canvas=>{
             const rgba=canvas.getContext('2d').getImageData(0,0,canvas.width,canvas.height).data;
             const rect=canvas.getBoundingClientRect();
@@ -99,10 +120,16 @@ async function main() {
         assert.ok(handle,'FLH axis must be visible');
         await page.mouse.move(handle.x,handle.y); await page.mouse.down();
         await page.mouse.move(handle.x,handle.y-16,{steps:5}); await page.mouse.up();
-        assert.ok(await page.evaluate(()=>window.messages.some(m=>m.type==='edit'&&m.id==='flh'&&m.values[2]!==64&&m.values.every(Number.isInteger))),'FLH drag must send new integer coordinates');
+        assert.ok(await page.evaluate(()=>window.messages.some(m=>m.type==='edit'&&m.id==='flh'&&m.values.some((value,index)=>value!==[100,0,64][index])&&m.values.every(Number.isInteger))),'FLH drag must send new integer coordinates');
+        const orb=await page.locator('.voxel-overlay').first().evaluate(canvas=>{const rect=canvas.getBoundingClientRect();return {x:rect.right-58*rect.width/canvas.width,y:rect.top+58*rect.height/canvas.height};});
+        const beforeLight=await page.locator('.light-value').evaluateAll(inputs=>inputs.map(input=>input.value));
+        await page.mouse.move(orb.x,orb.y);await page.mouse.down();await page.mouse.move(orb.x+18,orb.y-12,{steps:5});await page.mouse.up();
+        assert.notDeepEqual(await page.locator('.light-value').evaluateAll(inputs=>inputs.map(input=>input.value)),beforeLight,'light orb must synchronize numeric fields');
+        await page.getByRole('button',{name:labels.projectLight,exact:true}).click();
+        assert.deepEqual(await page.locator('.light-value').evaluateAll(inputs=>inputs.map(input=>input.value)),voxel.light.map(String),'project light must restore numeric controls');
         await page.locator('select').filter({has:page.locator('option[value="normal"]')}).selectOption('perspective');
         await page.getByLabel('Fixed voxel lighting',{exact:true}).check();
-        await page.getByRole('button',{name:'Apply to INI',exact:true}).first().click();
+        await page.locator('.controls').filter({has:page.locator('.light-value')}).getByRole('button',{name:'Apply to INI',exact:true}).click();
         assert.ok(await page.evaluate(()=>window.messages.some(m=>m.type==='edit'&&m.id==='light'&&m.values.length===4&&m.values[3]===1)));
         fs.mkdirSync(path.join(root,'out','webview-qa'),{recursive:true});
         await page.screenshot({path:path.join(root,'out','webview-qa','voxel.png'),fullPage:true});
@@ -119,6 +146,17 @@ async function main() {
         await page.waitForFunction(()=>window.messages.some(m=>m.type==='thumbnail'&&m.id==='tile'));
         await page.locator('.asset-tile').click();
         assert.ok(await page.evaluate(()=>window.messages.some(m=>m.type==='select'&&m.id==='tile')));
+        await page.setViewportSize({width:1320,height:440});
+        const building=structuredClone(sprite);
+        building.scene={kind:'building',foundation:[[0,0],[1,0],[0,1],[1,1]],trace:['body → BodyArt → generic.mix','Buildup → BodyMK → isotemp.mix'],layers:[
+            {id:'body',name:'BodyArt',tag:'body',source:'generic.mix',state:'normal',offset:[0,0],z:0,start:0,end:-1,media:sprite},
+            {id:'buildup',name:'BodyMK',tag:'Buildup',source:'isotemp.mix',state:'construction',offset:[0,0],z:0,start:0,end:-1,media:sprite}
+        ]};
+        await send(inspection('building',building));
+        await page.getByRole('combobox').filter({has:page.locator('option[value="construction"]')}).selectOption('construction');
+        await page.waitForFunction(()=>{const canvas=document.querySelector('.sprite-canvas');return canvas?.getContext('2d').getImageData(150,120,1,1).data[3]>0;});
+        await page.screenshot({path:path.join(root,'out','webview-qa','bottom-panel.png'),fullPage:true});
+        assert.ok(await page.locator('.preview-stage').evaluate(stage=>stage.getBoundingClientRect().left<document.querySelector('.preview-controls').getBoundingClientRect().left),'wide bottom panel must use a horizontal layout');
         assert.deepEqual(errors,[], 'Webview must not emit browser or CSP errors');
         console.log('Webview regression passed: worker pixels, source/palette selection, action edits, comparison, PNG, WebGL, light edits, narrow layout, audio pause, asset library.');
     } finally {await browser?.close();await new Promise(resolve=>server.close(resolve));}

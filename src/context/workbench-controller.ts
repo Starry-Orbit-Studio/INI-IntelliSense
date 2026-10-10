@@ -99,7 +99,15 @@ class WorkbenchSession implements vscode.Disposable {
                         sources: [],
                         references: [],
                         properties: [],
-                        assets: [{ ...candidate, id, source: uri.toString() }],
+                        assets: [
+                            {
+                                name: candidate.name,
+                                priority: candidate.priority,
+                                id,
+                                source: this.service.resources.label(uri, uri),
+                                role: candidate.role,
+                            },
+                        ],
                         paletteOptions: [],
                         warnings: [],
                     },
@@ -114,7 +122,7 @@ class WorkbenchSession implements vscode.Disposable {
                     current.inspection.assets.unshift({
                         id,
                         name: candidate.name,
-                        source: candidate.uri.toString(),
+                        source: this.service.resources.label(uri, candidate.uri),
                         priority: 0,
                     });
                     current.inspection.focus = candidate.name;
@@ -127,7 +135,7 @@ class WorkbenchSession implements vscode.Disposable {
                         return {
                             id: paletteId,
                             name: candidate.name,
-                            source: candidate.uri.toString(),
+                            source: this.service.resources.label(uri, candidate.uri),
                             priority: candidate.priority,
                         };
                     }
@@ -139,7 +147,9 @@ class WorkbenchSession implements vscode.Disposable {
             if (revision !== this.revision || token.isCancellationRequested) {
                 return;
             }
-            this.current = current;
+            if (current) {
+                this.current = current;
+            }
         } catch (error) {
             if (revision !== this.revision || token.isCancellationRequested) {
                 return;
@@ -207,7 +217,7 @@ class WorkbenchSession implements vscode.Disposable {
                 current.inspection.library!.push({
                     id,
                     name: candidate.name,
-                    source: candidate.uri.toString(),
+                    source: this.service.resources.label(origin, candidate.uri),
                     priority: candidate.priority,
                 });
             }
@@ -400,7 +410,7 @@ class WorkbenchSession implements vscode.Disposable {
             for (const candidate of await this.service.resources.list(target.uri, [target.extension])) {
                 choices.push({
                     label: candidate.name,
-                    description: candidate.uri.toString(),
+                    description: this.service.resources.label(session.origin, candidate.uri),
                     replacement: path.posix.extname(target.original)
                         ? candidate.name
                         : path.posix.basename(candidate.name, path.posix.extname(candidate.name)),
@@ -446,6 +456,10 @@ export class WorkbenchController
     private sessions = new Set<WorkbenchSession>();
     private timer?: NodeJS.Timeout;
     private disposables: vscode.Disposable[] = [];
+    private autoRevealed = false;
+    private cursorRevision = 0;
+    private autoCancellation?: vscode.CancellationTokenSource;
+    private backgroundRoots = new Set<string>();
 
     constructor(
         private readonly context: vscode.ExtensionContext,
@@ -453,13 +467,60 @@ export class WorkbenchController
         private readonly media: MediaService
     ) {
         const schedule = () => {
+            this.cursorRevision++;
+            this.autoCancellation?.cancel();
+            this.autoCancellation?.dispose();
+            this.autoCancellation = undefined;
             if (this.timer) {
                 clearTimeout(this.timer);
             }
             this.timer = setTimeout(() => {
                 const editor = vscode.window.activeTextEditor;
-                if (editor) {
+                if (editor?.document.languageId === 'ra2-ini') {
+                    const root = service.resources.projectRoot(editor.document.uri).toString();
+                    if (!this.backgroundRoots.has(root)) {
+                        this.backgroundRoots.add(root);
+                        void Promise.all([
+                            service.ini.load(editor.document.uri),
+                            media.warm(editor.document.uri),
+                        ]).catch((error) => console.debug('[Workbench] Background indexing failed', error));
+                    }
                     void this.inspector?.follow(editor);
+                    if (
+                        !this.autoRevealed &&
+                        vscode.workspace
+                            .getConfiguration('ra2-ini-intellisense', editor.document.uri)
+                            .get('media.autoReveal', true) &&
+                        vscode.workspace
+                            .getConfiguration('ra2-ini-intellisense', editor.document.uri)
+                            .get('media.enabled', true)
+                    ) {
+                        const revision = this.cursorRevision;
+                        const cancellation = new vscode.CancellationTokenSource();
+                        this.autoCancellation = cancellation;
+                        void service
+                            .inspect(editor.document, editor.selection.active, cancellation.token)
+                            .then(async (session) => {
+                                if (
+                                    revision !== this.cursorRevision ||
+                                    this.autoRevealed ||
+                                    !session ||
+                                    (!session.inspection.assets.length && !session.inspection.media)
+                                ) {
+                                    return;
+                                }
+                                this.autoRevealed = true;
+                                if (this.view) {
+                                    this.view.show(true);
+                                } else {
+                                    await vscode.commands.executeCommand(WorkbenchController.viewId + '.focus', {
+                                        preserveFocus: true,
+                                    });
+                                }
+                            })
+                            .catch((error) => console.debug('[Workbench] Auto reveal unavailable', error))
+                            .finally(() => cancellation.dispose());
+                    }
                 }
             }, 140);
         };
@@ -476,8 +537,11 @@ export class WorkbenchController
                     });
                 }
             }),
-            service.resources.onDidChange(() => {
-                service.ini.invalidate();
+            service.resources.onDidChange((uri) => {
+                if (!uri || /\.(ini|map|mpr|yrm|mix|dll)$/i.test(uri.path)) {
+                    this.backgroundRoots.clear();
+                    service.ini.invalidate();
+                }
                 this.sessions.forEach((session) => session.refresh());
                 schedule();
             }),
@@ -536,6 +600,7 @@ export class WorkbenchController
                 await session.browse(origin);
             })
         );
+        schedule();
     }
 
     public resolveWebviewView(view: vscode.WebviewView): void {
@@ -593,6 +658,8 @@ export class WorkbenchController
         await session.inspect(document.uri, new vscode.Position(0, 0), true);
     }
     public dispose(): void {
+        this.autoCancellation?.cancel();
+        this.autoCancellation?.dispose();
         if (this.timer) {
             clearTimeout(this.timer);
         }

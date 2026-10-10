@@ -37,7 +37,7 @@ export function mixKey(source: Uint8Array): Uint8Array {
     }
     return output.subarray(0, 56);
 }
-/** Westwood stores each Blowfish word little-endian; ECB has no semantic padding. */
+/** Convert 32-bit word storage between byte orders. */
 export function swapWords(bytes: Uint8Array): Uint8Array {
     if (bytes.length % 4) {
         throw new Error('Invalid encrypted MIX block alignment.');
@@ -48,15 +48,19 @@ export function swapWords(bytes: Uint8Array): Uint8Array {
     }
     return output;
 }
-export async function decryptMixHeader(bytes: Uint8Array): Promise<{ bytes: Uint8Array; bodyOffset: number }> {
+export async function decryptMixHeader(
+    bytes: Uint8Array,
+    readHeader?: (offset: number, length: number) => Promise<Uint8Array>
+): Promise<{ bytes: Uint8Array; bodyOffset: number }> {
     const reader = new BinaryReader(bytes);
     reader.require(0, 92);
     const { Blowfish } = await import('egoroof-blowfish');
     const cipher = new Blowfish(mixKey(bytes.subarray(4, 84)), Blowfish.MODE.ECB, Blowfish.PADDING.NULL);
     const decode = (data: Uint8Array) => {
         const restored = new Uint8Array(data.length);
-        restored.set(cipher.decode(swapWords(data), Blowfish.TYPE.UINT8_ARRAY));
-        return swapWords(restored);
+        // The encrypted block uses standard Blowfish byte order; only its plaintext fields are little-endian.
+        restored.set(cipher.decode(data, Blowfish.TYPE.UINT8_ARRAY));
+        return restored;
     };
     const first = new BinaryReader(decode(bytes.subarray(84, 92))),
         count = first.u16(0);
@@ -64,6 +68,11 @@ export async function decryptMixHeader(bytes: Uint8Array): Promise<{ bytes: Uint
         throw new Error('Invalid encrypted MIX file count.');
     }
     const length = Math.ceil((6 + count * 12) / 8) * 8;
+    if (readHeader) {
+        const encrypted = await readHeader(84, length);
+        new BinaryReader(encrypted).require(0, length);
+        return { bytes: decode(encrypted), bodyOffset: 84 + length };
+    }
     reader.require(84, length);
     return { bytes: decode(bytes.subarray(84, 84 + length)), bodyOffset: 84 + length };
 }

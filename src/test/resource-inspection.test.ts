@@ -2,7 +2,7 @@ import * as assert from 'assert';
 import * as vscode from 'vscode';
 import * as path from 'path';
 import * as os from 'os';
-import { mkdtemp, writeFile, rm } from 'fs/promises';
+import { mkdtemp, writeFile, rm, mkdir } from 'fs/promises';
 import { MixArchive } from '../mix/core/archive';
 import { MixWorkspaceManager } from '../mix/fs/mix-workspace-manager';
 import { GlobalMixDb } from '../mix/core/global-mix-db';
@@ -11,18 +11,23 @@ import { ProjectResources } from '../resources/project-resources';
 import { DecoderService } from '../media/decoder-service';
 import { MediaService } from '../media/media-service';
 import { InspectionService } from '../context/inspection-service';
-import { INIManager } from '../parser';
+import { IniDocument, INIManager } from '../parser';
+import { ProjectIni } from '../context/project-ini';
 import { SchemaManager } from '../schema-manager';
 import { FileTypeManager } from '../file-type-manager';
 import { shpFixture, voxelFixture, hvaFixture, idxFixture } from './media-fixtures';
 import { encodeWav } from '../media/audio';
-import { mixKey, swapWords } from '../mix/core/encrypted-header';
+import { mixKey, decryptMixHeader } from '../mix/core/encrypted-header';
 import { normalTransform, voxelTransform, transformPoint } from '../media/voxel-math';
 import { readVoxel } from '../media/voxel';
 import { MixGame } from '../mix/core/types';
 import { MixUriCodec } from '../mix/fs/mix-uri-codec';
 import { ThumbnailStore } from '../context/thumbnail-store';
 import { inflateSync } from 'zlib';
+import { spriteCandidates } from '../context/sprite-scene';
+import { indexMix } from '../resources/mix-resource-index';
+import { nativeLight, authoredLight, nativeNormal } from '../media/voxel-light';
+import { voxelThumbnail } from '../media/voxel-thumbnail';
 
 suite('Project-scoped media integration', () => {
     let directory: string,
@@ -56,6 +61,13 @@ suite('Project-scoped media integration', () => {
             writeFile(path.join(directory, 'exp2.shp'), shpFixture()),
             writeFile(path.join(directory, 'audio.idx'), idxFixture()),
             writeFile(path.join(directory, 'audio.bag'), new Uint8Array([0, 0, 255, 127])),
+            writeFile(path.join(directory, 'gtcnst.shp'), shpFixture()),
+            writeFile(path.join(directory, 'gtcnst_a.shp'), shpFixture()),
+            writeFile(path.join(directory, 'gtcnstmk.shp'), shpFixture()),
+            writeFile(
+                path.join(directory, 'art-patch.ini'),
+                '[GACNST]\nNewTheater=yes\nFoundation=2x3\nActiveAnim=GACNST_A\nBuildup=GACNSTMK\n[GACNST_A]\nNewTheater=yes\n'
+            ),
             writeFile(
                 path.join(directory, 'loose.wav'),
                 encodeWav({ samples: new Int16Array([0, 10]), channels: 1, rate: 22050 })
@@ -121,7 +133,38 @@ suite('Project-scoped media integration', () => {
         }
         assert.ok(session.inspection.cameo);
         assert.ok(session.inspection.lightEdit);
+        assert.ok(session.inspection.sources.some((item) => item.label === 'TankArt · Voxel'));
         assert.ok(!session.inspection.properties.some((item) => item.value === 'WrongProject'));
+    });
+    test('background include classification replaces queries cached before art indexing finishes', async () => {
+        const root = vscode.Uri.file(path.join(directory, 'CachedArt'));
+        const entries = [
+            ['rules.ini', '[VehicleTypes]\n0=ALTNK\n[ALTNK]\nImage=GTNK\n'],
+            ['art.ini', '[#include]\n0=vehicle-definitions.ini\n[GTNK]\nPrimaryFireFLH=150,0,100\n'],
+            ['vehicle-definitions.ini', '[GTNK]\nVoxel=yes\n'],
+        ].map(([name, content]) => ({ name, content, uri: vscode.Uri.joinPath(root, name) }));
+        const manager = new INIManager();
+        for (const entry of entries) {
+            manager.documents.set(entry.uri.toString(), new IniDocument(entry.uri, entry.content));
+        }
+        const catalog = {
+            projectRoot: () => root,
+            contains: () => true,
+            listDocuments: async () => entries,
+            read: async (uri: vscode.Uri) =>
+                Buffer.from(entries.find((entry) => entry.uri.toString() === uri.toString())!.content),
+        } as unknown as ProjectResources;
+        const ini = new ProjectIni(catalog, manager, new SchemaManager(), new FileTypeManager());
+        try {
+            // Hover/annotations can query the main index while include discovery is pending.
+            assert.strictEqual(ini.effective(entries[0].uri, 'GTNK', 'art').get('voxel'), undefined);
+            await ini.load(entries[0].uri);
+            assert.strictEqual(ini.category(entries[2].uri), 'art');
+            assert.strictEqual(ini.effective(entries[0].uri, 'GTNK', 'art').get('voxel')?.value, 'yes');
+            assert.strictEqual(ini.effective(entries[0].uri, 'GTNK', 'art').get('primaryfireflh')?.value, '150,0,100');
+        } finally {
+            manager.dispose();
+        }
     });
     test('exact second animation list token targets ExpTwo rather than the first member', async () => {
         const line = rules
@@ -283,9 +326,212 @@ suite('Project-scoped media integration', () => {
         assert.ok(left);
         assert.strictEqual(left.toString(), right?.toString());
     });
+    test('included art inherits its file category and composes theater body, active animation, buildup and foundation', async () => {
+        const rulesText = rules.getText() + '\n[BuildingTypes]\n0=GACNST\n[GACNST]\n';
+        const artText = art.getText() + '\n[#include]\n0=art-patch.ini\n[GACNST]\n';
+        // Saved content supplies the include graph; open document content supplies unsaved edits.
+        await writeFile(art.uri.fsPath, artText);
+        await writeFile(rules.uri.fsPath, rulesText);
+        const edit = new vscode.WorkspaceEdit();
+        edit.insert(art.uri, new vscode.Position(art.lineCount, 0), '\n[#include]\n0=art-patch.ini\n[GACNST]\n');
+        edit.insert(rules.uri, new vscode.Position(rules.lineCount, 0), '\n[BuildingTypes]\n0=GACNST\n[GACNST]\n');
+        await vscode.workspace.applyEdit(edit);
+        service.ini.invalidate();
+        resources.invalidate();
+        const session = (await service.inspect(rules, new vscode.Position(rules.lineCount - 2, 0), token.token))!;
+        assert.strictEqual(session.inspection.type, 'BuildingType');
+        assert.strictEqual(session.inspection.media?.kind, 'sprite');
+        if (session.inspection.media?.kind === 'sprite') {
+            // One-frame files do not invent a shadow frame, even with a building default.
+            assert.strictEqual(session.inspection.media.shadow, false);
+            assert.strictEqual(session.inspection.media.scene?.foundation.length, 6);
+            assert.deepStrictEqual(
+                session.inspection.media.scene?.layers.map((layer) => layer.media?.name),
+                ['gtcnst.shp', 'gtcnst_a.shp', 'gtcnstmk.shp']
+            );
+        }
+        const snow = await spriteCandidates(
+            resources,
+            rules.uri,
+            'GACNST',
+            service.ini.effective(rules.uri, 'GACNST', 'art')
+        );
+        assert.ok(snow.names.includes('GTCNST.shp'));
+    });
+    test('building theater fallback preserves direct images and explicit NewTheater=no', async () => {
+        const fallback = await spriteCandidates(resources, rules.uri, 'GACNST', new Map(), true);
+        assert.deepStrictEqual(fallback.names, ['GACNST.shp', 'GTCNST.shp', 'GGCNST.shp']);
+        assert.strictEqual(fallback.candidates[0]?.name, 'gtcnst.shp');
+        const properties = new Map([
+            [
+                'newtheater',
+                { key: 'NewTheater', value: 'no', uri: art.uri, line: 0, section: 'GACNST', inherited: false },
+            ],
+        ]);
+        const explicit = await spriteCandidates(resources, rules.uri, 'GACNST', properties, true);
+        assert.deepStrictEqual(explicit.names, ['GACNST.shp']);
+    });
+    test('theater-named SHP sprites can be decoded and thumbnailed without treating their suffix as a format', async () => {
+        const uri = vscode.Uri.joinPath(vscode.Uri.file(directory), 'sprite.tem');
+        await writeFile(uri.fsPath, shpFixture());
+        const extension = vscode.extensions.getExtension('Astralette.ra2-ini-intellisense')!;
+        const media = new MediaService(resources, decoder, extension.extensionUri);
+        const candidate = { uri, name: 'sprite.tem', source: 'sprite.tem', priority: 0 };
+        assert.strictEqual((await media.load(candidate, { origin: rules.uri }, token.token)).kind, 'sprite');
+        const thumbnail = await media.thumbnail(candidate, token.token, rules.uri);
+        assert.ok(thumbnail && thumbnail.length > 8);
+    });
+    test('RA2 lighting accepts legacy normal-mode metadata on an otherwise valid VXL', async () => {
+        const bytes = voxelFixture();
+        bytes[bytes.length - 1] = 2;
+        const uri = vscode.Uri.joinPath(vscode.Uri.file(directory), 'legacy.vxl');
+        await writeFile(uri.fsPath, bytes);
+        const extension = vscode.extensions.getExtension('Astralette.ra2-ini-intellisense')!;
+        const media = new MediaService(resources, decoder, extension.extensionUri);
+        const decoded = await media.load(
+            { uri, name: 'legacy.vxl', source: 'legacy.vxl', priority: 0 },
+            { origin: rules.uri },
+            token.token
+        );
+        assert.strictEqual(decoded.kind, 'voxel');
+        if (decoded.kind === 'voxel') {
+            assert.strictEqual(decoded.model.parts[0].normalsMode, 2);
+            assert.ok(decoded.normals.length >= 3 * 244);
+        }
+    });
+    test('split Rules/Resources projects load nested includes and a root patch through the same catalog', async () => {
+        const root = path.join(directory, 'SplitLayout');
+        await mkdir(path.join(root, 'Rules', 'Factions'), { recursive: true });
+        await mkdir(path.join(root, 'Resources', 'Models'), { recursive: true });
+        await Promise.all([
+            writeFile(
+                path.join(root, 'Rules', 'rules.ini'),
+                '[#include]\n0=Factions/faction.ini\n1=RootPatch.ini\n[VehicleTypes]\n0=SplitTank\n'
+            ),
+            writeFile(path.join(root, 'Rules', 'Factions', 'faction.ini'), '[SplitTank]\nImage=WrongArt\n'),
+            writeFile(path.join(root, 'RootPatch.ini'), '[SplitTank]\nImage=SplitArt\n'),
+            writeFile(path.join(root, 'Rules', 'art.ini'), '[SplitArt]\nVoxel=yes\nImage=split-body\n'),
+            writeFile(path.join(root, 'Resources', 'Models', 'split-body.vxl'), voxelFixture()),
+        ]);
+        resources.invalidate();
+        service.ini.invalidate();
+        const document = await vscode.workspace.openTextDocument(
+            vscode.Uri.file(path.join(root, 'Rules', 'rules.ini'))
+        );
+        await service.ini.load(document.uri);
+        const patch = await vscode.workspace.openTextDocument(vscode.Uri.file(path.join(root, 'RootPatch.ini')));
+        const session = (await service.inspect(patch, new vscode.Position(0, 0), token.token))!;
+        const owner = await vscode.workspace.openTextDocument(
+            vscode.Uri.file(path.join(root, 'Rules', 'Factions', 'faction.ini'))
+        );
+        const properties = service.ini.effective(document.uri, 'SplitTank', 'rules');
+        assert.strictEqual(properties.get('image')?.value, 'SplitArt');
+        assert.strictEqual(service.ini.category(vscode.Uri.file(path.join(root, 'RootPatch.ini'))), 'rules');
+        assert.strictEqual(resources.projectRoot(owner.uri).fsPath.toLowerCase(), root.toLowerCase());
+        const candidate = (await resources.find(document.uri, 'split-body.vxl'))[0];
+        assert.ok(candidate);
+        assert.strictEqual(resources.projectRoot(candidate.uri).fsPath.toLowerCase(), root.toLowerCase());
+        assert.ok(resources.contains(document.uri, owner.uri));
+        assert.ok(!resources.contains(document.uri, rules.uri));
+        assert.strictEqual(
+            session.inspection.media?.kind,
+            'voxel',
+            JSON.stringify({
+                owner: session.inspection.owner,
+                type: session.inspection.type,
+                warnings: session.inspection.warnings,
+                root: resources.projectRoot(patch.uri).fsPath,
+                art: [...service.ini.effective(patch.uri, 'SplitArt', 'art')],
+            })
+        );
+        assert.strictEqual(resources.label(document.uri, candidate.uri), 'Resources/Models/split-body.vxl');
+    });
 });
 
 suite('Voxel transforms and encrypted MIX', () => {
+    test('game hover thumbnails shade through VPL and honor the default house remap', () => {
+        const payload = {
+            kind: 'voxel' as const,
+            name: 'game.vxl',
+            model: readVoxel(voxelFixture()),
+            palette: Array.from({ length: 768 }, (_, index) => Math.floor(index / 3)),
+            vpl: Array.from({ length: 8192 }, (_, index) => Math.floor(index / 256) * 4),
+            normals: [0, 0, 1, 1, 0, 0],
+            light: [1, 0, 0],
+            fixed: true,
+            points: [],
+        };
+        const lit = voxelThumbnail(payload);
+        const dark = voxelThumbnail({ ...payload, light: [-1, 0, 0] });
+        assert.notDeepStrictEqual(lit, dark, 'changing game lighting must change the VPL-shaded thumbnail');
+        payload.vpl.fill(20);
+        const png = Buffer.from(voxelThumbnail(payload));
+        const chunks: Buffer[] = [];
+        for (let offset = 8; offset < png.length;) {
+            const size = png.readUInt32BE(offset);
+            if (png.toString('ascii', offset + 4, offset + 8) === 'IDAT') {
+                chunks.push(png.subarray(offset + 8, offset + 8 + size));
+            }
+            offset += 12 + size;
+        }
+        const scanlines = inflateSync(Buffer.concat(chunks));
+        let remapped = false;
+        for (let y = 0; y < 96; y++) {
+            for (let x = 0; x < 96; x++) {
+                const at = y * 385 + 1 + x * 4;
+                if (scanlines[at + 3] && scanlines[at] > scanlines[at + 1]) {
+                    remapped = true;
+                }
+            }
+        }
+        assert.ok(remapped, 'house colors must match the interactive default rather than raw palette remap entries');
+    });
+    test('legacy RA2 archives resolve CRC names without a game marker', async () => {
+        const bytes = new Uint8Array(22);
+        const view = new DataView(bytes.buffer);
+        view.setUint16(0, 1, true);
+        view.setUint32(2, 4, true);
+        view.setUint32(6, MixArchive.calculateId('audio.idx', MixGame.Ra2), true);
+        view.setUint32(14, 4, true);
+        bytes.set([1, 2, 3, 4], 18);
+        const archive = await MixArchive.open(bytes);
+        const filename = archive.findPathByName('audio.idx');
+        assert.ok(filename);
+        assert.deepStrictEqual([...archive.readFile(filename)], [1, 2, 3, 4]);
+        await assert.rejects(() => MixArchive.open(bytes.subarray(0, 20)), /truncated|不完整/);
+    });
+    test('a captured original encrypted header decrypts independently of the encoder under test', async () => {
+        // Only the public directory prefix is retained; there is no game media in this fixture.
+        const bytes = new Uint8Array(348);
+        bytes.set(
+            Buffer.from(
+                '000003007ad285eac52c40068ae8c3962366a5d1f77c4b04d335c190cadabb8c9b25e408654ba327d3db580a30a0d97a6005caa127c839c1f5a28094a6aa4b1ab91156ab881e3061afa04c614d96f580b5753e03a70e68056a9204b1',
+                'hex'
+            )
+        );
+        const header = await decryptMixHeader(bytes);
+        const view = new DataView(header.bytes.buffer, header.bytes.byteOffset);
+        assert.strictEqual(view.getUint16(0, true), 21);
+        assert.strictEqual(view.getUint32(2, true), 281888112);
+        assert.strictEqual(header.bodyOffset, 348);
+    });
+    test('lighting uses the reference world axes consistently with authored normals', () => {
+        assert.deepStrictEqual(nativeLight([1, 2, 3]), [3, 1, 2]);
+        assert.deepStrictEqual(authoredLight(nativeLight([1, 2, 3])), [1, 2, 3]);
+        assert.deepStrictEqual(nativeNormal([1, 2, 3]), [2, 1, 3]);
+    });
+    test('metadata indexing reads a nested MIX by ranges and preserves filename hashes', async () => {
+        const archive = await MixArchive.open(new Uint8Array(10));
+        archive.writeFile('/sample.wav', new Uint8Array([4, 3, 2, 1]), { create: true, overwrite: false });
+        const bytes = archive.serialize();
+        const indexed = await indexMix(
+            bytes.length,
+            async (offset, length) => bytes.slice(offset, offset + length),
+            async () => undefined
+        );
+        const entry = indexed.entries.get(MixArchive.calculateId('sample.wav', indexed.game))!;
+        assert.deepStrictEqual([...bytes.slice(entry.offset, entry.offset + entry.size)], [4, 3, 2, 1]);
+    });
     test('HVA rotates bounds and turret offsets remain in body coordinates', () => {
         const part = readVoxel(voxelFixture()).parts[0];
         part.bounds = [-2, -1, 0, 2, 1, 1];
@@ -323,7 +569,7 @@ suite('Voxel transforms and encrypted MIX', () => {
         view.setUint32(6, MixArchive.calculateId('sample.wav', MixGame.Ts), true);
         view.setUint32(14, 4, true);
         const cipher = new Blowfish(mixKey(source), Blowfish.MODE.ECB, Blowfish.PADDING.NULL);
-        const encrypted = swapWords(cipher.encode(swapWords(header))).subarray(0, 24);
+        const encrypted = cipher.encode(header).subarray(0, 24);
         const bytes = new Uint8Array(112);
         new DataView(bytes.buffer).setUint32(0, 0x20000, true);
         bytes.set(source, 4);
@@ -331,6 +577,23 @@ suite('Voxel transforms and encrypted MIX', () => {
         bytes.set([1, 2, 3, 4], 108);
         const archive = await MixArchive.open(bytes),
             entry = archive.findPathByName('sample.wav')!;
+        const ranges: [number, number][] = [];
+        await indexMix(
+            bytes.length,
+            async (offset, length) => {
+                ranges.push([offset, length]);
+                return bytes.subarray(offset, offset + length);
+            },
+            async () => undefined
+        );
+        assert.ok(
+            ranges.every(([offset, length]) => offset + length <= 108),
+            'metadata indexing must not read media payload'
+        );
+        assert.ok(
+            ranges.some(([offset, length]) => offset === 84 && length === 24),
+            'encrypted directory read must use its exact length'
+        );
         assert.deepStrictEqual([...archive.readFile(entry)], [1, 2, 3, 4]);
         assert.throws(() => archive.writeFile(entry, new Uint8Array(1), { create: false, overwrite: true }));
         assert.throws(() => archive.rename(entry, 'other.wav', { overwrite: false }));

@@ -42,6 +42,26 @@ suite('Media format and reference regression', () => {
         new DataView(bytes.buffer).setUint32(28, 0, true);
         assert.deepStrictEqual([...decodeShpFrame(bytes, readShp(bytes), 0)], [0, 0, 0, 0]);
     });
+    test('SHP permits transparent tail padding while rejecting literals after an overflowing run', () => {
+        const bytes = new Uint8Array(41);
+        bytes.set(shpFixture(3).subarray(0, 32));
+        bytes.set([5, 0, 1, 0, 4, 4, 0, 2, 3], 32);
+        assert.deepStrictEqual([...decodeShpFrame(bytes, readShp(bytes), 0)], [1, 0, 2, 3]);
+        const invalid = new Uint8Array(42);
+        invalid.set(bytes.subarray(0, 32));
+        invalid.set([6, 0, 1, 0, 4, 2, 4, 0, 2, 3], 32);
+        assert.throws(() => decodeShpFrame(invalid, readShp(invalid), 0));
+    });
+    test('empty frames tolerate unused format metadata; populated unsupported frames remain invalid', () => {
+        const bytes = shpFixture();
+        bytes[16] = 4;
+        assert.throws(() => readShp(bytes));
+        const view = new DataView(bytes.buffer);
+        view.setUint16(12, 0, true);
+        view.setUint16(14, 0, true);
+        view.setUint32(28, 0, true);
+        assert.deepStrictEqual([...decodeShpFrame(bytes, readShp(bytes), 0)], [0, 0, 0, 0]);
+    });
     test('action directions and extra sequence fields are preserved', () => {
         const action = parseSequenceAction('Walk', '10,6,6, 2')!;
         assert.deepStrictEqual(action.extra, ['2']);

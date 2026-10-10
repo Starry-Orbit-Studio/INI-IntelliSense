@@ -1,5 +1,6 @@
 import { voxelTransform, normalTransform, transformPoint } from '../../src/media/voxel-math';
 import type { MediaPayload } from '../../src/context/workbench-protocol';
+import { nativeLight, authoredLight } from '../../src/media/voxel-light';
 
 export interface ViewSettings {
     frame: number;
@@ -21,6 +22,12 @@ export interface ViewSettings {
     grid: boolean;
     fire: boolean;
     flhScale: number;
+    fit: boolean;
+    lightGizmo: boolean;
+    sceneState: string;
+    layers: Set<string>;
+    showPoints: boolean;
+    selectedPoint: string;
 }
 export interface Renderer {
     update(): void;
@@ -109,7 +116,7 @@ export function spriteRenderer(
             const action = media.actions[settings.action]?.action;
             const count =
                 action?.count ??
-                (settings.shadow ? Math.max(1, Math.floor(media.file.frames.length / 2)) : media.file.frames.length);
+                (media.shadow ? Math.max(1, Math.floor(media.file.frames.length / 2)) : media.file.frames.length);
             settings.frame = (settings.frame + 1) % count;
             last = time;
             update();
@@ -179,7 +186,7 @@ export function voxelRenderer(
             'uniform sampler2D palette; uniform sampler2D vpl; uniform float remapStart; uniform float remapEnd; uniform int mode; uniform float cut; uniform bool fixedLight;\n' +
             'out vec3 pixelColor; out float visible;\nvoid main(){\n' +
             'vec4 world=model*vec4(position+corner,1.0); gl_Position=projection*world;\n' +
-            'vec3 n=normalize(normalMatrix*normal); float f1=max(0.0,dot(n,light)); vec3 secondary=light+(fixedLight?vec3(0):vec3(0,0,1)); vec3 halfVector=length(secondary)>0.000001?normalize(secondary):vec3(0); float h=dot(n,halfVector);\n' +
+            'vec3 n=normalize(normalMatrix*normal.yxz); float f1=max(0.0,dot(n,light)); vec3 secondary=light+(fixedLight?vec3(0):eye); vec3 halfVector=length(secondary)>0.000001?normalize(secondary):vec3(0); float h=dot(n,halfVector);\n' +
             'int level=int(clamp(floor(16.0*(f1+max(0.0,h/(3.0-2.0*h)))),0.0,31.0)); int index=int(colorIndex);\n' +
             'if(mode==0){index=int(texelFetch(vpl,ivec2(index,min(level,textureSize(vpl,0).y-1)),0).r*255.0+0.5);}\n' +
             'pixelColor=texelFetch(palette,ivec2(index,0),0).rgb;\n' +
@@ -305,6 +312,7 @@ export function voxelRenderer(
     let handles: { id: string; axis: number; x: number; y: number; dx: number; dy: number }[] = [];
     let drag: { id: string; axis: number; start: number[]; x: number; y: number; dx: number; dy: number } | undefined;
     let orbit: { x: number; y: number; yaw: number; pitch: number } | undefined;
+    let lightDrag: { x: number; y: number; azimuth: number; elevation: number } | undefined;
     const camera = () => {
         const yaw = (settings.yaw * Math.PI) / 180,
             pitch = (settings.pitch * Math.PI) / 180;
@@ -317,7 +325,10 @@ export function voxelRenderer(
         const horizontal = Math.abs(c) * dimensions[0] + Math.abs(s) * dimensions[1];
         const vertical =
             Math.abs(s * p) * dimensions[0] + Math.abs(c * p) * dimensions[1] + Math.abs(q) * dimensions[2];
-        const scale = (1.5 * settings.zoom) / 2 / Math.max(horizontal / aspect, vertical, 1);
+        const scale =
+            settings.fit || settings.mode === 'perspective'
+                ? (1.5 * settings.zoom) / 2 / Math.max(horizontal / aspect, vertical, 1)
+                : (2 * settings.zoom) / canvas.height;
         const rows = [
             [(c * scale) / aspect, (-s * scale) / aspect, 0],
             [-s * p * scale, -c * p * scale, q * scale],
@@ -358,11 +369,12 @@ export function voxelRenderer(
     const update = () => {
         fit();
         const width = Math.max(200, canvas.parentElement?.clientWidth ?? 600);
-        if (canvas.width !== width || canvas.height !== 380) {
+        const height = Math.max(96, Math.round(canvas.clientHeight || 380));
+        if (canvas.width !== width || canvas.height !== height) {
             canvas.width = width;
-            canvas.height = 380;
+            canvas.height = height;
             overlay.width = width;
-            overlay.height = 380;
+            overlay.height = height;
         }
         gl.viewport(0, 0, canvas.width, canvas.height);
         gl.clearColor(0, 0, 0, 0);
@@ -372,7 +384,7 @@ export function voxelRenderer(
         const length = Math.hypot(...settings.light) || 1;
         gl.uniform3fv(
             uniform('light'),
-            settings.light.map((value) => value / length)
+            nativeLight(settings.light).map((value) => value / length)
         );
         const yaw = (settings.yaw * Math.PI) / 180,
             pitch = (settings.pitch * Math.PI) / 180;
@@ -447,16 +459,17 @@ export function voxelRenderer(
                 }
             }
         }
-        for (const point of media.points) {
+        for (const point of settings.showPoints ? media.points : []) {
             const world = pointWorld(point.value),
                 screen = project(world);
-            ctx.fillStyle = '#ffd166';
+            const selected = point.name === settings.selectedPoint;
+            ctx.fillStyle = selected ? '#ffd166' : '#c2ccd8';
             ctx.beginPath();
-            ctx.arc(screen[0], screen[1], 4, 0, Math.PI * 2);
+            ctx.arc(screen[0], screen[1], selected ? 4 : 2.5, 0, Math.PI * 2);
             ctx.fill();
-            ctx.font = '11px sans-serif';
-            const labelX = Math.max(4, Math.min(screen[0] + 7, overlay.width - ctx.measureText(point.name).width - 4));
-            ctx.fillText(point.name, labelX, Math.max(14, Math.min(overlay.height - 4, screen[1] - 7)));
+            if (!selected) {
+                continue;
+            }
             for (let axis = 0; axis < 3; axis++) {
                 const native = [...point.value];
                 native[axis] += (extent / 7) * settings.flhScale;
@@ -485,6 +498,25 @@ export function voxelRenderer(
                 ctx.setLineDash([]);
             }
         }
+        if (settings.lightGizmo && !comparison) {
+            const x = overlay.width - 58,
+                y = 58,
+                light = nativeLight(settings.light);
+            const length = Math.hypot(...light) || 1;
+            ctx.strokeStyle = '#ffd166';
+            ctx.lineWidth = 2;
+            ctx.beginPath();
+            ctx.arc(x, y, 36, 0, Math.PI * 2);
+            ctx.stroke();
+            ctx.beginPath();
+            ctx.moveTo(x, y);
+            ctx.lineTo(x + (light[0] / length) * 30, y - (light[2] / length) * 30);
+            ctx.stroke();
+            ctx.fillStyle = '#ffd166';
+            ctx.beginPath();
+            ctx.arc(x + (light[0] / length) * 30, y - (light[2] / length) * 30, 5, 0, Math.PI * 2);
+            ctx.fill();
+        }
     };
     const coordinates = (event: PointerEvent) => {
         const rect = overlay.getBoundingClientRect();
@@ -495,17 +527,60 @@ export function voxelRenderer(
     };
     const down = (event: PointerEvent) => {
         const [x, y] = coordinates(event);
-        const handle = handles.find((item) => Math.hypot(item.x - x, item.y - y) < 12);
+        if (settings.lightGizmo && Math.hypot(x - (overlay.width - 58), y - 58) <= 40) {
+            const light = nativeLight(settings.light);
+            lightDrag = {
+                x,
+                y,
+                azimuth: Math.atan2(light[1], light[0]),
+                elevation: Math.atan2(light[2], Math.hypot(light[0], light[1])),
+            };
+            overlay.setPointerCapture(event.pointerId);
+            return;
+        }
+        // At native game scale the axis handles are close together; select the nearest, not the first hit.
+        const handle = [...handles]
+            .sort((a, b) => Math.hypot(a.x - x, a.y - y) - Math.hypot(b.x - x, b.y - y))
+            .find((item) => Math.hypot(item.x - x, item.y - y) < 12);
         if (handle) {
             drag = { ...handle, start: [...media.points.find((point) => point.id === handle.id)!.value], x, y };
         } else {
+            const point = settings.showPoints
+                ? media.points
+                      .map((point) => ({ point, screen: project(pointWorld(point.value)) }))
+                      .sort(
+                          (a, b) =>
+                              Math.hypot(a.screen[0] - x, a.screen[1] - y) -
+                              Math.hypot(b.screen[0] - x, b.screen[1] - y)
+                      )
+                      .find((item) => Math.hypot(item.screen[0] - x, item.screen[1] - y) <= 8)
+                : undefined;
+            if (point) {
+                settings.selectedPoint = point.point.name;
+                update();
+                changed();
+                return;
+            }
             orbit = { x, y, yaw: settings.yaw, pitch: settings.pitch };
         }
         overlay.setPointerCapture(event.pointerId);
     };
     const move = (event: PointerEvent) => {
         const [x, y] = coordinates(event);
-        if (drag) {
+        if (lightDrag) {
+            const azimuth = lightDrag.azimuth + (x - lightDrag.x) * 0.025;
+            const elevation = Math.max(
+                -Math.PI / 2,
+                Math.min(Math.PI / 2, lightDrag.elevation - (y - lightDrag.y) * 0.025)
+            );
+            settings.light = authoredLight([
+                Math.cos(azimuth) * Math.cos(elevation),
+                Math.sin(azimuth) * Math.cos(elevation),
+                Math.sin(elevation),
+            ]);
+            update();
+            changed();
+        } else if (drag) {
             const point = media.points.find((point) => point.id === drag!.id)!;
             const length = drag.dx * drag.dx + drag.dy * drag.dy;
             if (length > 0.01) {
@@ -516,6 +591,7 @@ export function voxelRenderer(
                 );
             }
             update();
+            changed();
         } else if (orbit) {
             settings.yaw = orbit.yaw + (x - orbit.x) * 0.4;
             settings.pitch = Math.max(-85, Math.min(85, orbit.pitch + (y - orbit.y) * 0.3));
@@ -532,6 +608,7 @@ export function voxelRenderer(
         }
         drag = undefined;
         orbit = undefined;
+        lightDrag = undefined;
     };
     const wheel = (event: WheelEvent) => {
         event.preventDefault();
@@ -547,6 +624,7 @@ export function voxelRenderer(
         }
         drag = undefined;
         orbit = undefined;
+        lightDrag = undefined;
         update();
     });
     overlay.addEventListener('wheel', wheel, { passive: false });

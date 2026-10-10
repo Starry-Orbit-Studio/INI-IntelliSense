@@ -16,6 +16,7 @@ export interface AssetOption {
     name: string;
     source: string;
     priority: number;
+    role?: string;
 }
 export interface ActionEdit {
     id: string;
@@ -28,6 +29,24 @@ export interface PointEdit {
     name: string;
     value: number[];
 }
+export interface SpriteLayer {
+    id: string;
+    name: string;
+    tag: string;
+    source: string;
+    state: 'normal' | 'damaged' | 'construction' | 'production' | 'idle' | 'next';
+    offset: number[];
+    z: number;
+    start: number;
+    end: number;
+    media?: Omit<Extract<MediaPayload, { kind: 'sprite' }>, 'scene'>;
+}
+export interface SpriteScene {
+    kind: 'building' | 'animation';
+    layers: SpriteLayer[];
+    foundation: number[][];
+    trace: string[];
+}
 export type MediaPayload =
     | {
           kind: 'sprite';
@@ -37,6 +56,7 @@ export type MediaPayload =
           actions: ActionEdit[];
           shadow: boolean;
           name: string;
+          scene?: SpriteScene;
       }
     | { kind: 'image'; width: number; height: number; pixels: string; name: string }
     | {

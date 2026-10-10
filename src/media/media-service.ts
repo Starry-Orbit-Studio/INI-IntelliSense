@@ -4,11 +4,19 @@ import { ProjectResources, ResourceCandidate } from '../resources/project-resour
 import { DecoderService } from './decoder-service';
 import { readPalette } from '../preview/palette-utils';
 import { GAME_NORMALS } from './voxel-normals';
-import { VoxelFile, HvaFile, attachHva } from './voxel';
-import { ShpFile } from './shp';
+import { VoxelFile, HvaFile, attachHva, MAX_VOXELS } from './voxel';
+import { ShpFile, isShpFilename } from './shp';
 import { BagSample, readBagIndex } from './audio';
-import { MediaPayload, ActionEdit, PointEdit } from '../context/workbench-protocol';
+import { MediaPayload, ActionEdit, PointEdit, SpriteScene, SpriteLayer } from '../context/workbench-protocol';
 import { localize } from '../i18n';
+import { DEFAULT_VOXEL_LIGHT } from './voxel-light';
+
+export interface SpriteSceneRecipe {
+    kind: SpriteScene['kind'];
+    foundation: number[][];
+    trace: string[];
+    layers: { layer: Omit<SpriteLayer, 'media'>; candidate?: ResourceCandidate; options: MediaOptions }[];
+}
 
 export interface MediaOptions {
     origin?: vscode.Uri;
@@ -26,15 +34,27 @@ export interface MediaOptions {
     volume?: number;
     loop?: boolean;
     sample?: BagSample;
+    scene?: SpriteSceneRecipe;
 }
 
 /** Host-side resource acquisition; CPU-heavy parsing stays in the decoder worker. */
 export class MediaService {
+    private banks = new Map<string, Promise<Map<string, { candidate: ResourceCandidate; sample: BagSample }[]>>>();
+    private bankErrors = new Map<string, string[]>();
+    private bankGeneration = 0;
     constructor(
         public readonly resources: ProjectResources,
         private readonly decoder: DecoderService,
         private readonly extension: vscode.Uri
-    ) {}
+    ) {
+        resources.onDidChange((uri) => {
+            if (!uri || /\.(idx|bag|mix|dll)$/i.test(uri.path)) {
+                this.bankGeneration++;
+                this.banks.clear();
+                this.bankErrors.clear();
+            }
+        });
+    }
 
     public async thumbnail(
         candidate: ResourceCandidate,
@@ -53,12 +73,12 @@ export class MediaService {
                 voxel: media,
             });
         }
-        if (!['.shp', '.pcx'].includes(extension)) {
+        if (!isShpFilename(candidate.name) && extension !== '.pcx') {
             return undefined;
         }
         const bytes = await this.resources.read(candidate.uri);
         return this.decoder.decode<Uint8Array>(
-            extension === '.shp' ? 'thumbnail' : 'pcx-thumbnail',
+            isShpFilename(candidate.name) ? 'thumbnail' : 'pcx-thumbnail',
             bytes,
             token,
             undefined,
@@ -123,8 +143,40 @@ export class MediaService {
                 loop: options.loop ?? false,
             };
         }
-        if (extension === '.shp') {
+        if (isShpFilename(candidate.name)) {
             const file = await this.decoder.decode<ShpFile>('shp', bytes, token);
+            let scene: SpriteScene | undefined;
+            if (options.scene) {
+                scene = { ...options.scene, trace: [...options.scene.trace], layers: [] };
+                let sceneBytes = 0;
+                let scenePixels = 0;
+                for (const entry of options.scene.layers) {
+                    if (token?.isCancellationRequested) {
+                        break;
+                    }
+                    const layer: SpriteLayer = { ...entry.layer };
+                    if (entry.candidate) {
+                        try {
+                            const selected = layer.tag === 'body' ? candidate : entry.candidate;
+                            const media = await this.load(selected, { ...entry.options, scene: undefined }, token);
+                            if (media.kind === 'sprite') {
+                                sceneBytes += media.bytes.length;
+                                scenePixels += media.file.width * media.file.height;
+                                if (sceneBytes > 64 * 1024 * 1024 || scenePixels > 16 * 1024 * 1024) {
+                                    throw new Error(
+                                        localize('workbench.sceneBudget', 'Scene exceeds the decoded asset budget.')
+                                    );
+                                }
+                                layer.media = media;
+                                layer.source = this.resources.label(origin, selected.uri);
+                            }
+                        } catch (error) {
+                            scene.trace.push(localize('workbench.layerDecode', '{0}: {1}', layer.name, String(error)));
+                        }
+                    }
+                    scene.layers.push(layer);
+                }
+            }
             return {
                 kind: 'sprite',
                 name,
@@ -132,7 +184,8 @@ export class MediaService {
                 file,
                 palette: await this.palette(origin, options),
                 actions: options.actions ?? [],
-                shadow: options.shadow ?? false,
+                shadow: (options.shadow ?? false) && file.frames.length > 1 && file.frames.length % 2 === 0,
+                scene,
             };
         }
         if (extension === '.pcx') {
@@ -198,17 +251,11 @@ export class MediaService {
                 }
             }
             model.parts = parts.flatMap((item) => item.model.parts);
-            if (model.parts.reduce((count, part) => count + part.voxels.length / 5, 0) > 500000) {
+            if (model.parts.reduce((count, part) => count + part.voxels.length / 5, 0) > MAX_VOXELS) {
                 throw new Error('Assembled model exceeds the voxel budget.');
             }
-            if (model.parts.some((part) => part.normalsMode !== 4)) {
-                throw new Error(
-                    localize(
-                        'workbench.normalsUnsupported',
-                        'This VXL uses a normal table other than the supported RA2 table (mode 4).'
-                    )
-                );
-            }
+            // RA2 game lighting indexes its global normal table. Some shipped mod assets
+            // retain a legacy/zero limb mode; that metadata must not prevent rendering.
             const vplCandidate = (await this.resources.find(origin, 'voxels.vpl'))[0];
             const vplBytes = await this.resources.read(
                 vplCandidate?.uri ?? vscode.Uri.joinPath(this.extension, 'assets', 'palettes', 'voxels.vpl')
@@ -225,7 +272,7 @@ export class MediaService {
                 palette: await this.palette(origin, options),
                 vpl: [...vplBytes.subarray(784, 784 + sections * 256)],
                 normals: GAME_NORMALS.flatMap((normal) => [normal.x, normal.y, normal.z]),
-                light: options.light ?? [0.201, -0.907, -0.362],
+                light: options.light ?? [...DEFAULT_VOXEL_LIGHT],
                 fixed: options.fixed ?? false,
                 points: options.points ?? [],
             };
@@ -255,6 +302,43 @@ export class MediaService {
         const base = name.replace(/^[\$#]+/, '').replace(/\.wav$/i, '');
         const loose = await this.resources.find(origin, base + '.wav');
         const found: { candidate: ResourceCandidate; sample?: BagSample }[] = loose.map((candidate) => ({ candidate }));
+        found.push(...((await this.sampleCatalog(origin)).get(base.toLowerCase()) ?? []));
+        return found.sort((a, b) => a.candidate.priority - b.candidate.priority);
+    }
+
+    public audioDiagnostics(origin: vscode.Uri): string[] {
+        return this.bankErrors.get(this.resources.projectRoot(origin).toString()) ?? [];
+    }
+
+    public async warm(origin: vscode.Uri): Promise<void> {
+        await this.sampleCatalog(origin);
+    }
+
+    private async sampleCatalog(
+        origin: vscode.Uri
+    ): Promise<Map<string, { candidate: ResourceCandidate; sample: BagSample }[]>> {
+        const key = this.resources.projectRoot(origin).toString();
+        const generation = this.bankGeneration;
+        let pending = this.banks.get(key);
+        if (!pending) {
+            pending = this.buildSampleCatalog(origin, generation).catch((error) => {
+                if (this.banks.get(key) === pending) {
+                    this.banks.delete(key);
+                }
+                throw error;
+            });
+            this.banks.set(key, pending);
+        }
+        const catalog = await pending;
+        return generation === this.bankGeneration ? catalog : this.sampleCatalog(origin);
+    }
+
+    private async buildSampleCatalog(
+        origin: vscode.Uri,
+        generation: number
+    ): Promise<Map<string, { candidate: ResourceCandidate; sample: BagSample }[]>> {
+        const catalog = new Map<string, { candidate: ResourceCandidate; sample: BagSample }[]>();
+        const errors: string[] = [];
         const indexes = new Map<string, ResourceCandidate>();
         for (const index of [
             ...(await this.resources.list(origin, ['.idx'])),
@@ -265,12 +349,7 @@ export class MediaService {
         }
         for (const index of indexes.values()) {
             try {
-                const sample = readBagIndex(await this.resources.read(index.uri, 8 * 1024 * 1024)).find(
-                    (item) => item.name.toLowerCase() === base.toLowerCase()
-                );
-                if (!sample) {
-                    continue;
-                }
+                const samples = readBagIndex(await this.resources.read(index.uri, 8 * 1024 * 1024));
                 const bagName = index.name.replace(/\.idx$/i, '.bag');
                 const candidates = await this.resources.find(origin, bagName);
                 const sibling = candidates.find(
@@ -280,12 +359,41 @@ export class MediaService {
                 );
                 const bag = sibling ?? candidates[0];
                 if (bag) {
-                    found.push({ candidate: { ...bag, name: base + '.wav', source: index.source }, sample });
+                    for (const sample of samples) {
+                        const key = sample.name.toLowerCase();
+                        const values = catalog.get(key) ?? [];
+                        values.push({
+                            candidate: { ...bag, name: sample.name + '.wav', source: index.source },
+                            sample,
+                        });
+                        catalog.set(key, values);
+                    }
+                } else {
+                    errors.push(
+                        localize(
+                            'workbench.missingBank',
+                            'BAG container missing for {0}',
+                            this.resources.label(origin, index.uri)
+                        )
+                    );
                 }
-            } catch {
-                /* Missing/corrupt banks remain unavailable without blocking other samples. */
+            } catch (error) {
+                errors.push(
+                    localize(
+                        'workbench.invalidBank',
+                        'Audio index {0}: {1}',
+                        this.resources.label(origin, index.uri),
+                        error instanceof Error ? error.message : String(error)
+                    )
+                );
             }
         }
-        return found;
+        if (!indexes.size) {
+            errors.push(localize('workbench.noAudioIndex', 'No audio IDX libraries were discovered.'));
+        }
+        if (generation === this.bankGeneration) {
+            this.bankErrors.set(this.resources.projectRoot(origin).toString(), errors);
+        }
+        return catalog;
     }
 }

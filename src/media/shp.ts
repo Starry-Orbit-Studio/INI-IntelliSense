@@ -1,5 +1,10 @@
 import { BinaryReader, checkedPixels } from './binary-reader';
 
+/** Theater-named sprites use the SHP binary format despite their filename suffix. */
+export function isShpFilename(name: string): boolean {
+    return /\.(shp|tem|sno|urb|ubn|des|lun)$/i.test(name);
+}
+
 export interface ShpFrame {
     x: number;
     y: number;
@@ -41,7 +46,7 @@ export function readShp(bytes: Uint8Array): ShpFile {
             offset: reader.u32(at + 20),
         };
         if (
-            frame.format > 3 ||
+            (frame.offset !== 0 && frame.width > 0 && frame.height > 0 && frame.format > 3) ||
             frame.x + frame.width > width ||
             frame.y + frame.height > height ||
             (frame.offset !== 0 && frame.offset < 8 + count * 24) ||
@@ -100,7 +105,10 @@ export function decodeShpFrame(bytes: Uint8Array, file: ShpFile, index: number):
                     }
                     row[x++] = value;
                 }
-                if (x > frame.width) {
+                // SHP writers can pad the final transparent run beyond
+                // the cropped row. It writes no pixels; retain strict checks for
+                // data after an overflowing run and for out-of-bounds literals.
+                if (x > frame.width && cursor < end) {
                     throw new Error('SHP transparent run overflows its bounds.');
                 }
             }

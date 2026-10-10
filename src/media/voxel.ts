@@ -1,5 +1,7 @@
 import { BinaryReader } from './binary-reader';
 
+export const MAX_VOXELS = 1_000_000;
+
 export interface VoxelPart {
     name: string;
     size: number[];
@@ -89,7 +91,7 @@ export function readVoxel(bytes: Uint8Array): VoxelFile {
                     const color = bytes[cursor++],
                         normal = bytes[cursor++];
                     if (color) {
-                        if (++total > 500000) {
+                        if (++total > MAX_VOXELS) {
                             throw new Error('VXL exceeds the voxel budget.');
                         }
                         part.voxels.push(column % size[0], Math.floor(column / size[0]), z, color, normal);

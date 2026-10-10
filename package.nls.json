@@ -61,7 +61,9 @@
     "configuration.media.inlineThumbnails": "Show small resource thumbnails beside visible INI headers and image references.",
     "configuration.media.hoverEnabled": "Show media previews and audition links on reference values.",
     "configuration.media.resourceRoots": "Additional asset directories, in decreasing priority after the project directory.",
-    "configuration.media.archiveOrder": "MIX filenames in decreasing priority. Unlisted archives have equal priority; ambiguities are shown.",
-    "configuration.media.theater": "Theater suffix used to resolve CustomPalette placeholders (for example tem or sno).",
-    "configuration.media.semanticRules": "Additional contextual reference rules. First matching rule wins; dictionary types remain unchanged."
+    "configuration.media.archiveOrder": "Explicit MIX filename precedence. All candidates are listed; unconfigured archive order is a preview choice, not a claim about engine precedence.",
+    "configuration.media.theater": "Theater suffix for building filenames and custom palettes: tem, sno, urb, ubn, lun, des.",
+    "configuration.media.semanticRules": "Additional contextual reference rules. First matching rule wins; dictionary types remain unchanged.",
+    "configuration.media.autoReveal": "Reveal the workbench once per window session on the first valid resource section, preserving editor focus.",
+    "configuration.media.excludedDirectories": "Directory names excluded from asset discovery. Defaults skip temporary caches and tool copies; explicitly configured resource roots are still scanned."
 }

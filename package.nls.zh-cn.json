@@ -61,7 +61,9 @@
     "configuration.media.inlineThumbnails": "在可见的 INI 节标题和图像引用旁显示素材缩略图。",
     "configuration.media.hoverEnabled": "在资源引用值上显示预览和声音试听入口。",
     "configuration.media.resourceRoots": "项目目录之外的素材目录，按优先级从高到低排列。",
-    "configuration.media.archiveOrder": "MIX 文件名优先级列表。未列出的包优先级相同；存在歧义时会提示。",
-    "configuration.media.theater": "解析 CustomPalette 占位符的战区后缀，例如 tem 或 sno。",
-    "configuration.media.semanticRules": "额外的上下文资源语义规则，首个匹配项生效，不改变字典中的验证类型。"
+    "configuration.media.archiveOrder": "MIX 文件名的显式优先级列表。所有候选来源直接列出；未配置的包顺序仅用于预览，不代表游戏加载顺序。",
+    "configuration.media.theater": "建筑 NewTheater、Theater 文件名与自定义色盘的战区后缀：tem、sno、urb、ubn、lun、des。",
+    "configuration.media.semanticRules": "额外的上下文资源语义规则，首个匹配项生效，不改变字典中的验证类型。",
+    "configuration.media.autoReveal": "首次选中有效素材节时自动显示底部工作台，每个窗口会话只显示一次并保留编辑器焦点。",
+    "configuration.media.excludedDirectories": "素材发现时跳过的目录名称，默认排除临时缓存和工具副本；显式配置的素材根目录仍会扫描。"
 }

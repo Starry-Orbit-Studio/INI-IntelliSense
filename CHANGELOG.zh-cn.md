@@ -6,6 +6,32 @@ All notable changes to the "ra2-ini-intellisense" extension will be documented i
 
 Check [Keep a Changelog](http://keepachangelog.com/) for recommendations on how to structure this file.
 
+## [0.1.3] - 2026-10-10
+
+- 修复文件分类通配符跨目录误匹配：rules*.ini 不再把 Rules/artes.ini、Rules/soundes.ini 归入 rules，恢复打开 MOD 根目录时的 VXL 格式识别及 art/sound 查询；递归路径使用 **。
+- 修复后台 include 分类完成后旧节查询缓存未更新的问题，避免已加载 art 中的 Voxel=yes 被遗漏；新增 ALTNK 重复 art 节及实际悬停、底栏验收。
+- VXL 详情列出 art 属性来源，可直接定位决定素材格式的 Voxel 标签。
+
+## [0.1.2] - 2026-10-10
+
+- 修复只打开 Rules/Resources 子文件夹、嵌套 INI、直接打开素材和 MIX 条目时的 MOD 根目录识别；在所属项目范围内使用配置目录，监听同级素材变更。
+- 缓存根目录解析，补查建筑剧场文件名并尊重显式 NewTheater=no，支持剧场扩展名的 SHP 解码。
+- 跨目录 include 支持 MOD 根目录与目录中唯一同名文件的补查，保留相对路径优先顺序并兼容 Windows 文件名大小写。
+- VXL 使用红警游戏法线与光照时兼容遗留法线模式头，修复 ES 中合法模型被直接拒绝的问题。
+- 兼容 SHP 透明行尾填充及空帧的未使用格式字段，大型模型与部件组合统一使用有上限的一百万体素预算。
+- 新增真实 Rules 工作区验收、全部注册单位与建筑的资源定位扫描，以及可选的 Resources 全量 SHP/VXL 解码报告。
+
+## [0.1.1] - 2026-10-10
+
+- 对象检查器默认移至底栏，采用紧凑横向布局；首次选中有效素材自动显示一次并保留文本编辑焦点。
+- 新增后台项目与音频库索引、按变更范围失效的缓存、直接列出的来源卡片及降优先级的备份来源。
+- 修复加密 MIX 的 Blowfish 字节序与旧式 CRC 文件名查找；嵌套包素材通过目录和样本的区间读取加载。
+- 新增建筑 NewTheater 文件解析、附属动画、建造/受损/生产状态、占地网格，以及动画 ConcurrentAnim/Next 链和解析来源。
+- 校正 VXL 光照与法线坐标转换，采用游戏像素比例默认镜头，支持视图内拖动光照；播放控件按素材能力显示。
+- FLH 改为模型上显示点，名称和坐标置于旁边，提供隐藏开关，仅选中点显示编辑轴；游戏正交悬停缩略图同步 VPL 光照与默认阵营色。
+- 修复悬停真实 PNG 图片和原版嵌套 IDX/BAG 音频解析，支持带美元符号的样本名及 sound 节音量。
+- 新增真实 MOD 验收与 VS Code 悬停图片验证，并补充底栏、建筑合成和光照浏览器回归。
+
 ## [0.1.0] - 2026-10-10
 
 - 新增随光标跟随的对象检查器、行旁缩略图和素材悬停，支持字典驱动的类型识别与列表成员精确解析。

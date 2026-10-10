@@ -1,8 +1,10 @@
 import type { MediaPayload } from '../context/workbench-protocol';
 import { voxelTransform, transformPoint, normalTransform } from './voxel-math';
 import { encodePng } from './png';
+import { nativeLight, nativeNormal } from './voxel-light';
+import { DEFAULT_HOUSE_COLOR } from './render-defaults';
 
-/** A bounded software projection for editor images; the interactive view uses WebGL. */
+/** Game orthographic projection with the same native normals, VPL lighting and default remap as WebGL. */
 export function voxelThumbnail(media: Extract<MediaPayload, { kind: 'voxel' }>): Uint8Array {
     const side = 96,
         pixels = new Uint8Array(side * side * 4),
@@ -13,14 +15,15 @@ export function voxelThumbnail(media: Extract<MediaPayload, { kind: 'voxel' }>):
         maxX = -Infinity,
         maxY = -Infinity;
     const lightLength = Math.hypot(...media.light) || 1,
-        light = media.light.map((value) => value / lightLength);
-    const secondary = light.map((value, axis) => value + (!media.fixed && axis === 2 ? 1 : 0));
+        light = nativeLight(media.light).map((value) => value / lightLength);
+    const eye = [-Math.sqrt(1 / 3), Math.sqrt(1 / 3), Math.sqrt(1 / 3)];
+    const secondary = light.map((value, axis) => value + (!media.fixed ? eye[axis] : 0));
     const secondaryLength = Math.hypot(...secondary) || 1,
         half = secondary.map((value) => value / secondaryLength);
     const project = (point: number[]) => [
-        (point[0] - point[1]) / Math.sqrt(2),
-        (point[0] + point[1]) / Math.sqrt(6) - point[2] * Math.sqrt(2 / 3),
-        -(point[0] + point[1]) * Math.sqrt(1 / 3) - point[2] / Math.sqrt(3),
+        (point[0] + point[1]) / Math.sqrt(2),
+        (-point[0] + point[1]) / Math.sqrt(6) - point[2] * Math.sqrt(2 / 3),
+        (point[0] - point[1]) * Math.sqrt(1 / 3) - point[2] / Math.sqrt(3),
     ];
     for (const part of media.model.parts) {
         const matrix = voxelTransform(part, 0, 0),
@@ -31,7 +34,9 @@ export function voxelThumbnail(media: Extract<MediaPayload, { kind: 'voxel' }>):
                 part.voxels.slice(index, index + 3).map((value) => value + 0.5)
             );
             const [x, y, z] = project(world),
-                authored = media.normals.slice(part.voxels[index + 4] * 3, part.voxels[index + 4] * 3 + 3);
+                authored = nativeNormal(
+                    media.normals.slice(part.voxels[index + 4] * 3, part.voxels[index + 4] * 3 + 3)
+                );
             const normal = [0, 1, 2].map(
                 (row) =>
                     normalMatrix[row] * authored[0] +
@@ -83,7 +88,17 @@ export function voxelThumbnail(media: Extract<MediaPayload, { kind: 'voxel' }>):
                     continue;
                 }
                 depth[index] = vertex.depth;
-                pixels.set(media.palette.slice(vertex.color * 3, vertex.color * 3 + 3), index * 4);
+                const remapped = vertex.color >= media.model.remapStart && vertex.color <= media.model.remapEnd;
+                const intensity =
+                    0.28 +
+                    (0.72 * (media.model.remapEnd - vertex.color)) /
+                        Math.max(1, media.model.remapEnd - media.model.remapStart);
+                pixels.set(
+                    remapped
+                        ? DEFAULT_HOUSE_COLOR.map((value) => Math.round(value * intensity))
+                        : media.palette.slice(vertex.color * 3, vertex.color * 3 + 3),
+                    index * 4
+                );
                 pixels[index * 4 + 3] = 255;
             }
         }

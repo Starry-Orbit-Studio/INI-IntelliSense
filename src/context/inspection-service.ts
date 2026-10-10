@@ -6,13 +6,14 @@ import { SchemaManager } from '../schema-manager';
 import { FileTypeManager } from '../file-type-manager';
 import { ProjectResources, ResourceCandidate } from '../resources/project-resources';
 import { MediaService, MediaOptions } from '../media/media-service';
-import { parseSequenceAction, validateSequence } from '../media/shp';
+import { parseSequenceAction, validateSequence, isShpFilename } from '../media/shp';
 import { BagSample } from '../media/audio';
 import { localize } from '../i18n';
 import { ProjectIni, EffectiveProperty } from './project-ini';
 import { SemanticReferences, SemanticRule } from './semantic-reference';
 import { parsePropertyLine, valueAtCharacter, soundValueAtCharacter } from './ini-position';
 import { Inspection, ActionEdit, PointEdit, SourceLink } from './workbench-protocol';
+import { resolveSpriteScene, spriteCandidates } from './sprite-scene';
 
 export interface EditCapability {
     uri: vscode.Uri;
@@ -302,8 +303,9 @@ export class InspectionService {
             inspection.assets.push({
                 id,
                 name: candidate.name,
-                source: candidate.uri.toString(),
+                source: this.resources.label(document.uri, candidate.uri),
                 priority: candidate.priority,
+                role: candidate.role,
             });
             return id;
         };
@@ -379,7 +381,11 @@ export class InspectionService {
         const options: MediaOptions = {
             origin: document.uri,
             animation: reference?.kind === 'animation' || this.semantics.inherits(targetType, 'AnimType'),
-            shadow: /^(yes|true|1)$/i.test(value(art, 'Shadow') ?? ''),
+            shadow: /^(yes|true|1)$/i.test(
+                value(art, 'Shadow') ??
+                    value(targetProperties, 'Shadow') ??
+                    (['InfantryType', 'BuildingType'].includes(targetType) ? 'yes' : 'no')
+            ),
             points,
             light: light.length === 3 ? light : undefined,
             fixed: /^(yes|true|1)$/i.test(value(audioVisual, 'UseFixedVoxelLighting') ?? ''),
@@ -445,6 +451,7 @@ export class InspectionService {
                         : [reference.value]
             ).filter(Boolean);
             for (const event of events) {
+                const missing: string[] = [];
                 const sound = this.ini.effective(document.uri, event, 'sound');
                 const samples =
                     contextualSound && property?.key.toLowerCase() === 'sounds' && element
@@ -459,18 +466,29 @@ export class InspectionService {
                 for (const sampleName of samples) {
                     const found = await this.media.samples(document.uri, sampleName);
                     if (!found.length) {
-                        inspection.warnings.push(
-                            localize('workbench.missingSample', 'Sample not found: {0}', sampleName)
-                        );
+                        missing.push(sampleName);
                     }
                     for (const item of found) {
-                        const volume = Number(value(sound, 'Volume') ?? 1);
+                        const rawVolume = value(sound, 'Volume') ?? '100';
+                        const parsedVolume = Number(rawVolume.replace(/%$/, ''));
+                        const volume = parsedVolume > 1 || /%$/.test(rawVolume) ? parsedVolume / 100 : parsedVolume;
                         add(item.candidate, {
                             sample: item.sample,
                             volume: Number.isFinite(volume) ? Math.max(0, Math.min(1, volume)) : 1,
                             loop: /\b(loop|loops)\b/i.test(value(sound, 'Control') ?? ''),
                         });
                     }
+                }
+                if (missing.length) {
+                    inspection.warnings.push(
+                        localize(
+                            'workbench.missingSamples',
+                            'Samples not found for {0}: {1}',
+                            event,
+                            missing.join(', ')
+                        ),
+                        ...this.media.audioDiagnostics(document.uri)
+                    );
                 }
                 for (const item of this.ini.sources(document.uri, event, 'sound')) {
                     inspection.sources.push(
@@ -513,7 +531,38 @@ export class InspectionService {
                       : voxel
                         ? '.vxl'
                         : '.shp');
-            const found = await this.resources.find(document.uri, filename, token);
+            const sceneKind =
+                !direct || property?.key.toLowerCase() === 'image'
+                    ? this.semantics.inherits(targetType, 'BuildingType')
+                        ? 'building'
+                        : options.animation
+                          ? 'animation'
+                          : undefined
+                    : undefined;
+            const resolved =
+                !voxel && isShpFilename(filename)
+                    ? await spriteCandidates(
+                          this.resources,
+                          document.uri,
+                          base,
+                          art,
+                          this.semantics.inherits(targetType, 'BuildingType')
+                      )
+                    : { names: [filename], candidates: await this.resources.find(document.uri, filename, token) };
+            const found = resolved.candidates;
+            if (sceneKind) {
+                options.scene = await resolveSpriteScene(
+                    this.ini,
+                    this.resources,
+                    document.uri,
+                    artName,
+                    sceneKind,
+                    options
+                );
+            }
+            for (const entry of art.values()) {
+                inspection.sources.push(source(entry.uri, entry.line, artName + ' · ' + entry.key));
+            }
             for (const candidate of found) {
                 add(candidate, options);
             }
@@ -531,14 +580,8 @@ export class InspectionService {
                 }
             }
             if (!found.length) {
-                inspection.warnings.push(localize('workbench.missingResource', 'Resource not found: {0}', filename));
-            }
-            if (found.length > 1 && found[0].priority === found[1].priority) {
                 inspection.warnings.push(
-                    localize(
-                        'workbench.ambiguous',
-                        'Multiple resources have the same priority. Select the intended source.'
-                    )
+                    localize('workbench.missingResource', 'Resource not found: {0}', resolved.names.join(' / '))
                 );
             }
             const sequenceName = reference?.kind === 'sequence' ? reference.value : value(art, 'Sequence');
@@ -587,7 +630,13 @@ export class InspectionService {
         inspection.paletteOptions = palettes.map((candidate) => {
             const id = randomUUID();
             session.assets.set(id, { candidate, options: {} });
-            return { id, name: candidate.name, source: candidate.uri.toString(), priority: candidate.priority };
+            return {
+                id,
+                name: candidate.name,
+                source: this.resources.label(document.uri, candidate.uri),
+                priority: candidate.priority,
+                role: candidate.role,
+            };
         });
         if (inspection.assets.length) {
             await this.select(session, inspection.assets[0].id, token);

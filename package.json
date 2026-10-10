@@ -9,7 +9,7 @@
     "url": "https://github.com/Super-StarX/INI-IntelliSense.git"
   },
   "private": true,
-  "version": "0.1.0",
+  "version": "0.1.3",
   "engines": {
     "vscode": "^1.96.0"
   },
@@ -133,6 +133,13 @@
       }
     ],
     "viewsContainers": {
+      "panel": [
+        {
+          "id": "ra2-media-workbench",
+          "title": "%view.resourceWorkbench.name%",
+          "icon": "assets/icon.svg"
+        }
+      ],
       "activitybar": [
         {
           "id": "ini-intellisense-explorer",
@@ -142,13 +149,15 @@
       ]
     },
     "views": {
-      "ini-intellisense-explorer": [
+      "ra2-media-workbench": [
         {
           "id": "ra2-object-inspector",
           "name": "%view.objectInspector.name%",
           "type": "webview",
           "contextualTitle": "%view.objectInspector.name%"
-        },
+        }
+      ],
+      "ini-intellisense-explorer": [
         {
           "id": "ini-files",
           "name": "%view.iniFiles.name%",
@@ -573,6 +582,23 @@
           "type": "boolean",
           "default": true,
           "description": "%configuration.media.enabled%"
+        },
+        "ra2-ini-intellisense.media.autoReveal": {
+          "type": "boolean",
+          "default": true,
+          "description": "%configuration.media.autoReveal%"
+        },
+        "ra2-ini-intellisense.media.excludedDirectories": {
+          "type": "array",
+          "default": [
+            ".tmp",
+            ".cache",
+            "Tools"
+          ],
+          "items": {
+            "type": "string"
+          },
+          "description": "%configuration.media.excludedDirectories%"
         },
         "ra2-ini-intellisense.media.inlineThumbnails": {
           "type": "boolean",

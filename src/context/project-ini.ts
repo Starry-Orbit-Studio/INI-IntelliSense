@@ -4,6 +4,8 @@ import { SchemaManager } from '../schema-manager';
 import { FileTypeManager } from '../file-type-manager';
 import { ProjectResources } from '../resources/project-resources';
 import { parsePropertyLine } from './ini-position';
+import { TextContentService } from '../services/text-content-service';
+import * as path from 'path';
 
 export interface EffectiveProperty {
     key: string;
@@ -23,7 +25,11 @@ export interface SectionSource {
 /** Scoped queries use open document text first, including unsaved MIX documents. */
 export class ProjectIni {
     private parsed = new Map<string, { version: number; document: IniDocument }>();
+    private snapshots = new Map<string, IniDocument>();
+    private categories = new Map<string, string>();
+    private order = new Map<string, number>();
     private loaded = new Map<string, Promise<void>>();
+    private generation = 0;
     private queries = new Map<string, { signature: string[]; sources: Map<string, SectionSource[]> }>();
     private incomingQueries = new Map<
         string,
@@ -38,43 +44,129 @@ export class ProjectIni {
     ) {}
 
     public invalidate(): void {
+        this.generation++;
         this.loaded.clear();
+        this.snapshots.clear();
+        this.categories.clear();
+        this.order.clear();
         this.parsed.clear();
         this.queries.clear();
         this.incomingQueries.clear();
     }
 
     public async load(origin: vscode.Uri): Promise<void> {
+        const generation = this.generation;
         const key = this.resources.projectRoot(origin).toString();
         let pending = this.loaded.get(key);
         if (!pending) {
             pending = this.resources
-                .list(origin, ['.ini'])
+                .listDocuments(origin)
                 .then(async (files) => {
+                    const reader = new TextContentService();
+                    const canonical = (uri: vscode.Uri) =>
+                        uri.scheme === 'file' && /^\/[a-z]:/i.test(uri.path)
+                            ? uri.toString().toLowerCase()
+                            : uri.toString();
+                    const known = new Map(files.map((item) => [canonical(item.uri), item.uri]));
+                    const names = new Map<string, vscode.Uri[]>();
+                    for (const file of files) {
+                        const name = file.name.toLowerCase();
+                        names.set(name, [...(names.get(name) ?? []), file.uri]);
+                    }
+                    // The game's flat file lookup can find a root patch while its
+                    // including INI lives in Rules. Relative matches remain first.
+                    const includedUri = (parent: vscode.Uri, name: string): vscode.Uri | undefined => {
+                        const normalized = name.replace(/\\/g, '/');
+                        const relative = vscode.Uri.joinPath(
+                            parent.with({ path: path.posix.dirname(parent.path) }),
+                            normalized
+                        );
+                        const root = vscode.Uri.joinPath(this.resources.projectRoot(origin), normalized);
+                        const exact = known.get(canonical(relative)) ?? known.get(canonical(root));
+                        if (exact) {
+                            return exact;
+                        }
+                        const matching = names.get(normalized.toLowerCase());
+                        return matching?.length === 1 ? matching[0] : undefined;
+                    };
                     for (let offset = 0; offset < Math.min(files.length, 2000); offset += 16) {
                         await Promise.allSettled(
-                            files.slice(offset, offset + 16).map((file) => vscode.workspace.openTextDocument(file.uri))
+                            files.slice(offset, offset + 16).map(async (file) => {
+                                const content = reader.decode(await this.resources.read(file.uri, 8 * 1024 * 1024));
+                                if (generation === this.generation) {
+                                    this.snapshots.set(file.uri.toString(), new IniDocument(file.uri, content));
+                                }
+                            })
                         );
+                    }
+                    if (generation !== this.generation) {
+                        return;
+                    }
+                    const included = new Set<string>();
+                    for (const file of files) {
+                        const document = this.snapshots.get(file.uri.toString());
+                        for (const name of document?.getSection('#include')?.properties.values() ?? []) {
+                            const child = includedUri(file.uri, name);
+                            if (child) {
+                                included.add(child.toString());
+                            }
+                        }
+                    }
+                    let rank = 0;
+                    const visited = new Set<string>();
+                    const visit = (uri: vscode.Uri, category: string, depth = 0) => {
+                        const key = uri.toString();
+                        if (visited.has(key) || depth > 64 || !known.has(canonical(uri))) {
+                            return;
+                        }
+                        visited.add(key);
+                        this.order.set(key, rank++);
+                        this.categories.set(key, category);
+                        for (const name of this.snapshots.get(key)?.getSection('#include')?.properties.values() ?? []) {
+                            const child = includedUri(uri, name);
+                            if (child) {
+                                visit(child, category, depth + 1);
+                            }
+                        }
+                    };
+                    for (const file of files.filter((file) => !included.has(file.uri.toString()))) {
+                        visit(file.uri, this.fileTypes.getFileType(file.uri).toLowerCase());
+                    }
+                    for (const file of files) {
+                        visit(file.uri, this.fileTypes.getFileType(file.uri).toLowerCase());
                     }
                 })
                 .catch((error) => {
-                    this.loaded.delete(key);
+                    if (this.loaded.get(key) === pending) {
+                        this.loaded.delete(key);
+                    }
                     throw error;
                 });
             this.loaded.set(key, pending);
         }
         await pending;
+        if (generation !== this.generation) {
+            await this.load(origin);
+        }
     }
 
     public documents(origin: vscode.Uri): IniDocument[] {
         const result = new Map<string, IniDocument>();
-        for (const document of this.manager.documents.values()) {
+        for (const [key, document] of this.snapshots) {
             if (this.resources.contains(origin, document.uri)) {
+                result.set(key, document);
+            }
+        }
+        for (const document of this.manager.documents.values()) {
+            if (
+                this.resources.contains(origin, document.uri) &&
+                (!this.snapshots.size || this.snapshots.has(document.uri.toString()))
+            ) {
                 result.set(document.uri.toString(), document);
             }
         }
         for (const text of vscode.workspace.textDocuments) {
-            if (!this.resources.contains(origin, text.uri) || !/\.(ini|map|mpr|yrm)$/i.test(text.uri.path)) {
+            if (!/\.(ini|map|mpr|yrm)$/i.test(text.uri.path) || !this.resources.contains(origin, text.uri)) {
                 continue;
             }
             const key = text.uri.toString();
@@ -127,7 +219,13 @@ export class ProjectIni {
     public sources(origin: vscode.Uri, name: string, category?: string): SectionSource[] {
         const documents = this.documents(origin),
             root = this.resources.projectRoot(origin).toString();
-        const signature = documents.flatMap((document) => [document.uri.toString(), document.content]);
+        // Include discovery can reclassify an already indexed document without
+        // changing its text. Queries created by hover/annotations must follow it.
+        const signature = documents.flatMap((document) => [
+            document.uri.toString(),
+            document.content,
+            this.category(document.uri),
+        ]);
         let query = this.queries.get(root);
         if (
             !query ||
@@ -136,7 +234,7 @@ export class ProjectIni {
         ) {
             query = { signature, sources: new Map() };
             for (const document of documents) {
-                const fileCategory = this.fileTypes.getFileType(document.uri).toLowerCase();
+                const fileCategory = this.category(document.uri);
                 for (const section of document.sections) {
                     const key = section.name.toLowerCase(),
                         values = query.sources.get(key) ?? [];
@@ -153,6 +251,7 @@ export class ProjectIni {
             (a, b) =>
                 Number(b.document.uri.toString() === origin.toString()) -
                     Number(a.document.uri.toString() === origin.toString()) ||
+                (this.order.get(b.document.uri.toString()) ?? -1) - (this.order.get(a.document.uri.toString()) ?? -1) ||
                 a.document.uri.toString().localeCompare(b.document.uri.toString())
         );
     }
@@ -215,13 +314,14 @@ export class ProjectIni {
             Animations: 'AnimType',
             VoxelAnims: 'VoxelAnimType',
         };
-        const declared = [...new Set([...this.schema.getRegistryNames(), ...Object.keys(builtins)])].find((registry) =>
-            this.sources(origin, registry, 'rules').some((source) =>
-                [...source.section.properties.values()].some((value) => value.toLowerCase() === name.toLowerCase())
-            )
+        const declared = [...new Set(['Animations', ...Object.keys(builtins), ...this.schema.getRegistryNames()])].find(
+            (registry) =>
+                this.sources(origin, registry, 'rules').some((source) =>
+                    [...source.section.properties.values()].some((value) => value.toLowerCase() === name.toLowerCase())
+                )
         );
         if (declared) {
-            return this.schema.getTypeForRegistry(declared) ?? builtins[declared] ?? 'Unknown';
+            return builtins[declared] ?? this.schema.getTypeForRegistry(declared) ?? 'Unknown';
         }
         if (name.toLowerCase() === 'audiovisual') {
             return 'AudioVisual';
@@ -282,6 +382,6 @@ export class ProjectIni {
     }
 
     public category(uri: vscode.Uri): string {
-        return this.fileTypes.getFileType(uri).toLowerCase();
+        return this.categories.get(uri.toString()) ?? this.fileTypes.getFileType(uri).toLowerCase();
     }
 }

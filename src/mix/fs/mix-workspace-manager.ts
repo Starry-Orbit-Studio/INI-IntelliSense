@@ -65,6 +65,10 @@ export class MixWorkspaceManager {
         return entryPath ? MixUriCodec.toChildUri(root, entryPath) : undefined;
     }
 
+    public resolveResourceName(game: import('../core/types').MixGame, id: number): Promise<string | undefined> {
+        return this.globalMixDb.getFileName(game, id);
+    }
+
     public async writeFile(uri: vscode.Uri, content: Uint8Array, options: { create: boolean; overwrite: boolean }): Promise<void> {
         const { archive } = await this.resolveArchive(uri);
         archive.writeFile(MixUriCodec.decode(uri).virtualPath, content, options);
@@ -151,7 +155,7 @@ export class MixWorkspaceManager {
             existing.lastAccess = Date.now();
             return {
                 archive: existing.archive,
-                virtualPath: decoded.virtualPath,
+                virtualPath: this.resourcePath(existing.archive, decoded.virtualPath),
             };
         }
 
@@ -162,7 +166,7 @@ export class MixWorkspaceManager {
         });
         return {
             archive,
-            virtualPath: decoded.virtualPath,
+            virtualPath: this.resourcePath(archive, decoded.virtualPath),
         };
     }
 
@@ -180,6 +184,15 @@ export class MixWorkspaceManager {
 
         await this.applyGlobalNames(archive);
         return archive;
+    }
+
+    private resourcePath(archive: MixArchive, virtualPath: string): string {
+        try {
+            archive.stat(virtualPath);
+            return virtualPath;
+        } catch {
+            return archive.findPathByName(virtualPath) ?? virtualPath;
+        }
     }
 
     private async applyGlobalNames(archive: MixArchive): Promise<void> {
@@ -213,6 +226,8 @@ export class MixWorkspaceManager {
     }
 
     private findNestedEntryPath(archive: MixArchive, segment: string): string {
+        const known = archive.findPathByName(segment);
+        if (known) { return known; }
         const queue = ['/'];
         while (queue.length > 0) {
             const current = queue.shift()!;

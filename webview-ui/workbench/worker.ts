@@ -1,7 +1,7 @@
 import { decodeShpFrame, ShpFile } from '../../src/media/shp';
 import { ByteCache } from '../../src/media/byte-cache';
 
-const cache = new ByteCache<Uint8Array>(32 * 1024 * 1024);
+let cache = new ByteCache<Uint8Array>(32 * 1024 * 1024);
 let bytes = new Uint8Array();
 let file: ShpFile;
 let palette: number[];
@@ -13,7 +13,9 @@ self.onmessage = (event: MessageEvent) => {
             bytes = message.bytes;
             file = message.file;
             palette = message.palette;
-            cache.clear();
+            cache = new ByteCache<Uint8Array>(
+                Math.max(1024 * 1024, Math.min(32 * 1024 * 1024, Number(message.cacheBudget) || 32 * 1024 * 1024))
+            );
             return;
         }
         if (message.type !== 'frame' || !file) {

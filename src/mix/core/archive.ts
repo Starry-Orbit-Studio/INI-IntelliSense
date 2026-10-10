@@ -68,8 +68,14 @@ export class MixArchive {
         const normalized = normalizeMixPath(name);
         const direct = [...this.entries.keys()].find(key => key.toLowerCase() === normalized.toLowerCase());
         if (direct) { return direct; }
-        const id = MixArchive.calculateId(path.posix.basename(name), this.game);
-        return [...this.entries.entries()].find(([, entry]) => entry.id === id)?.[0];
+        // A legacy header has no game marker; RA2 also ships legacy CRC archives.
+        const basename = path.posix.basename(name);
+        for (const game of [this.game, this.game === MixGame.TdRa ? MixGame.Ts : MixGame.TdRa]) {
+            const id = MixArchive.calculateId(basename, game);
+            const found = [...this.entries.entries()].find(([, entry]) => entry.id === id)?.[0];
+            if (found) { return found; }
+        }
+        return undefined;
     }
 
     public isDirty(): boolean {
@@ -435,10 +441,9 @@ export class MixArchive {
 
         const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
         const flags = view.getUint32(0, true);
-        const tdCandidateCount = view.getInt16(0, true);
-        const tdCandidateBodySize = view.getInt32(2, true);
-
-        if ((flags & 0xffff0000) === 0 && tdCandidateCount > 0 && tdCandidateCount < 10000 && bytes.byteLength >= 6 + tdCandidateCount * 12 + tdCandidateBodySize) {
+        // A nonzero first word is a legacy file count, not modern flags. The following
+        // body-size word may set any upper bits in the first dword.
+        if ((flags & 0xffff) !== 0) {
             this.type = MixType.Td;
             this.game = MixGame.TdRa;
             this.parseTd(view);
@@ -461,28 +466,32 @@ export class MixArchive {
     }
 
     private parseTd(view: DataView): void {
-        const fileCount = view.getInt16(0, true);
-        const bodySize = view.getInt32(2, true);
+        const fileCount = view.getUint16(0, true);
+        const bodySize = view.getUint32(2, true);
         let cursor = 6;
         this.bodyStartOffset = cursor + fileCount * 12;
         this.readEntries(view, cursor, fileCount, bodySize);
     }
 
     private parseRaTs(view: DataView): void {
-        const fileCount = view.getInt16(4, true);
-        const bodySize = view.getInt32(6, true);
+        if (view.byteLength < 10) { throw new Error(localize('mix.error.truncated', 'The MIX directory or payload is truncated.')); }
+        const fileCount = view.getUint16(4, true);
+        const bodySize = view.getUint32(6, true);
         let cursor = 10;
         this.bodyStartOffset = cursor + fileCount * 12;
         this.readEntries(view, cursor, fileCount, bodySize);
     }
 
     private readEntries(view: DataView, cursor: number, fileCount: number, bodySize: number): void {
+        if (cursor + fileCount * 12 > view.byteLength || this.bodyStartOffset + bodySize > this.sourceData.length) {
+            throw new Error(localize('mix.error.truncated', 'The MIX directory or payload is truncated.'));
+        }
         for (let i = 0; i < fileCount; i++) {
             const id = view.getUint32(cursor, true);
             cursor += 4;
-            const offset = view.getInt32(cursor, true);
+            const offset = view.getUint32(cursor, true);
             cursor += 4;
-            const size = view.getInt32(cursor, true);
+            const size = view.getUint32(cursor, true);
             cursor += 4;
 
             if (offset < 0 || size < 0 || offset + size > bodySize) {

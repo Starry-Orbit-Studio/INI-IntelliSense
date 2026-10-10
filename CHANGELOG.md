@@ -6,6 +6,32 @@ All notable changes to the "ra2-ini-intellisense" extension will be documented i
 
 Check [Keep a Changelog](http://keepachangelog.com/) for recommendations on how to structure this file.
 
+## [0.1.3] - 2026-10-10
+
+- Fix file category globs crossing directory separators: `rules*.ini` no longer classifies `Rules/artes.ini` or `Rules/soundes.ini` as rules. This restores voxel format decisions and art/sound lookup when opening the full mod workspace; recursive paths use `**`.
+- Refresh cached section queries when background include discovery changes a file category; retain art `Voxel=yes` across unchanged documents and duplicate art sections. Verify ALTNK through the actual extension hover and inspector.
+- Expose voxel art property sources in the inspector, including the `Voxel` format decision.
+
+## [0.1.2] - 2026-10-10
+
+- Resolve the mod root for Rules/Resources child-folder workspaces, nested INIs, directly opened assets and MIX entries; honor the configured project directory within its scope and watch sibling resource changes.
+- Add cached root resolution, building theater filename fallback (respecting explicit NewTheater=no), and decoding for theater-named SHP sprites.
+- Resolve cross-directory includes through the mod root and unique catalog filenames, preserving relative-match precedence and Windows case-insensitive paths.
+- Accept legacy VXL limb normal-mode metadata with RA2 game lighting instead of rejecting otherwise valid ES models.
+- Support padded transparent SHP row tails and empty-frame format metadata; share a bounded one-million-voxel budget for large models and assembled parts.
+- Add real Rules-workspace acceptance, a complete registered techno resource survey and an optional full Resources SHP/VXL decoding report.
+
+## [0.1.1] - 2026-10-10
+
+- Moved the inspector to the bottom panel with a compact horizontal layout and one-time automatic reveal that preserves editor focus.
+- Added background project and audio-bank indexing, targeted cache invalidation, visible source cards and lower-priority backup sources.
+- Corrected encrypted MIX Blowfish byte order and legacy CRC filename lookup; nested media now use directory and sample range reads.
+- Added NewTheater building resolution, attached animations, buildup/damaged/production states, foundation grids and animation ConcurrentAnim/Next chains with provenance.
+- Corrected voxel light/normal coordinate conversion, game-scale camera defaults and interactive light dragging; playback controls now follow media capabilities.
+- Changed FLH overlays to unobtrusive points with names/coordinates beside the preview, visibility control and axes for the selected point only. Game hover thumbnails now share VPL lighting and the default house remap.
+- Fixed actual PNG media hovers and stock nested IDX/BAG sound resolution, including dollar-prefixed sound names and event volume.
+- Added real mod acceptance and VS Code hover-image checks, alongside bottom-panel, scene and lighting browser regressions.
+
 ## [0.1.0] - 2026-10-10
 
 - Added a cursor-following object inspector, inline thumbnails and media hovers with dictionary-driven, exact-member reference resolution.
