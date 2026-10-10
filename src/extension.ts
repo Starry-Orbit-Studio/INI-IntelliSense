@@ -350,7 +350,7 @@ export async function activate(context: vscode.ExtensionContext) {
             }
 
 			const iniFiles = await workspaceIndexer.collectFiles(rootUri, {
-                includeExtensions: new Set(['.ini']),
+                includeExtensions: new Set(['.ini', '.map', '.mpr', '.yrm']),
                 excludeGlobs: config.get<string[]>('indexing.excludePatterns', []),
             });
 			await iniManager.indexFiles(iniFiles);
@@ -701,7 +701,7 @@ export async function activate(context: vscode.ExtensionContext) {
 	}));
 	updateCodeLensProvider();
 
-	const watcher = vscode.workspace.createFileSystemWatcher('**/*.ini');
+	const watcher = vscode.workspace.createFileSystemWatcher('**/*.{ini,map,mpr,yrm}');
 	context.subscriptions.push(watcher);
 	
 	const onFileChange = async (uri: vscode.Uri) => {
@@ -767,7 +767,7 @@ export async function activate(context: vscode.ExtensionContext) {
 		
 		outputChannel.appendLine(localize('debug.context.currentSection', '✅ Current Section: [{0}]', currentSectionName));
 
-		const typeName = iniManager.getTypeForSection(currentSectionName);
+		const typeName = iniManager.getTypeForSection(currentSectionName, new Set(), fileTypeManager.getFileType(document.uri));
 		if (typeName) {
 			outputChannel.appendLine(localize('debug.inference.success', "✅ Inferred Type: '{0}'", typeName));
 
@@ -854,7 +854,8 @@ export async function activate(context: vscode.ExtensionContext) {
 				markdown.supportThemeIcons = true;
 				let hasContent = false;
 
-				const typeName = iniManager.getTypeForSection(currentSectionName);
+                const currentFileType = fileTypeManager.getFileType(document.uri);
+				const typeName = iniManager.getTypeForSection(currentSectionName, new Set(), currentFileType);
 				if (typeName) {
 					const allKeys = schemaManager.getAllKeysForType(typeName);
 					let propDef: import('./schema-manager').PropertyDefinition | undefined;
@@ -910,13 +911,9 @@ export async function activate(context: vscode.ExtensionContext) {
 					}
 				}
 
-                const currentFileType = fileTypeManager.getFileType(document.uri);
-				const parentName = iniManager.getInheritance(currentSectionName, currentFileType);
-				if (parentName) {
-                    const currentFileType = fileTypeManager.getFileType(document.uri);
-					const parentKeyInfo = iniManager.findKeyLocationRecursive(parentName, keyPart, currentFileType); 
+				const parentKeyInfo = iniManager.findInheritedKeyLocation(currentSectionName, keyPart, currentFileType); 
 				
-					if (parentKeyInfo && parentKeyInfo.location && parentKeyInfo.lineText && parentKeyInfo.definer) {
+				if (parentKeyInfo && parentKeyInfo.location && parentKeyInfo.lineText && parentKeyInfo.definer) {
 						if(hasContent) {markdown.appendMarkdown('\n\n---\n\n');}
 
 						const lineNum = parentKeyInfo.location.range.start.line + 1;
@@ -937,7 +934,6 @@ export async function activate(context: vscode.ExtensionContext) {
 						const commandUri = vscode.Uri.parse(`command:ra2-ini-intellisense.jumpToOverride?${encodeURIComponent(JSON.stringify(args))}`);
 						markdown.appendMarkdown(localize('hover.override.jumpLink', `[$(go-to-file) Go to Parent Definition]({0})`, commandUri.toString()));
 						hasContent = true;
-					}
 				}
 
 				return hasContent ? new vscode.Hover(markdown, keyRange) : null;
@@ -953,14 +949,13 @@ export async function activate(context: vscode.ExtensionContext) {
 				const currentSectionName = iniManager.getSectionNameAtLine(document.uri, position.line);
 				if (!currentSectionName) {return new vscode.CompletionList([], false);}
 		
-				const typeName = iniManager.getTypeForSection(currentSectionName);
+                const currentFileType = fileTypeManager.getFileType(document.uri);
+				const typeName = iniManager.getTypeForSection(currentSectionName, new Set(), currentFileType);
 				if (!typeName) {return new vscode.CompletionList([], false);}
 
 				if (isKeyCompletion) {
 					const keys = schemaManager.getAllKeysForType(typeName);
 					if (keys.size === 0) {return new vscode.CompletionList([], false);}
-                    
-                    const currentFileType = fileTypeManager.getFileType(document.uri);
 			
 					const items = Array.from(keys.entries())
                         .filter(([key, propDef]) => {
@@ -1049,7 +1044,7 @@ export async function activate(context: vscode.ExtensionContext) {
 					if (!currentSectionName) {continue;}
 					
 					const currentKey = line.text.substring(0, equalsIndex).trim();
-					const typeName = iniManager.getTypeForSection(currentSectionName);
+					const typeName = iniManager.getTypeForSection(currentSectionName, new Set(), fileTypeManager.getFileType(document.uri));
 
 					if (typeName) {
 						const allKeys = schemaManager.getAllKeysForType(typeName);

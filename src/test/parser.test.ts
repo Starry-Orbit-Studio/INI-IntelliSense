@@ -1,6 +1,6 @@
 import * as assert from 'assert';
 import * as vscode from 'vscode';
-import { IniDocument } from '../parser';
+import { IniDocument, INIManager } from '../parser';
 
 suite('IniDocument Parser', () => {
     const sampleUri = vscode.Uri.parse('file:///test/sample.ini');
@@ -24,6 +24,26 @@ suite('IniDocument Parser', () => {
         const sec = doc.getSection('GAPowe');
         assert.ok(sec, 'GAPowe section should exist');
         assert.strictEqual(sec!.parentName, 'BuildingType');
+        assert.deepStrictEqual(sec!.parentNames, ['BuildingType']);
+    });
+
+    test('parses Phobos Inherits parents', () => {
+        const content = '[Child]\n$Inherits=Parent1, Parent2 ; section names\n';
+        const doc = new IniDocument(sampleUri, content);
+
+        const sec = doc.getSection('Child');
+        assert.ok(sec, 'Child section should exist');
+        assert.deepStrictEqual(sec!.parentNames, ['Parent1', 'Parent2']);
+    });
+
+    test('combines header inheritance and Phobos Inherits parents', () => {
+        const content = '[Child]:[HeaderParent]\nInherits=Parent1,Parent2\n';
+        const doc = new IniDocument(sampleUri, content);
+
+        const sec = doc.getSection('Child');
+        assert.ok(sec, 'Child section should exist');
+        assert.strictEqual(sec!.parentName, 'HeaderParent');
+        assert.deepStrictEqual(sec!.parentNames, ['HeaderParent', 'Parent1', 'Parent2']);
     });
 
     test('ignores blank lines and full-line comments', () => {
@@ -98,5 +118,37 @@ suite('IniDocument Parser', () => {
         const doc = new IniDocument(sampleUri, content);
         const sec = doc.getSection('S')!;
         assert.strictEqual(sec.properties.get('Key'), 'Value');
+    });
+
+    test('resolves Phobos Inherits recursively in depth-first order', () => {
+        const manager = new INIManager();
+        const content = [
+            '[GrandParent]',
+            'Armor=Grand',
+            '[Parent1]',
+            '$Inherits=GrandParent',
+            '[Parent2]',
+            'Armor=Second',
+            '[Child]',
+            '$Inherits=Parent1,Parent2'
+        ].join('\n');
+
+        manager.documents.set(sampleUri.toString(), new IniDocument(sampleUri, content));
+        (manager as any).rebuildAllIndexes();
+
+        const result = manager.findKeyLocationRecursive('Child', 'Armor');
+        assert.strictEqual(result.definer, 'GrandParent');
+        assert.strictEqual(result.lineText, 'Armor=Grand');
+    });
+
+    test('indexes Phobos Inherits as inheritance references only', () => {
+        const manager = new INIManager();
+        const content = '[Parent]\nKey=Value\n[Child]\n$Inherits=Parent\n';
+
+        manager.documents.set(sampleUri.toString(), new IniDocument(sampleUri, content));
+        (manager as any).rebuildAllIndexes();
+
+        assert.strictEqual(manager.inheritanceReferences.get('Parent')?.length, 1);
+        assert.strictEqual(manager.valueReferences.get('Parent')?.length ?? 0, 0);
     });
 });

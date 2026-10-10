@@ -83,6 +83,7 @@ export class ValuePreviewDecorator implements vscode.Disposable {
         const document = editor.document;
         const docModel = this.iniManager.getDocument(document.uri);
         if (!docModel) { return; }
+        const currentFileType = this.iniManager.getFileType(document.uri);
 
         // 仅遍历可见范围，实现极致性能
         for (const range of editor.visibleRanges) {
@@ -122,7 +123,7 @@ export class ValuePreviewDecorator implements vscode.Disposable {
                 const valueRange = new vscode.Range(i, valueStartInLine, i, valueEndInLine);
 
                 // 获取当前节的类型定义
-                const typeName = this.iniManager.getTypeForSection(currentSection.name);
+                const typeName = this.iniManager.getTypeForSection(currentSection.name, new Set(), currentFileType);
                 const keysDef = this.schemaManager.getAllKeysForType(typeName);
                 const propDef = keysDef.get(key);
 

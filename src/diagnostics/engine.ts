@@ -119,6 +119,7 @@ export class DiagnosticManager implements vscode.Disposable {
 
         // 获取文档对应的 INI Document Model，用于快速查找 Section
         const iniDoc = this.iniManager.getDocument(document.uri);
+        const currentFileType = this.iniManager.getFileType(document.uri);
 
         for (const range of ranges) {
             for (let i = range.start.line; i <= range.end.line; i++) {
@@ -130,10 +131,11 @@ export class DiagnosticManager implements vscode.Disposable {
                 // 优化：直接从 IniDocument 获取 Section，不再回溯扫描
                 const currentSection = iniDoc ? iniDoc.getSectionAt(i) : undefined;
                 // 简单的适配层
+                const typeName = currentSection ? this.iniManager.getTypeForSection(currentSection.name, new Set(), currentFileType) : null;
                 const sectionContext = {
                     name: currentSection?.name || null,
-                    typeName: currentSection ? this.iniManager.getTypeForSection(currentSection.name) : null,
-                    keys: currentSection ? this.schemaManager.getAllKeysForType(this.iniManager.getTypeForSection(currentSection.name)) : null
+                    typeName,
+                    keys: typeName ? this.schemaManager.getAllKeysForType(typeName) : null
                 };
                 
                 const commentIndex = line.text.indexOf(';');

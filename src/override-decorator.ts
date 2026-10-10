@@ -136,20 +136,17 @@ export class OverrideDecorator implements vscode.Disposable {
                 }
 
                 if (currentSectionName) {
-                    const parentName = this.iniManager.getInheritance(currentSectionName, currentFileType);
-                    if (parentName) {
-                        const kvMatch = text.match(kvRegex);
-                        if (kvMatch) {
-                            const key = kvMatch[1].trim();
-                            // 性能瓶颈点：这里只对可见的几十行进行查找，速度极快
-                            const parentKeyInfo = this.iniManager.findKeyLocationRecursive(parentName, key, currentFileType);
-                            
-                            if (parentKeyInfo.location) {
-                                const keyStartIndex = text.indexOf(key);
-                                if (keyStartIndex !== -1) {
-                                    const decorationRange = new vscode.Range(i, keyStartIndex, i, keyStartIndex + key.length);
-                                    overrideDecorations.push({ range: decorationRange });
-                                }
+                    const kvMatch = text.match(kvRegex);
+                    if (kvMatch) {
+                        const key = kvMatch[1].trim();
+                        // 性能瓶颈点：这里只对可见的几十行进行查找，速度极快
+                        const parentKeyInfo = this.iniManager.findInheritedKeyLocation(currentSectionName, key, currentFileType);
+                        
+                        if (parentKeyInfo.location) {
+                            const keyStartIndex = text.indexOf(key);
+                            if (keyStartIndex !== -1) {
+                                const decorationRange = new vscode.Range(i, keyStartIndex, i, keyStartIndex + key.length);
+                                overrideDecorations.push({ range: decorationRange });
                             }
                         }
                     }

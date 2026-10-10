@@ -10,6 +10,8 @@ Check [Keep a Changelog](http://keepachangelog.com/) for recommendations on how 
 
 - Added format document and format on save support for INI files.
 - Added a "Preview Map" command in the editor title bar; map files (`.map`, `.mpr`, `.yrm`) now open as text by default and can be previewed in a side panel.
+- Added Phobos `$Inherits=` section inheritance support, including multiple parents, recursive depth-first lookup, references, rename, and override indicators.
+- Expanded project indexing and file watching to map-style INI files (`.map`, `.mpr`, `.yrm`) so inheritance and references work outside regular `.ini` files.
 - Improved save performance significantly — saving large INI files no longer causes noticeable lag.
 - Unified the product name to "RA2 Mod IntelliSense" with new extension and activity bar icons.
 - Made the INIValidator download URL configurable.

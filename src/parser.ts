@@ -14,6 +14,40 @@ export interface IniSection {
     // 这里为了性能平衡，存储简单的 Key-Value 映射。
     properties: Map<string, string>;
     parentName?: string;
+    parentNames: string[];
+}
+
+function isInheritanceKey(key: string): boolean {
+    const normalized = key.trim().toLowerCase();
+    return normalized === 'inherits' || normalized === '$inherits';
+}
+
+function parseInheritanceNames(value: string): string[] {
+    return value
+        .split(',')
+        .map(part => part.trim())
+        .filter(part => part.length > 0);
+}
+
+function getCommaSeparatedValueRanges(line: string, lineNumber: number, valueStart: number): { value: string; range: vscode.Range }[] {
+    const valuePart = line.substring(valueStart).split(';')[0];
+    const ranges: { value: string; range: vscode.Range }[] = [];
+    let offset = 0;
+
+    for (const rawPart of valuePart.split(',')) {
+        const value = rawPart.trim();
+        if (value) {
+            const leadingWhitespace = rawPart.indexOf(value);
+            const start = valueStart + offset + leadingWhitespace;
+            ranges.push({
+                value,
+                range: new vscode.Range(lineNumber, start, lineNumber, start + value.length)
+            });
+        }
+        offset += rawPart.length + 1;
+    }
+
+    return ranges;
 }
 
 /**
@@ -73,7 +107,8 @@ export class IniDocument {
                     startLine: i,
                     endLine: this.lines.length - 1, // 默认为文件末尾，遇到下个节时更新
                     properties: new Map(),
-                    parentName: parent
+                    parentName: parent,
+                    parentNames: parent ? [parent] : []
                 };
                 this.sections.push(currentSection);
                 this.sectionMap.set(name, currentSection);
@@ -87,6 +122,12 @@ export class IniDocument {
                     // 简单存储值，去除行内注释
                     const val = kvMatch[2].split(';')[0].trim();
                     currentSection.properties.set(key, val);
+                    if (isInheritanceKey(key)) {
+                        currentSection.parentNames = [
+                            ...(currentSection.parentName ? [currentSection.parentName] : []),
+                            ...parseInheritanceNames(val)
+                        ];
+                    }
                 }
             }
         }
@@ -146,7 +187,7 @@ export class INIManager implements vscode.Disposable {
     
     // 索引
     private sectionToRegistryMap: Map<string, string> = new Map();
-    private sectionInheritance: Map<string, Map<string, string>> = new Map();
+    private sectionInheritance: Map<string, Map<string, string[]>> = new Map();
     public valueReferences: Map<string, vscode.Location[]> = new Map();
     public inheritanceReferences: Map<string, vscode.Location[]> = new Map();
     private sectionLocations: Map<string, vscode.Location[]> = new Map();
@@ -190,6 +231,10 @@ export class INIManager implements vscode.Disposable {
 
     setFileTypeManager(manager: FileTypeManager) {
         this.fileTypeManager = manager;
+    }
+
+    public getFileType(uri: vscode.Uri): string {
+        return this.fileTypeManager?.getFileType(uri) || 'INI';
     }
 
     async indexFiles(fileUris: vscode.Uri[]) {
@@ -331,18 +376,34 @@ export class INIManager implements vscode.Disposable {
                 }
 
                 // 2. 继承引用
-                if (sec.parentName) {
+                if (sec.parentNames.length > 0) {
                     if (!this.sectionInheritance.has(currentFileType)) {
                         this.sectionInheritance.set(currentFileType, new Map());
                     }
-                    this.sectionInheritance.get(currentFileType)!.set(sec.name, sec.parentName);
+                    this.sectionInheritance.get(currentFileType)!.set(sec.name, sec.parentNames);
+                }
 
+                if (sec.parentName) {
                     const parentIndex = lines[sec.startLine].lastIndexOf(sec.parentName);
                     if (parentIndex !== -1) {
-                        const loc = new vscode.Location(fileUri, new vscode.Range(sec.startLine, parentIndex, sec.startLine, parentIndex + sec.parentName.length));
-                        const refs = this.inheritanceReferences.get(sec.parentName) || [];
-                        refs.push(loc);
-                        this.inheritanceReferences.set(sec.parentName, refs);
+                        this.addInheritanceReference(sec.parentName, new vscode.Location(fileUri, new vscode.Range(sec.startLine, parentIndex, sec.startLine, parentIndex + sec.parentName.length)));
+                    }
+                }
+
+                for (let i = sec.startLine + 1; i <= sec.endLine; i++) {
+                    const line = lines[i];
+                    const kvMatch = line.match(/^\s*([^;=\s][^=]*?)\s*=/);
+                    if (!kvMatch || !isInheritanceKey(kvMatch[1])) {
+                        continue;
+                    }
+
+                    const eqIdx = line.indexOf('=');
+                    if (eqIdx === -1) {
+                        continue;
+                    }
+
+                    for (const parent of getCommaSeparatedValueRanges(line, i, eqIdx + 1)) {
+                        this.addInheritanceReference(parent.value, new vscode.Location(fileUri, parent.range));
                     }
                 }
 
@@ -354,6 +415,11 @@ export class INIManager implements vscode.Disposable {
                     const line = lines[i];
                     const eqIdx = line.indexOf('=');
                     if (eqIdx === -1) { continue; }
+
+                    const keyMatch = line.match(/^\s*([^;=\s][^=]*?)\s*=/);
+                    if (keyMatch && isInheritanceKey(keyMatch[1])) {
+                        continue;
+                    }
                     
                     const valPart = line.substring(eqIdx + 1).split(';')[0];
                     if (!valPart.trim()) { continue; }
@@ -377,6 +443,16 @@ export class INIManager implements vscode.Disposable {
                 }
             }
         }
+    }
+
+    private addInheritanceReference(parentName: string, location: vscode.Location): void {
+        const refs = this.inheritanceReferences.get(parentName) || [];
+        refs.push(location);
+        this.inheritanceReferences.set(parentName, refs);
+    }
+
+    private getInferredTypeCacheKey(sectionName: string, contextFileType?: string): string {
+        return `${contextFileType ?? 'INI'}\0${sectionName}`;
     }
 
     // --- 查询 API (保持或适配) ---
@@ -483,37 +559,78 @@ export class INIManager implements vscode.Disposable {
         keyName: string,
         contextFileType?: string
     ): { location: vscode.Location | null; lineText: string | null, definer: string | null } {
-        let currentSection: string | null = sectionName;
         const visited = new Set<string>();
+        return this.findKeyLocationRecursiveInternal(sectionName, keyName, contextFileType, visited);
+    }
 
-        while (currentSection && !visited.has(currentSection)) {
-            visited.add(currentSection);
-            const result = this.findKeyLocation(currentSection, keyName, contextFileType);
-            if (result) {
-                return { ...result, definer: currentSection };
+    public findInheritedKeyLocation(
+        sectionName: string,
+        keyName: string,
+        contextFileType?: string
+    ): { location: vscode.Location | null; lineText: string | null, definer: string | null } {
+        const visited = new Set<string>([sectionName]);
+        for (const parentName of this.getInheritances(sectionName, contextFileType)) {
+            const result = this.findKeyLocationRecursiveInternal(parentName, keyName, contextFileType, visited);
+            if (result.location) {
+                return result;
             }
-            currentSection = this.getInheritance(currentSection, contextFileType) ?? null;
         }
         return { location: null, lineText: null, definer: null };
     }
 
-    public getTypeForSection(sectionName: string, visited: Set<string> = new Set()): string {
+    private findKeyLocationRecursiveInternal(
+        sectionName: string,
+        keyName: string,
+        contextFileType: string | undefined,
+        visited: Set<string>
+    ): { location: vscode.Location | null; lineText: string | null, definer: string | null } {
+        if (visited.has(sectionName)) {
+            return { location: null, lineText: null, definer: null };
+        }
+        visited.add(sectionName);
+
+        const result = this.findKeyLocation(sectionName, keyName, contextFileType);
+        if (result) {
+            return { ...result, definer: sectionName };
+        }
+
+        for (const parentName of this.getInheritances(sectionName, contextFileType)) {
+            const parentResult = this.findKeyLocationRecursiveInternal(parentName, keyName, contextFileType, visited);
+            if (parentResult.location) {
+                return parentResult;
+            }
+        }
+
+        return { location: null, lineText: null, definer: null };
+    }
+
+    public getTypeForSection(sectionName: string, visited: Set<string> = new Set(), contextFileType?: string): string {
         if (!this.schemaManager) {return sectionName;}
         if (visited.has(sectionName)) { return sectionName; }
         visited.add(sectionName);
+
+        const cacheKey = this.getInferredTypeCacheKey(sectionName, contextFileType);
         
-        if (this.inferredTypeCache.has(sectionName)) { return this.inferredTypeCache.get(sectionName)!; }
+        if (this.inferredTypeCache.has(cacheKey)) { return this.inferredTypeCache.get(cacheKey)!; }
         
         if (this.schemaManager.isSchemaType(sectionName)) {
-            this.inferredTypeCache.set(sectionName, sectionName);
+            this.inferredTypeCache.set(cacheKey, sectionName);
             return sectionName;
         }
         
         const registryName = this.findRegistryForSection(sectionName);
         if (registryName) {
             const typeName = this.schemaManager.getTypeForRegistry(registryName) ?? sectionName;
-            this.inferredTypeCache.set(sectionName, typeName);
+            this.inferredTypeCache.set(cacheKey, typeName);
             return typeName;
+        }
+
+        for (const parentName of this.getInheritances(sectionName, contextFileType)) {
+            const parentTypeName = this.getTypeForSection(parentName, visited, contextFileType);
+            if (this.schemaManager.isSchemaType(parentTypeName)) {
+                this.inferredTypeCache.set(cacheKey, parentTypeName);
+                return parentTypeName;
+            }
         }
 
         // 上下文推断：如果这个节被某个 Key 引用了，看看那个 Key 需要什么类型
@@ -525,7 +642,7 @@ export class INIManager implements vscode.Disposable {
             if (doc) {
                 const contextSec = doc.getSectionAt(loc.range.start.line);
                 if (contextSec) {
-                    const contextTypeName = this.getTypeForSection(contextSec.name, visited);
+                    const contextTypeName = this.getTypeForSection(contextSec.name, visited, contextFileType);
                     const allKeys = this.schemaManager.getAllKeysForType(contextTypeName);
                     
                     // 找到引用行的 Key
@@ -536,7 +653,7 @@ export class INIManager implements vscode.Disposable {
                         for (const [k, propDef] of allKeys) {
                             if (k.toLowerCase() === key.toLowerCase()) {
                                 if (this.schemaManager.isComplexType(propDef.type)) {
-                                    this.inferredTypeCache.set(sectionName, propDef.type);
+                                    this.inferredTypeCache.set(cacheKey, propDef.type);
                                     return propDef.type;
                                 }
                             }
@@ -546,13 +663,32 @@ export class INIManager implements vscode.Disposable {
             }
         }
 
-        this.inferredTypeCache.set(sectionName, sectionName);
+        this.inferredTypeCache.set(cacheKey, sectionName);
         return sectionName;
     }
 
     public getInheritance(sectionName: string, fileType: string = 'INI'): string | undefined {
+        return this.getInheritances(sectionName, fileType)[0];
+    }
+
+    public getInheritances(sectionName: string, fileType: string = 'INI'): string[] {
         const typeMap = this.sectionInheritance.get(fileType);
-        return typeMap ? typeMap.get(sectionName) : undefined;
+        const parents = typeMap?.get(sectionName);
+        if (parents) {
+            return parents;
+        }
+
+        for (const [candidateFileType, candidateMap] of this.sectionInheritance) {
+            if (candidateFileType === fileType) {
+                continue;
+            }
+            const candidateParents = candidateMap.get(sectionName);
+            if (candidateParents) {
+                return candidateParents;
+            }
+        }
+
+        return [];
     }
     
     public getSectionNameAtLine(uriOrKey: string | vscode.Uri, lineNumber: number): string | null {

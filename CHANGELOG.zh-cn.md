@@ -10,6 +10,8 @@ Check [Keep a Changelog](http://keepachangelog.com/) for recommendations on how 
 
 - 新增 INI 文件格式化文档和保存时自动格式化支持。
 - 新增编辑器标题栏"预览地图"按钮；地图文件（`.map`、`.mpr`、`.yrm`）改为默认以文本打开，可在侧栏预览地图图片。
+- 新增 Phobos `$Inherits=` 节继承支持，包括多父节、递归深度优先查找、引用、重命名和覆盖指示器。
+- 将项目索引和文件监听扩展到地图类 INI 文件（`.map`、`.mpr`、`.yrm`），让继承和引用能力不再局限于普通 `.ini` 文件。
 - 大幅改善保存性能——保存大型 INI 文件时不再有明显卡顿。
 - 统一产品名称为 "RA2 Mod IntelliSense"，更新扩展和活动栏图标。
 - INIValidator 下载地址可自定义。
