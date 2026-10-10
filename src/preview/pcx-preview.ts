@@ -1,4 +1,5 @@
 import { RgbaImagePreview } from './preview-types';
+import { checkedPixels } from '../media/binary-reader';
 
 interface PcxHeader {
     manufacturer: number;
@@ -28,6 +29,11 @@ export function createPcxPreview(bytes: Uint8Array, title: string): RgbaImagePre
     const height = header.ymax - header.ymin + 1;
     if (width <= 0 || height <= 0) {
         throw new Error('Invalid PCX file: invalid dimensions.');
+    }
+    checkedPixels(width, height);
+    if (![0, 1].includes(header.encoding) || header.bytesPerLine < width
+        || header.bytesPerLine * header.colorPlanes * height > 32 * 1024 * 1024) {
+        throw new Error('Invalid PCX encoding or scanline size.');
     }
 
     if (header.bitsPerPixel === 8 && header.colorPlanes === 1) {
@@ -72,7 +78,8 @@ function readHeader(bytes: Uint8Array): PcxHeader {
 
 function decodeIndexedPcx(bytes: Uint8Array, header: PcxHeader, width: number, height: number): Uint8ClampedArray {
     const palette = readIndexedPalette(bytes, header);
-    const decoded = decodeRle(bytes.slice(128), header.bytesPerLine * height);
+    const end = bytes.length > 769 && bytes[bytes.length - 769] === 12 ? bytes.length - 769 : bytes.length;
+    const decoded = decodeRle(bytes.subarray(128, end), header.bytesPerLine * height, header.encoding);
     const pixels = new Uint8ClampedArray(width * height * 4);
 
     for (let y = 0; y < height; y++) {
@@ -105,20 +112,16 @@ function readIndexedPalette(bytes: Uint8Array, header: PcxHeader): Uint8Array {
 
 function decodeRgbPcx(bytes: Uint8Array, header: PcxHeader, width: number, height: number): Uint8ClampedArray {
     const planeSize = header.bytesPerLine * height;
-    const decoded = decodeRle(bytes.slice(128), planeSize * 3);
+    const decoded = decodeRle(bytes.subarray(128), planeSize * 3, header.encoding);
     const pixels = new Uint8ClampedArray(width * height * 4);
-
-    const rOffset = 0;
-    const gOffset = planeSize;
-    const bOffset = planeSize * 2;
 
     for (let y = 0; y < height; y++) {
         for (let x = 0; x < width; x++) {
-            const src = y * header.bytesPerLine + x;
+            const src = y * header.bytesPerLine * 3 + x;
             const dst = (y * width + x) * 4;
-            pixels[dst] = decoded[rOffset + src];
-            pixels[dst + 1] = decoded[gOffset + src];
-            pixels[dst + 2] = decoded[bOffset + src];
+            pixels[dst] = decoded[src];
+            pixels[dst + 1] = decoded[header.bytesPerLine + src];
+            pixels[dst + 2] = decoded[header.bytesPerLine * 2 + src];
             pixels[dst + 3] = 255;
         }
     }
@@ -126,7 +129,11 @@ function decodeRgbPcx(bytes: Uint8Array, header: PcxHeader, width: number, heigh
     return pixels;
 }
 
-function decodeRle(bytes: Uint8Array, expectedLength: number): Uint8Array {
+function decodeRle(bytes: Uint8Array, expectedLength: number, encoding: number): Uint8Array {
+    if (!encoding) {
+        if (bytes.length < expectedLength) { throw new Error('Truncated PCX scanline.'); }
+        return bytes.slice(0, expectedLength);
+    }
     const output = new Uint8Array(expectedLength);
     let src = 0;
     let dst = 0;
@@ -135,9 +142,7 @@ function decodeRle(bytes: Uint8Array, expectedLength: number): Uint8Array {
         const value = bytes[src++];
         if ((value & 0xc0) === 0xc0) {
             const count = value & 0x3f;
-            if (src >= bytes.length) {
-                break;
-            }
+            if (!count || src >= bytes.length || dst + count > expectedLength) { throw new Error('Invalid PCX RLE run.'); }
             const repeated = bytes[src++];
             output.fill(repeated, dst, Math.min(dst + count, expectedLength));
             dst += count;
@@ -146,6 +151,6 @@ function decodeRle(bytes: Uint8Array, expectedLength: number): Uint8Array {
 
         output[dst++] = value;
     }
-
+    if (dst !== expectedLength) { throw new Error('Truncated PCX scanline.'); }
     return output;
 }

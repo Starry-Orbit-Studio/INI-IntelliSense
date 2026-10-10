@@ -51,5 +51,17 @@
     "configuration.properties.diagnostics.spaceAfterEquals.description": "Whether to check and warn about extra spaces to the right of the equals sign (=).",
     "configuration.properties.diagnostics.leadingWhitespace.description": "Whether to check and warn about extra whitespace at the beginning of a line.",
     "configuration.properties.diagnostics.spacesBeforeComment.description": "The exact number of spaces that should precede a comment character (;). Set to null or leave empty to disable this check.",
-    "configuration.properties.diagnostics.spaceAfterComment.description": "Whether to check and warn about missing space after the comment character (;) (e.g., ';comment' instead of '; comment')."
+    "configuration.properties.diagnostics.spaceAfterComment.description": "Whether to check and warn about missing space after the comment character (;) (e.g., ';comment' instead of '; comment').",
+    "view.objectInspector.name": "Object Inspector",
+    "view.resourceWorkbench.name": "RA2 Asset Workbench",
+    "command.inspect.title": "Inspect object and resource",
+    "command.browseAssets.title": "Browse mod assets",
+    "command.auditResources.title": "Audit project resources",
+    "configuration.media.enabled": "Enable cursor-following object and resource inspection.",
+    "configuration.media.inlineThumbnails": "Show small resource thumbnails beside visible INI headers and image references.",
+    "configuration.media.hoverEnabled": "Show media previews and audition links on reference values.",
+    "configuration.media.resourceRoots": "Additional asset directories, in decreasing priority after the project directory.",
+    "configuration.media.archiveOrder": "MIX filenames in decreasing priority. Unlisted archives have equal priority; ambiguities are shown.",
+    "configuration.media.theater": "Theater suffix used to resolve CustomPalette placeholders (for example tem or sno).",
+    "configuration.media.semanticRules": "Additional contextual reference rules. First matching rule wins; dictionary types remain unchanged."
 }

@@ -1,0 +1,96 @@
+import type { ShpFile, SequenceAction } from '../media/shp';
+import type { VoxelFile } from '../media/voxel';
+
+export interface SourceLink {
+    id: string;
+    label: string;
+}
+export interface PropertyRow {
+    key: string;
+    value: string;
+    inherited: boolean;
+    source: SourceLink;
+}
+export interface AssetOption {
+    id: string;
+    name: string;
+    source: string;
+    priority: number;
+}
+export interface ActionEdit {
+    id: string;
+    action: SequenceAction;
+    valid: boolean;
+    users: number;
+}
+export interface PointEdit {
+    id: string;
+    name: string;
+    value: number[];
+}
+export type MediaPayload =
+    | {
+          kind: 'sprite';
+          bytes: string;
+          file: ShpFile;
+          palette: number[];
+          actions: ActionEdit[];
+          shadow: boolean;
+          name: string;
+      }
+    | { kind: 'image'; width: number; height: number; pixels: string; name: string }
+    | {
+          kind: 'voxel';
+          model: VoxelFile;
+          palette: number[];
+          vpl: number[];
+          normals: number[];
+          light: number[];
+          fixed: boolean;
+          points: PointEdit[];
+          name: string;
+      }
+    | {
+          kind: 'audio';
+          bytes: string;
+          duration: number;
+          rate: number;
+          channels: number;
+          name: string;
+          volume: number;
+          loop: boolean;
+      }
+    | { kind: 'palette'; colors: number[]; name: string };
+
+export interface Inspection {
+    id: string;
+    owner: string;
+    type: string;
+    focus: string;
+    properties: PropertyRow[];
+    sources: SourceLink[];
+    assets: AssetOption[];
+    paletteOptions: AssetOption[];
+    references: SourceLink[];
+    warnings: string[];
+    selectedAsset?: string;
+    selectedPalette?: string;
+    mediaRevision?: number;
+    library?: AssetOption[];
+    media?: MediaPayload;
+    cameo?: MediaPayload;
+    lightEdit?: string;
+    canReplace?: boolean;
+}
+
+export interface WorkbenchLabels {
+    [key: string]: string;
+}
+export interface HostState {
+    type: 'state';
+    labels: WorkbenchLabels;
+    inspection?: Inspection;
+    loading: boolean;
+    pinned: boolean;
+    error?: string;
+}

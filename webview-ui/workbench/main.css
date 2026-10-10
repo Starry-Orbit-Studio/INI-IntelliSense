@@ -1,0 +1,319 @@
+:root {
+    color-scheme: light dark;
+}
+* {
+    box-sizing: border-box;
+}
+body {
+    margin: 0;
+    color: var(--vscode-foreground);
+    background: var(--vscode-sideBar-background, var(--vscode-editor-background));
+    font: var(--vscode-font-size)/1.5 var(--vscode-font-family);
+}
+main {
+    padding: 12px;
+    max-width: 1400px;
+    margin: auto;
+}
+button,
+input,
+select {
+    font: inherit;
+    color: var(--vscode-input-foreground);
+    background: var(--vscode-input-background);
+    border: 1px solid var(--vscode-input-border, transparent);
+    border-radius: 5px;
+    padding: 5px 8px;
+    min-height: 30px;
+}
+button {
+    cursor: pointer;
+    background: var(--vscode-button-secondaryBackground);
+    color: var(--vscode-button-secondaryForeground);
+    white-space: normal;
+}
+button:hover {
+    background: var(--vscode-button-secondaryHoverBackground);
+}
+button.primary {
+    background: var(--vscode-button-background);
+    color: var(--vscode-button-foreground);
+}
+button.primary:hover {
+    background: var(--vscode-button-hoverBackground);
+}
+:focus-visible {
+    outline: 2px solid var(--vscode-focusBorder);
+    outline-offset: 2px;
+}
+.toolbar,
+.tabs,
+.controls {
+    display: flex;
+    gap: 6px;
+    align-items: center;
+    flex-wrap: wrap;
+    margin: 8px 0;
+}
+.toolbar {
+    position: sticky;
+    top: 0;
+    z-index: 5;
+    background: var(--vscode-sideBar-background, var(--vscode-editor-background));
+    padding: 4px 0;
+}
+.identity {
+    padding: 12px 0;
+    border-bottom: 1px solid var(--vscode-panel-border);
+}
+h1 {
+    font-size: 21px;
+    margin: 2px 0;
+    overflow-wrap: anywhere;
+    font-weight: 600;
+}
+.eyebrow {
+    font-size: 11px;
+    color: var(--vscode-descriptionForeground);
+    letter-spacing: 1px;
+    text-transform: uppercase;
+}
+.focus {
+    margin: 0;
+    color: var(--vscode-textLink-foreground);
+    overflow-wrap: anywhere;
+}
+.status {
+    font-size: 12px;
+    color: var(--vscode-descriptionForeground);
+    min-height: 4px;
+    margin: 4px 0;
+}
+.field {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    min-width: 0;
+    margin: 5px 0;
+}
+.field > span {
+    font-size: 11px;
+    color: var(--vscode-descriptionForeground);
+}
+.field select {
+    min-width: 70px;
+    width: 100%;
+    max-width: 100%;
+}
+input[type='number'] {
+    width: 80px;
+}
+input[type='range'] {
+    width: 100%;
+}
+input[type='color'] {
+    width: 40px;
+    padding: 2px;
+}
+.viewport {
+    position: relative;
+    overflow: auto;
+    border: 1px solid var(--vscode-panel-border);
+    border-radius: 8px;
+    min-height: 160px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    margin: 12px 0;
+    background-color: var(--vscode-editor-background);
+    background-image:
+        linear-gradient(45deg, #80808016 25%, transparent 25%), linear-gradient(-45deg, #80808016 25%, transparent 25%),
+        linear-gradient(45deg, transparent 75%, #80808016 75%), linear-gradient(-45deg, transparent 75%, #80808016 75%);
+    background-size: 16px 16px;
+    background-position:
+        0 0,
+        0 8px,
+        8px -8px,
+        -8px 0;
+}
+.viewport.dark {
+    background: #171b22;
+}
+.viewport.light {
+    background: #e6e7eb;
+}
+.sprite-canvas {
+    image-rendering: pixelated;
+    max-width: none;
+    flex-shrink: 0;
+}
+.voxel-canvas {
+    width: 100%;
+    height: 380px;
+    display: block;
+}
+.voxel-overlay {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 380px;
+    touch-action: none;
+    cursor: grab;
+}
+.hint {
+    font-size: 11px;
+    color: var(--vscode-descriptionForeground);
+    margin: 6px 0;
+}
+.warning {
+    border-left: 3px solid var(--vscode-editorWarning-foreground);
+    padding: 8px;
+    background: var(--vscode-textBlockQuote-background);
+    overflow-wrap: anywhere;
+}
+.empty {
+    padding: 32px 12px;
+    text-align: center;
+    color: var(--vscode-descriptionForeground);
+}
+.check {
+    display: inline-flex;
+    gap: 6px;
+    align-items: center;
+    margin: 4px;
+}
+details {
+    padding: 8px 0;
+    border-top: 1px solid var(--vscode-panel-border);
+}
+summary {
+    cursor: pointer;
+    font-weight: 600;
+    margin-bottom: 8px;
+}
+.sequence-editor {
+    display: flex;
+    gap: 8px;
+    flex-wrap: wrap;
+    align-items: center;
+    padding: 8px;
+    background: var(--vscode-editor-background);
+    border-radius: 6px;
+}
+.contacts {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 4px;
+    padding: 8px;
+}
+.contacts button {
+    min-width: 45px;
+}
+.contacts button {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    min-width: 85px;
+    min-height: 90px;
+}
+.contact-thumbnail {
+    max-width: 80px;
+    max-height: 80px;
+    image-rendering: pixelated;
+}
+.asset-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
+    gap: 8px;
+}
+.asset-tile {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 5px;
+    min-height: 110px;
+    min-width: 0;
+    overflow: hidden;
+}
+.asset-tile[aria-pressed='true'] {
+    outline: 2px solid var(--vscode-focusBorder);
+}
+.asset-tile .hint {
+    overflow-wrap: anywhere;
+    font-size: 10px;
+    max-height: 45px;
+    overflow: hidden;
+}
+.asset-thumbnail {
+    width: 80px;
+    height: 70px;
+    object-fit: contain;
+    image-rendering: pixelated;
+}
+.library > input {
+    width: 100%;
+}
+.audio-player {
+    padding: 24px 12px;
+    background: var(--vscode-editor-background);
+    border-radius: 8px;
+}
+.audio-title {
+    font-size: 18px;
+    overflow-wrap: anywhere;
+}
+audio {
+    width: 100%;
+    min-width: 180px;
+}
+table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 12px;
+}
+th,
+td {
+    padding: 7px;
+    text-align: left;
+    vertical-align: top;
+    border-bottom: 1px solid var(--vscode-panel-border);
+    overflow-wrap: anywhere;
+}
+th {
+    font-weight: 500;
+}
+td button,
+.link-row {
+    background: none;
+    color: var(--vscode-textLink-foreground);
+    border: 0;
+    font-size: 11px;
+    text-align: left;
+}
+.link-row {
+    display: block;
+    width: 100%;
+    margin: 3px 0;
+}
+.cameo {
+    image-rendering: pixelated;
+    max-width: 100%;
+}
+[hidden] {
+    display: none !important;
+}
+@media (max-width: 400px) {
+    main {
+        padding: 8px;
+    }
+    .controls {
+        gap: 4px;
+    }
+    td:last-child {
+        max-width: 100px;
+    }
+    .sequence-editor input {
+        width: 65px;
+    }
+}

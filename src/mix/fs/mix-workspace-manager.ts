@@ -30,6 +30,7 @@ export class MixWorkspaceManager {
             ctime: stat.ctime,
             mtime: stat.mtime,
             size: stat.size,
+            permissions: archive.getType() === MixType.RaTsEncrypted ? vscode.FilePermission.Readonly : undefined,
         };
     }
 
@@ -49,6 +50,19 @@ export class MixWorkspaceManager {
     public async peekFile(uri: vscode.Uri, maxBytes: number): Promise<Uint8Array> {
         const { archive, virtualPath } = await this.resolveArchive(uri);
         return archive.peekFile(virtualPath, maxBytes);
+    }
+
+    /** Lookup without renaming archive entries or marking an archive dirty. */
+    public async readFileRange(uri: vscode.Uri, offset: number, length: number): Promise<Uint8Array> {
+        const { archive, virtualPath } = await this.resolveArchive(uri);
+        return archive.readFileRange(virtualPath, offset, length);
+    }
+
+    /** Lookup without renaming archive entries or marking an archive dirty. */
+    public async findResource(root: vscode.Uri, name: string): Promise<vscode.Uri | undefined> {
+        const { archive } = await this.resolveArchive(root);
+        const entryPath = archive.findPathByName(name);
+        return entryPath ? MixUriCodec.toChildUri(root, entryPath) : undefined;
     }
 
     public async writeFile(uri: vscode.Uri, content: Uint8Array, options: { create: boolean; overwrite: boolean }): Promise<void> {
@@ -97,6 +111,7 @@ export class MixWorkspaceManager {
 
     public async flushAll(): Promise<void> {
         for (const [key, handle] of this.archiveHandles.entries()) {
+            if (!handle.archive.isDirty()) { continue; }
             const decoded = JSON.parse(key) as { container: string };
             await vscode.workspace.fs.writeFile(vscode.Uri.parse(decoded.container), handle.archive.serialize());
         }

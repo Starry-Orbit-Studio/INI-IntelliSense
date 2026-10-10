@@ -467,7 +467,9 @@ export class SchemaManager {
      * @param typeName 类型名, 如 'BuildingType'
      * @returns 一个包含所有键及其完整定义的 Map
      */
-    public getAllKeysForType(typeName: string): Map<string, PropertyDefinition> {
+    public getAllKeysForType(typeName: string, visited = new Set<string>()): Map<string, PropertyDefinition> {
+        if (visited.has(typeName)) { return new Map(); }
+        visited.add(typeName);
         // 优先从缓存中读取, 避免重复计算。
         if (this.keyCache.has(typeName)) {
             return this.keyCache.get(typeName)!;
@@ -479,7 +481,7 @@ export class SchemaManager {
         }
 
         // 递归地获取父类的所有键。
-        const baseKeys = schema.base ? this.getAllKeysForType(schema.base) : new Map();
+        const baseKeys = schema.base ? this.getAllKeysForType(schema.base, visited) : new Map();
         
         // 合并父类的键和当前类型的键。
         // Map的构造函数特性确保了子类键会覆盖父类的同名键。

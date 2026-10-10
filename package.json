@@ -9,12 +9,11 @@
     "url": "https://github.com/Super-StarX/INI-IntelliSense.git"
   },
   "private": true,
-  "version": "0.0.5",
+  "version": "0.1.0",
   "engines": {
     "vscode": "^1.96.0"
   },
-  "activationEvents": [
-  ],
+  "activationEvents": [],
   "categories": [
     "Programming Languages",
     "Other"
@@ -100,7 +99,7 @@
     "customEditors": [
       {
         "viewType": "ra2-resource-preview.viewer",
-        "displayName": "RA2 Resource Preview",
+        "displayName": "%view.resourceWorkbench.name%",
         "selector": [
           {
             "filenamePattern": "*.pcx"
@@ -116,6 +115,18 @@
           },
           {
             "filenamePattern": "*.hva"
+          },
+          {
+            "filenamePattern": "*.wav"
+          },
+          {
+            "filenamePattern": "*.mp3"
+          },
+          {
+            "filenamePattern": "*.ogg"
+          },
+          {
+            "filenamePattern": "*.flac"
           }
         ],
         "priority": "default"
@@ -132,6 +143,12 @@
     },
     "views": {
       "ini-intellisense-explorer": [
+        {
+          "id": "ra2-object-inspector",
+          "name": "%view.objectInspector.name%",
+          "type": "webview",
+          "contextualTitle": "%view.objectInspector.name%"
+        },
         {
           "id": "ini-files",
           "name": "%view.iniFiles.name%",
@@ -227,6 +244,11 @@
         }
       ],
       "editor/context": [
+        {
+          "when": "editorLangId == 'ra2-ini'",
+          "command": "ra2-ini-intellisense.inspect",
+          "group": "navigation"
+        },
         {
           "when": "editorTextFocus && editorLangId == 'ra2-ini'",
           "command": "ra2-ini-intellisense.registerSectionContext",
@@ -382,6 +404,21 @@
         "title": "%command.previewMapToSide.title%",
         "category": "%command.category%",
         "icon": "$(open-preview)"
+      },
+      {
+        "command": "ra2-ini-intellisense.inspect",
+        "title": "%command.inspect.title%",
+        "category": "%command.category%"
+      },
+      {
+        "command": "ra2-ini-intellisense.browseAssets",
+        "title": "%command.browseAssets.title%",
+        "category": "%command.category%"
+      },
+      {
+        "command": "ra2-ini-intellisense.auditResources",
+        "title": "%command.auditResources.title%",
+        "category": "%command.category%"
       }
     ],
     "configuration": {
@@ -518,13 +555,97 @@
           "description": "%configuration.properties.diagnostics.severity.description%",
           "additionalProperties": {
             "type": "string",
-            "enum": ["Error", "Warning", "Information", "Hint", "None"]
+            "enum": [
+              "Error",
+              "Warning",
+              "Information",
+              "Hint",
+              "None"
+            ]
           }
         },
         "ra2-ini-intellisense.iniValidator.downloadUrl": {
           "type": "string",
           "default": "https://www.bilibili.com/opus/1022686010171981842",
           "description": "%configuration.properties.iniValidator.downloadUrl.description%"
+        },
+        "ra2-ini-intellisense.media.enabled": {
+          "type": "boolean",
+          "default": true,
+          "description": "%configuration.media.enabled%"
+        },
+        "ra2-ini-intellisense.media.inlineThumbnails": {
+          "type": "boolean",
+          "default": true,
+          "description": "%configuration.media.inlineThumbnails%"
+        },
+        "ra2-ini-intellisense.media.hoverEnabled": {
+          "type": "boolean",
+          "default": true,
+          "description": "%configuration.media.hoverEnabled%"
+        },
+        "ra2-ini-intellisense.media.resourceRoots": {
+          "type": "array",
+          "default": [],
+          "description": "%configuration.media.resourceRoots%",
+          "items": {
+            "type": "string"
+          }
+        },
+        "ra2-ini-intellisense.media.archiveOrder": {
+          "type": "array",
+          "default": [],
+          "description": "%configuration.media.archiveOrder%",
+          "items": {
+            "type": "string"
+          }
+        },
+        "ra2-ini-intellisense.media.theater": {
+          "type": "string",
+          "default": "tem",
+          "description": "%configuration.media.theater%"
+        },
+        "ra2-ini-intellisense.media.semanticRules": {
+          "type": "array",
+          "default": [],
+          "description": "%configuration.media.semanticRules%",
+          "items": {
+            "type": "object",
+            "required": [
+              "kind"
+            ],
+            "properties": {
+              "owner": {
+                "type": "string"
+              },
+              "category": {
+                "type": "string"
+              },
+              "key": {
+                "type": "string"
+              },
+              "valueType": {
+                "type": "string"
+              },
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "object",
+                  "animation",
+                  "sound",
+                  "image",
+                  "palette",
+                  "sequence",
+                  "flh",
+                  "lighting"
+                ]
+              },
+              "extension": {
+                "type": "string"
+              }
+            },
+            "additionalProperties": false
+          }
         }
       }
     },
@@ -630,10 +751,12 @@
     "compile-tests": "tsc -p . --outDir out",
     "watch-tests": "tsc -p . -w --outDir out",
     "pretest": "npm run compile-tests && npm run compile && npm run lint",
-    "check-types": "tsc --noEmit",
-    "lint": "eslint src",
+    "check-types": "tsc --noEmit && tsc -p webview-ui/workbench/tsconfig.json",
+    "lint": "eslint src webview-ui/workbench",
     "test": "vscode-test",
-    "i18n:extract": "vscode-nls-dev extract --outDir i18n"
+    "i18n:extract": "vscode-nls-dev extract --outDir i18n",
+    "format:workbench": "prettier --write src/context src/media src/resources/project-resources.ts src/mix/core/encrypted-header.ts src/test/media* src/test/resource-inspection.test.ts src/test/visual-edit.test.ts webview-ui/workbench",
+    "test:webview": "node scripts/test-workbench.cjs"
   },
   "devDependencies": {
     "@types/ini": "^4.1.1",
@@ -647,11 +770,14 @@
     "esbuild": "^0.24.0",
     "eslint": "^9.16.0",
     "npm-run-all": "^4.1.5",
+    "playwright": "^1.64.0",
+    "prettier": "^3.9.9",
     "typescript": "^5.7.2",
     "vscode-nls": "^5.1.2",
-    "vscode-nls-dev": "^9.0.4"
+    "vscode-nls-dev": "^4.0.4"
   },
   "dependencies": {
+    "egoroof-blowfish": "^4.0.3",
     "ini": "^5.0.0"
   }
 }

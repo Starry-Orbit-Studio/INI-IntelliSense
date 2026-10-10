@@ -44,7 +44,7 @@ const copyStaticFilesPlugin = {
                 await fs.cp('assets', path.join(outDir, 'assets'), { recursive: true });
                 console.log('[copy] i18n files copied successfully.');
             } catch (err) {
-                console.error('Failed to copy static files:', err);
+                return { errors: [{ text: 'Failed to copy static files: ' + String(err) }] };
             }
         });
     },
@@ -52,16 +52,17 @@ const copyStaticFilesPlugin = {
 
 async function main() {
 	const ctx = await esbuild.context({
-		entryPoints: [
-			'src/extension.ts'
-		],
+		entryPoints: {
+            'extension': 'src/extension.ts',
+            'media-worker': 'src/media/decode-worker.ts',
+        },
 		bundle: true,
 		format: 'cjs',
 		minify: production,
 		sourcemap: !production,
 		sourcesContent: false,
 		platform: 'node',
-		outfile: 'dist/extension.js',
+		outdir: 'dist',
 		external: ['vscode'],
 		logLevel: 'silent',
 		plugins: [
@@ -70,11 +71,22 @@ async function main() {
 			esbuildProblemMatcherPlugin,
 		],
 	});
+    const browser = await esbuild.context({
+        entryPoints: { main: 'webview-ui/workbench/main.ts', worker: 'webview-ui/workbench/worker.ts' },
+        bundle: true,
+        platform: 'browser',
+        format: 'iife',
+        target: 'es2022',
+        minify: production,
+        sourcemap: !production,
+        outdir: 'dist/workbench',
+        plugins: [esbuildProblemMatcherPlugin],
+    });
 	if (watch) {
-		await ctx.watch();
+		await Promise.all([ctx.watch(), browser.watch()]);
 	} else {
-		await ctx.rebuild();
-		await ctx.dispose();
+		await Promise.all([ctx.rebuild(), browser.rebuild()]);
+		await Promise.all([ctx.dispose(), browser.dispose()]);
 	}
 }
 

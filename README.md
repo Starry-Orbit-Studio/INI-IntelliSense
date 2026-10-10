@@ -8,6 +8,24 @@
 
 ## Key Features
 
+### Asset Workbench and Cursor-following Inspector
+
+Expand **Object Inspector** in the RA2 activity bar. Moving the cursor into an INI section resolves its type, effective properties, inheritance sources, icon and assets. Move the view to VS Code's secondary sidebar to keep it beside the text, or pin an object. Small thumbnails appear beside visible section headers and image references; media hovers on reference values preserve existing key documentation.
+
+- **Precise references**: target the selected member of `AnimList`, resolve `VoiceMove` through sound sections, and audition individual whitespace/comma-separated `Sounds` samples.
+- **Dictionary-driven semantics**: supports `Sound`, `AnimType`, `Shape`, `SHPFile`, `PCXFile`, `PALFile` and object references. Add contextual rules through `media.semanticRules` without changing a renderer.
+- **SHP**: animation, frame stepping, directions, speed, house color, shadows, palette selection and paginated contact sheets. Edit sequence start/count/direction stride while retaining extra fields and comments; shared actions and frame bounds are reported.
+- **VXL/HVA**: WebGL2 instancing, isometric/free perspective/normal/slice views, body/turret/barrel assembly, HVA playback, independent limb visibility and turret heading. Uses authored normals, VPL and palettes. Reads and edits `VoxelLightSource` and `UseFixedVoxelLighting` in `[AudioVisual]`.
+- **FLH**: view existing primary/secondary/elite/`WeaponN` points and firing rays; drag axes or enter coordinates with an adjustable coordinate scale. INI edits use native undo and do not save automatically.
+- **Library and tools**: searchable, paginated assets and thumbnails, source selection, synchronized snapshot comparison, PNG/decoded-WAV export, semantic reference replacement, definition links and incoming references. Run **Check project resources** explicitly to report missing or ambiguous resources and invalid actions.
+- **Audio**: WAV from directories/MIX and PCM/IMA ADPCM samples from IDX/BAG, with playback, volume, loop and random audition. MP3/OGG/FLAC depend on the VS Code Webview's available codecs.
+
+Project files take priority over MIX archives; configure additional directories with `ra2-ini-intellisense.media.resourceRoots` and archive precedence with `media.archiveOrder` (MIX filenames, highest first). Equally ranked sources remain selectable. Nested MIX and encrypted MIX read access are supported. Unsaved INI text participates in resolution; separate workspace projects remain isolated. Categorize custom rules/art/sound filenames through the existing file category settings.
+
+Rendering approximates the game and should be verified in game. RA2 VXL normal mode 4 is supported; other normal tables are rejected explicitly. FLH previews do not simulate the complete firing logic. Bounds: 4M image pixels, 500,000 voxels per decoded model, 2,000 INIs on initial context load, 100,000 catalog entries/16 directory levels, 10,000 library entries and 2,000 references per audit. Heavy decoding runs in workers; project audits run on demand.
+
+See [Asset Workbench architecture and development](docs/asset-workbench.md) for configuration examples, implementation boundaries and verification commands.
+
 ### 1. Dynamic Syntax Highlighting
 Going beyond traditional static syntax files, this extension provides more accurate and richer coloring through dynamic code analysis.
 - **Multi-level Keys**: Applies different colors to different parts of `Key.Part1.Part2`.

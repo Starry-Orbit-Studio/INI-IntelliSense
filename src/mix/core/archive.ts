@@ -1,6 +1,7 @@
 import * as path from 'path';
 import { localize } from '../../i18n';
 import { crc32 } from './crc32';
+import { decryptMixHeader } from './encrypted-header';
 import { decodeLocalText } from './local-encoding';
 import { getParentMixPath, joinMixPath, normalizeMixPath, splitMixVirtualPath } from './path-utils';
 import { MixArchiveOptions, MixArchiveWarning, MixDirectoryEntry, MixEntry, MixGame, MixStat, MixTreeEntry, MixType } from './types';
@@ -44,7 +45,9 @@ export class MixArchive {
 
     public static async open(bytes: Uint8Array, options?: MixArchiveOptions): Promise<MixArchive> {
         const archive = new MixArchive(bytes, options);
-        archive.parse();
+        const flags = bytes.length >= 4 ? new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength).getUint32(0, true) : 0;
+        const decrypted = (flags & 0xffff) === 0 && (flags & MIX_ENCRYPTED) !== 0 ? await decryptMixHeader(bytes) : undefined;
+        archive.parse(decrypted);
         return archive;
     }
 
@@ -58,6 +61,15 @@ export class MixArchive {
 
     public getGame(): MixGame {
         return this.game;
+    }
+
+    /** Resolve a known filename even when the directory only has an unknown hash. */
+    public findPathByName(name: string): string | undefined {
+        const normalized = normalizeMixPath(name);
+        const direct = [...this.entries.keys()].find(key => key.toLowerCase() === normalized.toLowerCase());
+        if (direct) { return direct; }
+        const id = MixArchive.calculateId(path.posix.basename(name), this.game);
+        return [...this.entries.entries()].find(([, entry]) => entry.id === id)?.[0];
     }
 
     public isDirty(): boolean {
@@ -168,7 +180,20 @@ export class MixArchive {
         return this.sourceData.slice(start, end);
     }
 
+    /** Copy a bounded slice without allocating or caching the entire archive entry. */
+    public readFileRange(virtualPath: string, offset: number, length: number): Uint8Array {
+        const normalized = normalizeMixPath(virtualPath), entry = this.entries.get(normalized);
+        if (!entry || !Number.isSafeInteger(offset) || !Number.isSafeInteger(length) || offset < 0 || length < 0
+            || offset + length > entry.size) { throw new Error('Invalid MIX entry slice.'); }
+        const cached = this.contentCache.get(normalized);
+        if (cached) { return cached.slice(offset, offset + length); }
+        const start = this.bodyStartOffset + entry.offset + offset;
+        if (start + length > this.sourceData.length) { throw new Error('Truncated MIX entry slice.'); }
+        return this.sourceData.slice(start, start + length);
+    }
+
     public writeFile(virtualPath: string, content: Uint8Array, options: { create: boolean; overwrite: boolean }): void {
+        this.assertWritable();
         const normalizedPath = normalizeMixPath(virtualPath);
         const existing = this.entries.get(normalizedPath);
         if (!existing && !options.create) {
@@ -191,6 +216,7 @@ export class MixArchive {
     }
 
     public rename(oldPath: string, newPath: string, options: { overwrite: boolean }): void {
+        this.assertWritable();
         const oldNormalized = normalizeMixPath(oldPath);
         const newNormalized = normalizeMixPath(newPath);
         if (oldNormalized === newNormalized) {
@@ -243,6 +269,7 @@ export class MixArchive {
     }
 
     public delete(virtualPath: string, options: { recursive: boolean }): void {
+        this.assertWritable();
         const normalizedPath = normalizeMixPath(virtualPath);
         if (this.entries.has(normalizedPath)) {
             this.unregisterPath(normalizedPath);
@@ -277,6 +304,7 @@ export class MixArchive {
     }
 
     public createDirectory(virtualPath: string): void {
+        this.assertWritable();
         const normalizedPath = normalizeMixPath(virtualPath);
         this.ensureDirectoryExists(normalizedPath);
         this.markDirty();
@@ -393,7 +421,13 @@ export class MixArchive {
         this.entryOrder = this.entryOrder.map(candidate => candidate === oldPath ? targetPath : candidate);
     }
 
-    private parse(): void {
+    private assertWritable(): void {
+        if (this.type === MixType.RaTsEncrypted) {
+            throw new Error(localize('mix.error.saveEncryptedUnsupported', 'Saving encrypted MIX files is not yet supported.'));
+        }
+    }
+
+    private parse(decrypted?: { bytes: Uint8Array; bodyOffset: number }): void {
         const bytes = this.sourceData;
         if (bytes.byteLength < 6) {
             throw new Error(localize('mix.error.tooSmall', 'The MIX file is too small to be valid.'));
@@ -411,7 +445,10 @@ export class MixArchive {
         } else if ((flags & MIX_ENCRYPTED) !== 0) {
             this.type = MixType.RaTsEncrypted;
             this.game = MixGame.Ts;
-            throw new Error(localize('mix.error.encryptedUnsupported', 'Encrypted MIX files are not yet supported for browsing in this version.'));
+            if (!decrypted) { throw new Error('Encrypted MIX header is unavailable.'); }
+            const header = new DataView(decrypted.bytes.buffer, decrypted.bytes.byteOffset, decrypted.bytes.byteLength);
+            this.bodyStartOffset = decrypted.bodyOffset;
+            this.readEntries(header, 6, header.getUint16(0, true), header.getUint32(2, true));
         } else {
             this.type = MixType.RaTs;
             this.game = MixGame.Ts;

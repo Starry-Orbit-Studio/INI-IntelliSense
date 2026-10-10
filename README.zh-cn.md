@@ -8,6 +8,35 @@
 
 ## 主要功能
 
+### 素材工作台与随光标检查器
+
+在 RA2 活动栏展开 **对象检查器**，光标进入一个 INI 节时，会解析对象类型、有效属性、继承来源、图标和素材。可以把这个视图拖到 VS Code 的辅助侧边栏，与文本并排使用，也可以固定当前对象。节标题、`Image` 和图标引用旁会显示小缩略图；引用值上的悬停预览保留原有标签说明，并提供进入检查器的入口。
+
+- **精确到列表成员**：光标位于 `AnimList=CannonExp1,CannonExp2,CannonExp3` 的第二项时预览 `CannonExp2`；位于 `VoiceMove=GuardianGIMove` 时解析 sound 节的 `Sounds` 并提供试听。`Sounds` 内的空格或逗号分隔样本也可以逐项选择。
+- **字典驱动**：识别 `Sound`、`AnimType`、`Shape`、`SHPFile`、`PCXFile`、`PALFile` 和对象引用类型。新标签可以通过字典类型或 `media.semanticRules` 接入，无需修改渲染器。
+- **SHP**：播放、逐帧、方向、速度、阵营色、阴影、调色板和分页帧总览；步兵动作按 `Sequence` 解释，可修改起始帧、帧数、方向步长。保留序列的额外字段和注释，显示越界和共享序列提示。
+- **VXL/HVA**：WebGL2 实例化渲染、游戏等轴视角/自由透视/法线/切片、车体与炮塔/炮管组合、HVA 时间轴、独立部件显隐、炮塔转向。使用素材法线、`voxels.vpl` 和调色板；读取 `[AudioVisual]` 的 `VoxelLightSource` 与 `UseFixedVoxelLighting`，可以调整方向并写回两项设置。
+- **FLH**：显示 art 中已定义的主副武器、精英武器和 `WeaponN` 发射点；可拖动坐标轴或输入数值，观察发射射线。坐标换算比例可调，修改以一次原生撤销操作写回 INI，不自动保存。
+- **素材库**：命令 **浏览素材库** 提供搜索、分页缩略图和来源选择。支持保留预览进行同步视角对比、导出 PNG/解码后的 WAV、替换当前引用、跳转定义与查看反向引用。命令 **检查项目资源** 按需检查缺失资源、歧义和序列越界。
+- **音频**：目录或 MIX 内的 WAV，以及 IDX/BAG 中的 PCM/IMA ADPCM 样本；提供播放、停止、循环、音量和随机样本。MP3/OGG/FLAC 由 Webview 浏览器解码，实际支持取决于 VS Code 的媒体编解码器。
+
+资源默认先查当前工作区目录，再查 MIX；额外目录通过 `ra2-ini-intellisense.media.resourceRoots` 配置。用 `media.archiveOrder` 明确列出 MIX 文件名的优先级，未配置且同优先级的多个来源会保留供选择。兼容嵌套 MIX 和加密 MIX 的只读读取。多工作区项目不会互相串用同名单位；打开文档的未保存内容优先参与解析。
+
+```jsonc
+{
+    "ra2-ini-intellisense.media.resourceRoots": ["D:/Games/RA2"],
+    "ra2-ini-intellisense.media.archiveOrder": ["expandmd99.mix", "ra2md.mix"],
+    "ra2-ini-intellisense.media.theater": "tem",
+    "ra2-ini-intellisense.media.semanticRules": [
+        { "owner": "TechnoType", "key": "PreviewArt", "kind": "image", "extension": ".pcx" }
+    ]
+}
+```
+
+请在现有文件分类设置中将自定义 rules/art/sound 文件归入相应类别。浏览器渲染是预览近似，最终游戏效果仍需游戏内确认；当前支持 RA2 VXL 法线模式 4，不支持 TS 的其他法线表。FLH 预览不模拟游戏的完整武器开火逻辑。单图解码上限为 4M 像素，单模型为 50 万体素；首次上下文加载最多 2,000 个 INI，素材目录最多 100,000 项/16 层，素材库显示最多 10,000 项，单次资源检查最多 2,000 个引用。复杂解析在 Worker 中进行，界面不会自动启动全项目资源检查。
+
+开发与架构说明见 [素材工作台架构](docs/asset-workbench.md)。
+
 ### 1. 动态语法高亮
 超越传统静态语法文件，本扩展通过代码动态分析，提供更精确、更丰富的着色效果。
 - **支持多级键**: 为 `Key.Part1.Part2` 的不同部分应用不同颜色。

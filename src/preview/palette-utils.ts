@@ -10,11 +10,12 @@ export function readPalette(bytes: Uint8Array): PaletteColor[] {
     }
 
     const colors: PaletteColor[] = [];
+    const multiplier = bytes.subarray(0, 768).some(value => value > 63) ? 1 : 4;
     for (let i = 0; i < 0x100; i++) {
         colors.push({
-            r: (bytes[i * 3] ?? 0) * 4,
-            g: (bytes[i * 3 + 1] ?? 0) * 4,
-            b: (bytes[i * 3 + 2] ?? 0) * 4,
+            r: (bytes[i * 3] ?? 0) * multiplier,
+            g: (bytes[i * 3 + 1] ?? 0) * multiplier,
+            b: (bytes[i * 3 + 2] ?? 0) * multiplier,
         });
     }
     return colors;

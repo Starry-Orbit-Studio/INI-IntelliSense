@@ -36,6 +36,14 @@ import { ResourcePreviewProvider } from './preview/resource-preview-provider';
 import { CompareService } from './compare/compare-service';
 import { CompareResultsPanel } from './compare/compare-results-panel';
 import { CompareSource } from './compare/types';
+import { ProjectResources } from './resources/project-resources';
+import { ResourceAudit } from './context/resource-audit';
+import { DecoderService } from './media/decoder-service';
+import { MediaService } from './media/media-service';
+import { InspectionService } from './context/inspection-service';
+import { WorkbenchController } from './context/workbench-controller';
+import { MediaHoverProvider } from './context/media-hover';
+import { MediaDecorations } from './context/media-decorations';
 
 const LANGUAGE_ID = 'ra2-ini';
 
@@ -117,7 +125,16 @@ export async function activate(context: vscode.ExtensionContext) {
 	context.subscriptions.push(vscode.window.createTreeView('ini-files', { treeDataProvider: iniFilesProvider, canSelectMany: true }));
 	context.subscriptions.push(vscode.window.createTreeView('mix-files', { treeDataProvider: mixFilesProvider, dragAndDropController: mixTreeDnD, canSelectMany: true }));
     context.subscriptions.push(vscode.workspace.registerFileSystemProvider(MixUriCodec.scheme, mixFileSystemProvider, { isCaseSensitive: false }));
-    context.subscriptions.push(vscode.window.registerCustomEditorProvider(ResourcePreviewProvider.viewType, resourcePreviewProvider, {
+    const projectResources = new ProjectResources(mixWorkspaceManager);
+    const decoder = new DecoderService(vscode.Uri.joinPath(context.extensionUri, 'dist', 'media-worker.js').fsPath);
+    const media = new MediaService(projectResources, decoder, context.extensionUri);
+    const inspection = new InspectionService(projectResources, media, iniManager, schemaManager, fileTypeManager);
+    const workbench = new WorkbenchController(context, inspection, media);
+    context.subscriptions.push(projectResources, decoder, workbench, new ResourceAudit(inspection),
+        vscode.window.registerWebviewViewProvider(WorkbenchController.viewId, workbench, { webviewOptions: { retainContextWhenHidden: true } }),
+        vscode.languages.registerHoverProvider(selector, new MediaHoverProvider(inspection, context, decoder)),
+        new MediaDecorations(inspection, context, decoder));
+    context.subscriptions.push(vscode.window.registerCustomEditorProvider(ResourcePreviewProvider.viewType, workbench, {
         supportsMultipleEditorsPerDocument: false,
         webviewOptions: {
             retainContextWhenHidden: true,
@@ -850,7 +867,7 @@ export async function activate(context: vscode.ExtensionContext) {
 				if (!currentSectionName) {return null;}
 		
 				const markdown = new vscode.MarkdownString("", true);
-				markdown.isTrusted = true;
+				markdown.isTrusted = { enabledCommands: ['ra2-ini-intellisense.jumpToOverride'] };
 				markdown.supportThemeIcons = true;
 				let hasContent = false;
 

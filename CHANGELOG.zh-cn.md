@@ -6,6 +6,16 @@ All notable changes to the "ra2-ini-intellisense" extension will be documented i
 
 Check [Keep a Changelog](http://keepachangelog.com/) for recommendations on how to structure this file.
 
+## [0.1.0] - 2026-10-10
+
+- 新增随光标跟随的对象检查器、行旁缩略图和素材悬停，支持字典驱动的类型识别与列表成员精确解析。
+- 新增隔离到项目的 rules/art/sound 解析、未保存文档支持、来源选择、素材目录和可配置 MIX 优先级。
+- 重建 SHP 预览，支持播放、方向、阵营色、帧总览，以及具有原生撤销能力的动作序列编辑。
+- 新增 WebGL2 VXL/HVA 渲染、车体/炮塔/炮管组合、Phobos 光照控制、HVA 播放和可视化 FLH 编辑。
+- 新增 IDX/BAG/WAV 试听、素材库、快照对比、PNG/WAV 导出、语义引用替换和按需资源检查。
+- 新增加密 MIX 只读访问与写入保护，有界且可取消的解码 Worker 和缓存，以及 CSP 限制和工作台本地化。
+- 新增扩展宿主集成测试与浏览器回归，覆盖解码、项目隔离、引用、写回、渲染和媒体生命周期。
+
 ## [0.0.5] - 2026-07-17
 
 - 新增 INI 文件格式化文档和保存时自动格式化支持。

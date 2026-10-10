@@ -51,5 +51,17 @@
     "configuration.properties.diagnostics.spaceAfterEquals.description": "是否检查并警告等号 (=) 右侧的多余空格。",
     "configuration.properties.diagnostics.leadingWhitespace.description": "是否检查并警告行首的多余空格。",
     "configuration.properties.diagnostics.spacesBeforeComment.description": "注释符号 (;) 前应有的确切空格数。设为 null 或留空可禁用此项检查。",
-    "configuration.properties.diagnostics.spaceAfterComment.description": "是否检查并警告注释符号 (;) 后缺少空格的情况 (例如 ';comment' 而非 '; comment')。"
+    "configuration.properties.diagnostics.spaceAfterComment.description": "是否检查并警告注释符号 (;) 后缺少空格的情况 (例如 ';comment' 而非 '; comment')。",
+    "view.objectInspector.name": "对象检查器",
+    "view.resourceWorkbench.name": "红警素材工作台",
+    "command.inspect.title": "查看对象与素材",
+    "command.browseAssets.title": "浏览 Mod 素材",
+    "command.auditResources.title": "检查项目资源",
+    "configuration.media.enabled": "开启随光标更新的对象与资源检查器。",
+    "configuration.media.inlineThumbnails": "在可见的 INI 节标题和图像引用旁显示素材缩略图。",
+    "configuration.media.hoverEnabled": "在资源引用值上显示预览和声音试听入口。",
+    "configuration.media.resourceRoots": "项目目录之外的素材目录，按优先级从高到低排列。",
+    "configuration.media.archiveOrder": "MIX 文件名优先级列表。未列出的包优先级相同；存在歧义时会提示。",
+    "configuration.media.theater": "解析 CustomPalette 占位符的战区后缀，例如 tem 或 sno。",
+    "configuration.media.semanticRules": "额外的上下文资源语义规则，首个匹配项生效，不改变字典中的验证类型。"
 }

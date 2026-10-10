@@ -6,6 +6,16 @@ All notable changes to the "ra2-ini-intellisense" extension will be documented i
 
 Check [Keep a Changelog](http://keepachangelog.com/) for recommendations on how to structure this file.
 
+## [0.1.0] - 2026-10-10
+
+- Added a cursor-following object inspector, inline thumbnails and media hovers with dictionary-driven, exact-member reference resolution.
+- Added project-scoped rules/art/sound resolution, unsaved document support, source selection, asset roots and explicit MIX precedence.
+- Rebuilt SHP previews with playback, directions, house colors, contact sheets and sequence editing with native undo.
+- Added WebGL2 VXL/HVA rendering, body/turret/barrel assembly, Phobos voxel lighting controls, HVA playback and visual FLH editing.
+- Added IDX/BAG/WAV audition, an asset library, snapshot comparison, PNG/WAV export, semantic reference replacement and on-demand resource audits.
+- Added encrypted MIX read access with explicit read-only protection, bounded/cancellable decoding workers and caches, CSP restrictions and localized workbench UI.
+- Added extension-host integration tests and browser regressions covering decoders, project isolation, references, edits, rendering and media lifecycle.
+
 ## [0.0.5] - 2026-07-17
 
 - Added format document and format on save support for INI files.
