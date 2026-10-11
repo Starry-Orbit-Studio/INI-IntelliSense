@@ -6,6 +6,8 @@ import { ProjectResources } from '../resources/project-resources';
 import { parsePropertyLine } from './ini-position';
 import { TextContentService } from '../services/text-content-service';
 import * as path from 'path';
+import { PropertyResolution, resolveProperties } from './property-resolution';
+import { localize } from '../i18n';
 
 export interface EffectiveProperty {
     key: string;
@@ -22,6 +24,14 @@ export interface SectionSource {
     category: string;
 }
 
+export interface ProjectResolutionContext {
+    configured: boolean;
+    complete: boolean;
+    documents: number;
+    entries: string[];
+    issues: string[];
+}
+
 /** Scoped queries use open document text first, including unsaved MIX documents. */
 export class ProjectIni {
     private parsed = new Map<string, { version: number; document: IniDocument }>();
@@ -30,6 +40,8 @@ export class ProjectIni {
     private order = new Map<string, number>();
     private loaded = new Map<string, Promise<void>>();
     private generation = 0;
+    private activeDocuments = new Map<string, Set<string>>();
+    private contexts = new Map<string, ProjectResolutionContext>();
     private queries = new Map<string, { signature: string[]; sources: Map<string, SectionSource[]> }>();
     private incomingQueries = new Map<
         string,
@@ -52,6 +64,18 @@ export class ProjectIni {
         this.parsed.clear();
         this.queries.clear();
         this.incomingQueries.clear();
+        this.activeDocuments.clear();
+        this.contexts.clear();
+    }
+
+    /** Include edits alter the load graph; ordinary value edits use the open-document cache. */
+    public documentChanged(document: vscode.TextDocument): void {
+        const previous =
+            this.snapshots.get(document.uri.toString()) ?? this.parsed.get(document.uri.toString())?.document;
+        const include = (parsed: IniDocument) => JSON.stringify([...(parsed.getSection('#include')?.properties ?? [])]);
+        if (previous && include(previous) !== include(new IniDocument(document.uri, document.getText()))) {
+            this.invalidate();
+        }
     }
 
     public async load(origin: vscode.Uri): Promise<void> {
@@ -62,6 +86,29 @@ export class ProjectIni {
             pending = this.resources
                 .listDocuments(origin)
                 .then(async (files) => {
+                    const configuration = vscode.workspace
+                        .getConfiguration('ra2-ini-intellisense', origin)
+                        .get<Record<string, string[]>>('project.entryPoints', {});
+                    const entries = Object.entries(configuration ?? {}).filter(
+                        ([, values]) =>
+                            Array.isArray(values) && values.some((value) => typeof value === 'string' && value.trim())
+                    );
+                    const context: ProjectResolutionContext = {
+                        configured: entries.length > 0,
+                        complete: entries.length > 0 || files.length <= 2000,
+                        documents: 0,
+                        entries: [],
+                        issues: [],
+                    };
+                    if (!context.configured && files.length > 2000) {
+                        context.issues.push(
+                            localize(
+                                'workbench.indexLimit',
+                                'Only the first {0} INI files were indexed. Narrow the project resource roots.',
+                                2000
+                            )
+                        );
+                    }
                     const reader = new TextContentService();
                     const canonical = (uri: vscode.Uri) =>
                         uri.scheme === 'file' && /^\/[a-z]:/i.test(uri.path)
@@ -89,14 +136,67 @@ export class ProjectIni {
                         const matching = names.get(normalized.toLowerCase());
                         return matching?.length === 1 ? matching[0] : undefined;
                     };
-                    for (let offset = 0; offset < Math.min(files.length, 2000); offset += 16) {
+                    const roots = entries.flatMap(([, values]) =>
+                        values
+                            .filter((value) => typeof value === 'string' && value.trim())
+                            .map((value) =>
+                                includedUri(
+                                    vscode.Uri.joinPath(this.resources.projectRoot(origin), '__entry__.ini'),
+                                    value
+                                )
+                            )
+                            .filter((uri): uri is vscode.Uri => !!uri)
+                    );
+                    const reads = [
+                        ...new Map(
+                            (context.configured ? roots : files.map((file) => file.uri)).map((uri) => [
+                                uri.toString(),
+                                uri,
+                            ])
+                        ).values(),
+                    ];
+                    const queued = new Set(reads.map((uri) => uri.toString()));
+                    for (let offset = 0; offset < Math.min(reads.length, 2000);) {
+                        const batch = reads.slice(offset, Math.min(offset + 16, 2000));
                         await Promise.allSettled(
-                            files.slice(offset, offset + 16).map(async (file) => {
-                                const content = reader.decode(await this.resources.read(file.uri, 8 * 1024 * 1024));
-                                if (generation === this.generation) {
-                                    this.snapshots.set(file.uri.toString(), new IniDocument(file.uri, content));
+                            batch.map(async (uri) => {
+                                try {
+                                    const open = vscode.workspace.textDocuments.find(
+                                        (document) => canonical(document.uri) === canonical(uri)
+                                    );
+                                    const content =
+                                        open?.getText() ??
+                                        reader.decode(await this.resources.read(uri, 8 * 1024 * 1024));
+                                    if (generation === this.generation) {
+                                        const parsed = new IniDocument(uri, content);
+                                        this.snapshots.set(uri.toString(), parsed);
+                                        if (context.configured) {
+                                            for (const name of parsed.getSection('#include')?.properties.values() ??
+                                                []) {
+                                                const child = includedUri(uri, name);
+                                                if (child && !queued.has(child.toString())) {
+                                                    queued.add(child.toString());
+                                                    reads.push(child);
+                                                }
+                                            }
+                                        }
+                                    }
+                                } catch (error) {
+                                    context.complete = false;
+                                    context.issues.push(uri.toString() + ': ' + String(error));
                                 }
                             })
+                        );
+                        offset += batch.length;
+                    }
+                    if (context.configured && reads.length > 2000) {
+                        context.complete = false;
+                        context.issues.push(
+                            localize(
+                                'workbench.indexLimit',
+                                'Only the first {0} INI files were indexed. Narrow the project resource roots.',
+                                2000
+                            )
                         );
                     }
                     if (generation !== this.generation) {
@@ -117,6 +217,15 @@ export class ProjectIni {
                     const visit = (uri: vscode.Uri, category: string, depth = 0) => {
                         const key = uri.toString();
                         if (visited.has(key) || depth > 64 || !known.has(canonical(uri))) {
+                            if (depth > 64) {
+                                context.complete = false;
+                                context.issues.push(uri.toString());
+                            }
+                            return;
+                        }
+                        if (!this.snapshots.has(key)) {
+                            context.complete = false;
+                            context.issues.push(uri.toString());
                             return;
                         }
                         visited.add(key);
@@ -126,15 +235,37 @@ export class ProjectIni {
                             const child = includedUri(uri, name);
                             if (child) {
                                 visit(child, category, depth + 1);
+                            } else {
+                                context.complete = false;
+                                context.issues.push(uri.toString() + ' → ' + name);
                             }
                         }
                     };
-                    for (const file of files.filter((file) => !included.has(file.uri.toString()))) {
-                        visit(file.uri, this.fileTypes.getFileType(file.uri).toLowerCase());
+                    if (context.configured) {
+                        for (const [category, paths] of entries) {
+                            for (const entry of paths.filter((value) => typeof value === 'string' && value.trim())) {
+                                const root = this.resources.projectRoot(origin);
+                                const candidate = includedUri(vscode.Uri.joinPath(root, '__entry__.ini'), entry);
+                                context.entries.push(category + ': ' + entry);
+                                if (candidate) {
+                                    visit(candidate, category.toLowerCase());
+                                } else {
+                                    context.complete = false;
+                                    context.issues.push(entry);
+                                }
+                            }
+                        }
+                        this.activeDocuments.set(key, visited);
+                    } else {
+                        for (const file of files.filter((file) => !included.has(file.uri.toString()))) {
+                            visit(file.uri, this.fileTypes.getFileType(file.uri).toLowerCase());
+                        }
+                        for (const file of files) {
+                            visit(file.uri, this.fileTypes.getFileType(file.uri).toLowerCase());
+                        }
                     }
-                    for (const file of files) {
-                        visit(file.uri, this.fileTypes.getFileType(file.uri).toLowerCase());
-                    }
+                    context.documents = visited.size;
+                    this.contexts.set(key, context);
                 })
                 .catch((error) => {
                     if (this.loaded.get(key) === pending) {
@@ -152,21 +283,28 @@ export class ProjectIni {
 
     public documents(origin: vscode.Uri): IniDocument[] {
         const result = new Map<string, IniDocument>();
+        const active = this.activeDocuments.get(this.resources.projectRoot(origin).toString());
+        const included = (uri: vscode.Uri) => !active || active.has(uri.toString());
         for (const [key, document] of this.snapshots) {
-            if (this.resources.contains(origin, document.uri)) {
+            if (this.resources.contains(origin, document.uri) && included(document.uri)) {
                 result.set(key, document);
             }
         }
         for (const document of this.manager.documents.values()) {
             if (
                 this.resources.contains(origin, document.uri) &&
+                included(document.uri) &&
                 (!this.snapshots.size || this.snapshots.has(document.uri.toString()))
             ) {
                 result.set(document.uri.toString(), document);
             }
         }
         for (const text of vscode.workspace.textDocuments) {
-            if (!/\.(ini|map|mpr|yrm)$/i.test(text.uri.path) || !this.resources.contains(origin, text.uri)) {
+            if (
+                !/\.(ini|map|mpr|yrm)$/i.test(text.uri.path) ||
+                !this.resources.contains(origin, text.uri) ||
+                !included(text.uri)
+            ) {
                 continue;
             }
             const key = text.uri.toString();
@@ -216,7 +354,7 @@ export class ProjectIni {
         return result;
     }
 
-    public sources(origin: vscode.Uri, name: string, category?: string): SectionSource[] {
+    private indexedSources(origin: vscode.Uri): Map<string, SectionSource[]> {
         const documents = this.documents(origin),
             root = this.resources.projectRoot(origin).toString();
         // Include discovery can reclassify an already indexed document without
@@ -244,16 +382,64 @@ export class ProjectIni {
             }
             this.queries.set(root, query);
         }
-        const sources = [...(query.sources.get(name.toLowerCase()) ?? [])].filter(
+        return query.sources;
+    }
+
+    private selectSources(
+        index: Map<string, SectionSource[]>,
+        origin: vscode.Uri,
+        name: string,
+        category?: string,
+        configured = this.context(origin).configured,
+        order = this.order
+    ): SectionSource[] {
+        const sources = [...(index.get(name.toLowerCase()) ?? [])].filter(
             (source) => !category || source.category === category.toLowerCase()
         );
         return sources.sort(
             (a, b) =>
-                Number(b.document.uri.toString() === origin.toString()) -
-                    Number(a.document.uri.toString() === origin.toString()) ||
-                (this.order.get(b.document.uri.toString()) ?? -1) - (this.order.get(a.document.uri.toString()) ?? -1) ||
+                (configured
+                    ? 0
+                    : Number(b.document.uri.toString() === origin.toString()) -
+                      Number(a.document.uri.toString() === origin.toString())) ||
+                (order.get(b.document.uri.toString()) ?? -1) - (order.get(a.document.uri.toString()) ?? -1) ||
                 a.document.uri.toString().localeCompare(b.document.uri.toString())
         );
+    }
+
+    public sources(origin: vscode.Uri, name: string, category?: string): SectionSource[] {
+        return this.selectSources(this.indexedSources(origin), origin, name, category);
+    }
+
+    /** Freeze the source lookup once for a catalogue or analysis operation. */
+    public snapshot(origin: vscode.Uri): {
+        sources: (name: string, category?: string) => SectionSource[];
+        names: string[];
+        context: ProjectResolutionContext;
+        isCurrent: () => boolean;
+    } {
+        const index = this.indexedSources(origin);
+        const order = new Map(this.order),
+            context = this.context(origin),
+            generation = this.generation;
+        const documents = new Map(
+            this.documents(origin).map((document) => [document.uri.toString(), document.content])
+        );
+        return {
+            names: [...index.keys()],
+            context,
+            sources: (name, category) => this.selectSources(index, origin, name, category, context.configured, order),
+            isCurrent: () => {
+                if (generation !== this.generation) {
+                    return false;
+                }
+                const current = this.documents(origin);
+                return (
+                    current.length === documents.size &&
+                    current.every((document) => documents.get(document.uri.toString()) === document.content)
+                );
+            },
+        };
     }
 
     public effective(
@@ -262,42 +448,25 @@ export class ProjectIni {
         category?: string,
         visited = new Set<string>()
     ): Map<string, EffectiveProperty> {
-        const identity = (category ?? '*') + ':' + name.toLowerCase();
-        if (visited.has(identity) || visited.size > 64) {
-            return new Map();
-        }
-        const branch = new Set(visited);
-        branch.add(identity);
-        const sources = this.sources(origin, name, category);
-        const result = new Map<string, EffectiveProperty>();
-        for (const source of sources) {
-            for (let line = source.section.startLine + 1; line <= source.section.endLine; line++) {
-                const property = parsePropertyLine(source.document.lines[line]);
-                if (property) {
-                    const key = property.key.toLowerCase();
-                    if (!result.has(key) || result.get(key)!.uri.toString() === source.document.uri.toString()) {
-                        result.set(key, {
-                            key: property.key,
-                            value: property.value,
-                            uri: source.document.uri,
-                            line,
-                            section: source.section.name,
-                            inherited: false,
-                        });
-                    }
-                }
-            }
-        }
-        for (const source of sources) {
-            for (const parent of source.section.parentNames) {
-                for (const [key, property] of this.effective(origin, parent, category, branch)) {
-                    if (!result.has(key)) {
-                        result.set(key, { ...property, inherited: true });
-                    }
-                }
-            }
-        }
-        return result;
+        return new Map(
+            [...this.explain(origin, name, category, visited)].map(([key, result]) => [key, result.effective])
+        );
+    }
+
+    /** Includes overridden declarations and the complete inheritance path. */
+    public explain(
+        origin: vscode.Uri,
+        name: string,
+        category?: string,
+        visited = new Set<string>()
+    ): Map<string, PropertyResolution> {
+        const snapshot = this.snapshot(origin);
+        return resolveProperties(
+            name,
+            (target) => snapshot.sources(target, category),
+            parsePropertyLine,
+            [...visited].map((value) => value.slice(value.indexOf(':') + 1))
+        );
     }
 
     public type(origin: vscode.Uri, name: string, category?: string, visited = new Set<string>()): string {
@@ -385,5 +554,17 @@ export class ProjectIni {
 
     public category(uri: vscode.Uri): string {
         return this.categories.get(uri.toString()) ?? this.fileTypes.getFileType(uri).toLowerCase();
+    }
+
+    public context(origin: vscode.Uri): ProjectResolutionContext {
+        return (
+            this.contexts.get(this.resources.projectRoot(origin).toString()) ?? {
+                configured: false,
+                complete: false,
+                documents: 0,
+                entries: [],
+                issues: [],
+            }
+        );
     }
 }

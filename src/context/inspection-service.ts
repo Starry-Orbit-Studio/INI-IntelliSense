@@ -17,6 +17,9 @@ import { resolveSpriteScene, spriteCandidates } from './sprite-scene';
 import { artPaletteName, paletteName } from '../media/palette-policy';
 import { spriteRemap, SpriteRole } from '../media/sprite-remap';
 import { projectLighting } from '../media/project-lighting';
+import { PropertyEditTarget } from './property-edit';
+import { CatalogObject, objectCatalog } from './object-catalog';
+import { inspectMap } from './map-inspection';
 
 export interface EditCapability {
     uri: vscode.Uri;
@@ -45,6 +48,9 @@ export interface InspectionSession {
         extension?: string;
         type?: string;
     };
+    propertyEdits?: Map<string, PropertyEditTarget>;
+    objects?: Map<string, CatalogObject>;
+    isCurrent?: () => boolean;
 }
 
 /** Resolve references once; hover, inspector and resource editors share the result. */
@@ -58,8 +64,9 @@ export class InspectionService implements vscode.Disposable {
         public readonly resources: ProjectResources,
         private readonly media: MediaService,
         manager: INIManager,
-        schema: SchemaManager,
-        fileTypes: FileTypeManager
+        private readonly schema: SchemaManager,
+        fileTypes: FileTypeManager,
+        private readonly translate: (key: string) => string | undefined = () => undefined
     ) {
         this.ini = new ProjectIni(resources, manager, schema, fileTypes);
         this.semantics = new SemanticReferences(schema);
@@ -99,6 +106,81 @@ export class InspectionService implements vscode.Disposable {
     public dispose(): void {
         this.previewChanged.dispose();
         this.previewTheaters.clear();
+    }
+
+    public async catalog(origin: vscode.Uri, token: vscode.CancellationToken): Promise<InspectionSession> {
+        await this.ini.load(origin);
+        const snapshot = this.ini.snapshot(origin);
+        const objects = await objectCatalog(this.ini, this.schema, origin, token, this.translate);
+        if (!snapshot.isCurrent()) {
+            throw new Error(
+                localize('workbench.staleEdit', 'The document changed. Refresh the preview before applying this edit.')
+            );
+        }
+        const columns = vscode.workspace
+            .getConfiguration('ra2-ini-intellisense', origin)
+            .get<string[]>('project.objectColumns', ['Strength', 'Cost', 'Speed', 'Armor']);
+        const safeColumns = [
+            ...new Set(columns.filter((key) => typeof key === 'string' && /^[\w.$-]+$/.test(key))),
+        ].slice(0, 12);
+        const session: InspectionSession = {
+            origin,
+            position: new vscode.Position(0, 0),
+            assets: new Map(),
+            links: new Map(),
+            edits: new Map(),
+            options: {},
+            objects: new Map(),
+            isCurrent: snapshot.isCurrent,
+            inspection: {
+                id: randomUUID(),
+                owner: localize('workbench.objects', 'Project objects'),
+                type: '',
+                focus: '',
+                properties: [],
+                sources: [],
+                assets: [],
+                paletteOptions: [],
+                references: [],
+                warnings: [],
+                resolution: this.ini.context(origin),
+                objects: [],
+                objectColumns: safeColumns,
+            },
+        };
+        for (const object of objects) {
+            const id = randomUUID();
+            session.objects!.set(id, object);
+            const source = object.source;
+            session.links.set(
+                id,
+                new vscode.Location(source.document.uri, new vscode.Position(source.section.startLine, 0))
+            );
+            session.inspection.objects!.push({
+                id,
+                name: object.name,
+                label: object.label,
+                category: object.category,
+                type: object.type,
+                source: this.resources.label(origin, source.document.uri) + ':' + (source.section.startLine + 1),
+                definitions: object.definitions,
+                values: Object.fromEntries(
+                    safeColumns.map((key) => [key, object.properties.get(key.toLowerCase())?.effective.value ?? ''])
+                ),
+            });
+        }
+        return session;
+    }
+
+    public propertyDefinition(type: string, key: string) {
+        const definition = [...this.schema.getAllKeysForType(type)].find(
+            ([name]) => name.toLowerCase() === key.toLowerCase()
+        )?.[1];
+        return {
+            definition,
+            limits: definition && this.schema.getNumberLimit(definition.type),
+            strings: definition && this.schema.getStringLimit(definition.type),
+        };
     }
 
     public async projectMediaOptions(origin: vscode.Uri): Promise<MediaOptions> {
@@ -196,6 +278,9 @@ export class InspectionService implements vscode.Disposable {
         selectedTheater?: string
     ): Promise<InspectionSession | undefined> {
         selectedTheater ??= this.previewTheaters.get(this.resources.projectRoot(document.uri).toString());
+        if (/\.(map|mpr|yrm)$/i.test(document.uri.path)) {
+            return inspectMap(document, position);
+        }
         await this.ini.load(document.uri);
         if (token.isCancellationRequested) {
             return undefined;
@@ -286,6 +371,7 @@ export class InspectionService implements vscode.Disposable {
             paletteOptions: [],
             references: [],
             warnings: [],
+            resolution: this.ini.context(document.uri),
         };
         const session: InspectionSession = {
             inspection,
@@ -338,18 +424,71 @@ export class InspectionService implements vscode.Disposable {
                 inspection.canReplace = true;
             }
         }
-        inspection.properties = [...properties.values()]
-            .filter((item) => !/^\$?inherits$/i.test(item.key))
-            .map((item) => ({
-                key: item.key,
-                value: item.value,
-                inherited: item.inherited,
-                source: source(
-                    item.uri,
-                    item.line,
-                    item.section + ' · ' + path.posix.basename(item.uri.path) + ':' + (item.line + 1)
-                ),
-            }));
+        session.propertyEdits = new Map();
+        const definitions = this.schema.getAllKeysForType(type);
+        const ownerSources = this.ini.sources(document.uri, section.name, category);
+        const editSection = parsed.sections
+            .filter((item) => item.name.toLowerCase() === section.name.toLowerCase())
+            .at(-1)!;
+        const localKeys = new Set([...editSection.properties.keys()].map((key) => key.toLowerCase()));
+        const editSource = source(
+            document.uri,
+            editSection.startLine,
+            section.name + ' · ' + path.posix.basename(document.uri.path) + ':' + (editSection.startLine + 1)
+        );
+        inspection.properties = [...this.ini.explain(document.uri, section.name, category).values()]
+            .filter(({ effective }) => !/^\$?inherits$/i.test(effective.key))
+            .map(({ effective: item, declarations }) => {
+                const definition = [...definitions].find(([key]) => key.toLowerCase() === item.key.toLowerCase())?.[1];
+                const limits = definition && this.schema.getNumberLimit(definition.type);
+                const strings = definition && this.schema.getStringLimit(definition.type);
+                const editable =
+                    ['file', 'vscode-remote', 'untitled'].includes(document.uri.scheme) &&
+                    ownerSources[0]?.document.uri.toString() === document.uri.toString();
+                const editId = editable ? randomUUID() : undefined;
+                if (editId) {
+                    session.propertyEdits!.set(editId, {
+                        uri: document.uri,
+                        version: document.version,
+                        section: section.name,
+                        sectionLine: editSection.startLine,
+                        key: item.key,
+                        valueType: definition?.type,
+                        minimum: limits?.min,
+                        maximum: limits?.max,
+                        allowedValues: strings?.limitIn,
+                        caseSensitive: strings?.caseSensitive,
+                    });
+                }
+                const links = declarations.map((declaration, index) => ({
+                    value: declaration.value,
+                    via: declaration.via,
+                    effective: index === 0,
+                    source: source(
+                        declaration.uri,
+                        declaration.line,
+                        declaration.section +
+                            ' · ' +
+                            path.posix.basename(declaration.uri.path) +
+                            ':' +
+                            (declaration.line + 1)
+                    ),
+                }));
+                return {
+                    key: item.key,
+                    value: item.value,
+                    inherited: item.inherited,
+                    source: links[0].source,
+                    declarations: links,
+                    editId,
+                    editSource,
+                    local: localKeys.has(item.key.toLowerCase()),
+                    valueType: definition?.type,
+                    minimum: limits?.min,
+                    maximum: limits?.max,
+                    allowedValues: strings?.limitIn,
+                };
+            });
         inspection.sources = this.ini
             .sources(document.uri, section.name, category)
             .map((item) =>

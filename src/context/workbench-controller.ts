@@ -11,6 +11,9 @@ import { applyVisualEdit } from './visual-edit';
 import { localize } from '../i18n';
 import { encodePng } from '../media/png';
 import { mediaCapabilities } from '../media/media-capabilities';
+import { openContributedView } from './view-reveal';
+import { applyPropertyChanges, preparePropertyChanges, PropertyChange } from './property-edit';
+import { renderMap, MapRendererOptions } from './map-renderer';
 
 class WorkbenchSession implements vscode.Disposable {
     public pinned = false;
@@ -19,6 +22,10 @@ class WorkbenchSession implements vscode.Disposable {
     private revision = 0;
     private ready = false;
     private loading = false;
+    private editing = false;
+    private catalogOrigin?: vscode.Uri;
+    private changePlan?: { id: string; changes: PropertyChange[] };
+    private planRevision = 0;
     private error?: string;
     private thumbnails = 0;
     private history: { uri: vscode.Uri; position: vscode.Position; resource?: boolean }[] = [];
@@ -39,6 +46,9 @@ class WorkbenchSession implements vscode.Disposable {
         this.disposables.push(
             webview.onDidReceiveMessage((message) => {
                 void this.message(message).catch((error) => {
+                    if (error instanceof vscode.CancellationError) {
+                        return;
+                    }
                     this.error = error instanceof Error ? error.message : String(error);
                     this.send();
                 });
@@ -48,7 +58,7 @@ class WorkbenchSession implements vscode.Disposable {
     }
 
     public async follow(editor: vscode.TextEditor): Promise<void> {
-        if (this.pinned || !this.visible() || editor.document.languageId !== 'ra2-ini') {
+        if (this.pinned || this.editing || !this.visible() || editor.document.languageId !== 'ra2-ini') {
             return;
         }
         if (
@@ -60,6 +70,10 @@ class WorkbenchSession implements vscode.Disposable {
     }
 
     public async inspect(uri: vscode.Uri, position: vscode.Position, resource = false, record = true): Promise<void> {
+        this.catalogOrigin = undefined;
+        this.changePlan = undefined;
+        this.editing = false;
+        this.planRevision++;
         if (
             record &&
             this.target &&
@@ -69,6 +83,18 @@ class WorkbenchSession implements vscode.Disposable {
             this.history = this.history.slice(-12);
         }
         this.target = { uri, position, resource };
+        if (
+            record &&
+            this.current?.inspection.map &&
+            this.current.origin.toString() === uri.toString() &&
+            vscode.workspace.textDocuments.some(
+                (document) =>
+                    document.uri.toString() === uri.toString() &&
+                    document.version === this.current!.inspection.map!.version
+            )
+        ) {
+            return;
+        }
         const revision = ++this.revision;
         this.cancellation.cancel();
         this.cancellation.dispose();
@@ -170,8 +196,42 @@ class WorkbenchSession implements vscode.Disposable {
     }
 
     public refresh(): void {
-        if (this.target && this.visible()) {
+        if (this.catalogOrigin && this.visible() && !this.editing) {
+            void this.browseObjects(this.catalogOrigin);
+            return;
+        }
+        if (this.target && this.visible() && !this.editing) {
             void this.inspect(this.target.uri, this.target.position, this.target.resource, false);
+        }
+    }
+
+    public async browseObjects(origin: vscode.Uri): Promise<void> {
+        this.planRevision++;
+        this.editing = false;
+        this.cancellation.cancel();
+        this.cancellation.dispose();
+        this.cancellation = new vscode.CancellationTokenSource();
+        const revision = ++this.revision;
+        this.catalogOrigin = origin;
+        this.changePlan = undefined;
+        this.pinned = true;
+        this.loading = true;
+        this.error = undefined;
+        this.send();
+        try {
+            const session = await this.service.catalog(origin, this.cancellation.token);
+            if (revision === this.revision) {
+                this.current = session;
+            }
+        } catch (error) {
+            if (revision === this.revision) {
+                this.error = error instanceof Error ? error.message : String(error);
+            }
+        } finally {
+            if (revision === this.revision) {
+                this.loading = false;
+                this.send();
+            }
         }
     }
 
@@ -270,6 +330,12 @@ class WorkbenchSession implements vscode.Disposable {
             pixels?: string;
             width?: number;
             height?: number;
+            active?: boolean;
+            value?: string | null;
+            ids?: string[];
+            key?: string;
+            operation?: string;
+            request?: number;
         };
         if (data.type === 'ready') {
             this.ready = true;
@@ -282,6 +348,9 @@ class WorkbenchSession implements vscode.Disposable {
             return;
         }
         if (data.type === 'refresh') {
+            this.editing = false;
+            this.changePlan = undefined;
+            this.planRevision++;
             this.service.resources.invalidate();
             this.refresh();
             return;
@@ -297,7 +366,312 @@ class WorkbenchSession implements vscode.Disposable {
             return;
         }
         const current = this.current;
-        if (
+        if (data.type === 'configure-map-renderer') {
+            await vscode.commands.executeCommand('workbench.action.openSettings', 'ra2-ini-intellisense.maps');
+        } else if (data.type === 'render-map' && current.inspection.map) {
+            if (this.loading) {
+                return;
+            }
+            if (!vscode.workspace.isTrusted) {
+                throw new Error(
+                    localize('workbench.mapTrust', 'Trust this workspace before running an external map renderer.')
+                );
+            }
+            const configuration = vscode.workspace.getConfiguration('ra2-ini-intellisense', current.origin);
+            const options = configuration.get<MapRendererOptions>('maps.renderer');
+            if (!options?.executable || !options.mixDirectory) {
+                await vscode.commands.executeCommand('workbench.action.openSettings', 'ra2-ini-intellisense.maps');
+                throw new Error(
+                    localize(
+                        'workbench.mapRendererConfiguration',
+                        'Configure an absolute map renderer executable and game MIX directory first.'
+                    )
+                );
+            }
+            const document = await vscode.workspace.openTextDocument(current.origin),
+                version = document.version;
+            if (this.current !== current) {
+                return;
+            }
+            const renderRevision = this.revision;
+            this.loading = true;
+            this.send();
+            try {
+                const bytes = await vscode.window.withProgress(
+                    {
+                        location: vscode.ProgressLocation.Notification,
+                        title: localize('workbench.renderMap', 'Render current map'),
+                        cancellable: true,
+                    },
+                    async (progress, token) => {
+                        const cancellation = new vscode.CancellationTokenSource();
+                        const disposables = [
+                            token.onCancellationRequested(() => cancellation.cancel()),
+                            this.cancellation.token.onCancellationRequested(() => cancellation.cancel()),
+                        ];
+                        try {
+                            return await renderMap(
+                                document.getText(),
+                                {
+                                    ...options,
+                                    modDirectories: options.modDirectories ?? [],
+                                    rulesFiles: options.rulesFiles ?? [],
+                                    artFiles: options.artFiles ?? [],
+                                    extraMixes: options.extraMixes ?? [],
+                                },
+                                cancellation.token,
+                                (message) => progress.report({ message })
+                            );
+                        } finally {
+                            disposables.forEach((item) => item.dispose());
+                            cancellation.dispose();
+                        }
+                    }
+                );
+                if (this.current !== current || this.revision !== renderRevision) {
+                    return;
+                }
+                if (document.version !== version) {
+                    throw new Error(
+                        localize(
+                            'workbench.staleEdit',
+                            'The document changed. Refresh the preview before applying this edit.'
+                        )
+                    );
+                }
+                current.inspection.map.preview = Buffer.from(bytes).toString('base64');
+                current.inspection.map.rendered = true;
+                current.inspection.map.note = localize(
+                    'workbench.renderedMap',
+                    'Rendered from the current map text with the configured game resources.'
+                );
+                current.inspection.mediaRevision = (current.inspection.mediaRevision ?? 0) + 1;
+            } finally {
+                if (this.revision === renderRevision) {
+                    this.loading = false;
+                    this.send();
+                }
+            }
+        } else if (data.type === 'background-file') {
+            const files = await vscode.window.showOpenDialog({
+                canSelectMany: false,
+                title: localize('workbench.chooseBackground', 'Choose background image'),
+                filters: {
+                    [localize('workbench.backgroundImage', 'Image background')]: ['png', 'jpg', 'jpeg', 'webp'],
+                },
+            });
+            if (!files?.[0]) {
+                return;
+            }
+            const mime: Record<string, string> = {
+                '.png': 'image/png',
+                '.jpg': 'image/jpeg',
+                '.jpeg': 'image/jpeg',
+                '.webp': 'image/webp',
+            };
+            const type = mime[path.posix.extname(files[0].path).toLowerCase()];
+            const stat = await vscode.workspace.fs.stat(files[0]);
+            if (!type || stat.size > 8 * 1024 * 1024) {
+                throw new Error(
+                    localize('workbench.backgroundLimit', 'Choose a PNG, JPEG or WebP image smaller than 8 MiB.')
+                );
+            }
+            const bytes = await vscode.workspace.fs.readFile(files[0]);
+            void this.webview.postMessage({
+                type: 'background-file',
+                bytes: Buffer.from(bytes).toString('base64'),
+                mime: type,
+                name: path.posix.basename(files[0].path),
+            });
+        } else if (data.type === 'editing') {
+            this.editing = data.active === true;
+            if (!this.editing) {
+                this.changePlan = undefined;
+                this.planRevision++;
+            }
+        } else if (
+            data.type === 'property-edit' &&
+            data.id &&
+            (typeof data.value === 'string' || data.value === null)
+        ) {
+            const target = current.propertyEdits?.get(data.id);
+            if (!target) {
+                return;
+            }
+            await applyPropertyChanges([{ target, value: data.value }]);
+            this.editing = false;
+            this.refresh();
+        } else if (data.type === 'objects') {
+            await vscode.commands.executeCommand('ra2-ini-intellisense.browseObjects', current.origin);
+        } else if (data.type === 'configure-project') {
+            await vscode.commands.executeCommand('ra2-ini-intellisense.configureProject', current.origin);
+        } else if (data.type === 'inspect-object' && data.id) {
+            const target = current.links.get(data.id);
+            if (target && current.objects?.has(data.id)) {
+                await vscode.commands.executeCommand(
+                    'ra2-ini-intellisense.inspect',
+                    target.uri.toString(),
+                    target.range.start.line,
+                    0
+                );
+            }
+        } else if (data.type === 'compare-objects' && Array.isArray(data.ids)) {
+            const objects = [...new Set(data.ids)]
+                .slice(0, 8)
+                .map((id) => current.objects?.get(id))
+                .filter((item) => !!item);
+            const keys = [...new Set(objects.flatMap((object) => [...object.properties.keys()]))].sort();
+            void this.webview.postMessage({
+                type: 'object-comparison',
+                inspection: current.inspection.id,
+                names: objects.map((object) => object.name),
+                rows: keys.map((key) => ({
+                    key,
+                    values: objects.map((object) => {
+                        const value = object.properties.get(key)?.effective;
+                        return {
+                            value: value?.value ?? '',
+                            inherited: value?.inherited ?? false,
+                            source: value
+                                ? value.section +
+                                  ' · ' +
+                                  this.service.resources.label(current.origin, value.uri) +
+                                  ':' +
+                                  (value.line + 1)
+                                : '',
+                        };
+                    }),
+                })),
+            });
+        } else if (
+            data.type === 'batch-plan' &&
+            Array.isArray(data.ids) &&
+            typeof data.key === 'string' &&
+            typeof data.value === 'string'
+        ) {
+            const revision = ++this.planRevision;
+            this.changePlan = undefined;
+            this.editing = true;
+            this.error = undefined;
+            this.send();
+            if (!current.isCurrent?.()) {
+                throw new Error(
+                    localize(
+                        'workbench.staleEdit',
+                        'The document changed. Refresh the preview before applying this edit.'
+                    )
+                );
+            }
+            const ids = [...new Set(data.ids)];
+            if (!ids.length || ids.length > 1000 || !['set', 'add', 'percent'].includes(data.operation ?? '')) {
+                throw new Error(localize('workbench.invalidEdit', 'Invalid visual edit.'));
+            }
+            const changes: PropertyChange[] = [];
+            const rows: { name: string; before: string; after: string; source: string }[] = [];
+            for (const id of ids) {
+                const object = current.objects?.get(id);
+                if (!object || /^\$?inherits$/i.test(data.key)) {
+                    throw new Error(localize('workbench.invalidEdit', 'Invalid visual edit.'));
+                }
+                const before = object.properties.get(data.key.toLowerCase());
+                const { definition, limits, strings } = this.service.propertyDefinition(object.type, data.key);
+                if (!before && !definition) {
+                    throw new Error(
+                        localize(
+                            'workbench.unknownProperty',
+                            'The property is neither declared on the object nor defined in its dictionary: {0}',
+                            data.key
+                        )
+                    );
+                }
+                const document = await vscode.workspace.openTextDocument(object.source.document.uri);
+                if (document.getText() !== object.source.document.content) {
+                    throw new Error(
+                        localize(
+                            'workbench.staleEdit',
+                            'The document changed. Refresh the preview before applying this edit.'
+                        )
+                    );
+                }
+                let value = data.value;
+                if (data.operation !== 'set') {
+                    const old = Number(before?.effective.value),
+                        amount = Number(data.value);
+                    if (
+                        !before?.effective.value.trim() ||
+                        !data.value.trim() ||
+                        !Number.isFinite(old) ||
+                        !Number.isFinite(amount)
+                    ) {
+                        throw new Error(
+                            localize(
+                                'workbench.invalidPropertyValue',
+                                'The value does not satisfy the property type or range: {0}',
+                                object.name + '.' + data.key
+                            )
+                        );
+                    }
+                    const result = data.operation === 'add' ? old + amount : old * (1 + amount / 100);
+                    value = String(
+                        ['int', 'integer'].includes(definition?.type.toLowerCase() ?? '')
+                            ? Math.round(result)
+                            : Number(result.toPrecision(12))
+                    );
+                }
+                changes.push({
+                    value,
+                    target: {
+                        uri: document.uri,
+                        version: document.version,
+                        section: object.name,
+                        sectionLine: object.source.section.startLine,
+                        key: before?.effective.key ?? data.key,
+                        valueType: definition?.type,
+                        minimum: limits?.min,
+                        maximum: limits?.max,
+                        allowedValues: strings?.limitIn,
+                        caseSensitive: strings?.caseSensitive,
+                    },
+                });
+                rows.push({
+                    name: object.name,
+                    before: before?.effective.value ?? '',
+                    after: value,
+                    source: this.service.resources.label(current.origin, document.uri),
+                });
+            }
+            await preparePropertyChanges(changes);
+            if (revision !== this.planRevision || current !== this.current) {
+                return;
+            }
+            if (!current.isCurrent()) {
+                throw new Error(
+                    localize(
+                        'workbench.staleEdit',
+                        'The document changed. Refresh the preview before applying this edit.'
+                    )
+                );
+            }
+            this.changePlan = { id: randomUUID(), changes };
+            this.editing = true;
+            void this.webview.postMessage({
+                type: 'batch-preview',
+                inspection: current.inspection.id,
+                id: this.changePlan.id,
+                rows,
+                request: data.request,
+            });
+        } else if (
+            data.type === 'batch-apply' &&
+            this.changePlan &&
+            typeof data.id === 'string' &&
+            data.id === this.changePlan.id
+        ) {
+            await applyPropertyChanges(this.changePlan.changes, current.isCurrent);
+            this.changePlan = undefined;
+            this.editing = false;
+            this.refresh();
+        } else if (
             data.type === 'theater' &&
             data.theater &&
             ['tem', 'sno', 'urb', 'ubn', 'lun', 'des'].includes(data.theater)
@@ -454,11 +828,14 @@ class WorkbenchSession implements vscode.Disposable {
     }
 
     public dispose(): void {
+        this.planRevision++;
+        this.revision++;
         this.cancellation.cancel();
         this.cancellation.dispose();
         this.disposables.forEach((item) => item.dispose());
         this.current = undefined;
         this.history = [];
+        this.changePlan = undefined;
     }
 }
 
@@ -473,6 +850,9 @@ export class WorkbenchController
     private timer?: NodeJS.Timeout;
     private disposables: vscode.Disposable[] = [];
     private autoRevealed = false;
+    private autoRevealing = false;
+    private revealErrorReported = false;
+    private readonly resolved = new vscode.EventEmitter<void>();
     private cursorRevision = 0;
     private autoCancellation?: vscode.CancellationTokenSource;
     private backgroundRoots = new Set<string>();
@@ -504,6 +884,7 @@ export class WorkbenchController
                     void this.inspector?.follow(editor);
                     if (
                         !this.autoRevealed &&
+                        !this.autoRevealing &&
                         vscode.workspace
                             .getConfiguration('ra2-ini-intellisense', editor.document.uri)
                             .get('media.autoReveal', true) &&
@@ -525,26 +906,118 @@ export class WorkbenchController
                                 ) {
                                     return;
                                 }
-                                this.autoRevealed = true;
-                                if (this.view) {
-                                    this.view.show(true);
-                                } else {
-                                    await vscode.commands.executeCommand(WorkbenchController.viewId + '.focus', {
-                                        preserveFocus: true,
-                                    });
+                                this.autoRevealing = true;
+                                try {
+                                    await this.revealInspector(true);
+                                    this.autoRevealed = true;
+                                } finally {
+                                    this.autoRevealing = false;
                                 }
                             })
-                            .catch((error) => console.debug('[Workbench] Auto reveal unavailable', error))
+                            .catch((error) => {
+                                console.debug('[Workbench] Auto reveal unavailable', error);
+                                if (!this.revealErrorReported) {
+                                    this.revealErrorReported = true;
+                                    void this.reportRevealError(error);
+                                }
+                            })
                             .finally(() => cancellation.dispose());
                     }
                 }
             }, 140);
         };
         this.disposables.push(
+            vscode.commands.registerCommand('ra2-ini-intellisense.previewMap', async (uri?: vscode.Uri) => {
+                const origin = uri ?? vscode.window.activeTextEditor?.document.uri;
+                if (!origin || !/\.(map|mpr|yrm)$/i.test(origin.path)) {
+                    return;
+                }
+                const inspector = await this.revealInspector(false);
+                inspector.pinned = true;
+                await inspector.inspect(origin, new vscode.Position(0, 0));
+            }),
+            vscode.commands.registerCommand('ra2-ini-intellisense.browseObjects', async (uri?: vscode.Uri) => {
+                const origin =
+                    uri ?? vscode.window.activeTextEditor?.document.uri ?? vscode.workspace.workspaceFolders?.[0]?.uri;
+                if (!origin) {
+                    return;
+                }
+                const panel = vscode.window.createWebviewPanel(
+                    'ra2-object-browser',
+                    localize('workbench.objects', 'Project objects'),
+                    vscode.ViewColumn.Active,
+                    { retainContextWhenHidden: true }
+                );
+                const session = new WorkbenchSession(
+                    panel.webview,
+                    context.extensionUri,
+                    service,
+                    media,
+                    () => panel.visible
+                );
+                this.sessions.add(session);
+                panel.onDidDispose(() => {
+                    session.dispose();
+                    this.sessions.delete(session);
+                });
+                await session.browseObjects(origin);
+            }),
+            vscode.commands.registerCommand('ra2-ini-intellisense.configureProject', async (uri?: vscode.Uri) => {
+                const origin = uri ?? vscode.window.activeTextEditor?.document.uri;
+                if (!origin || !vscode.workspace.workspaceFolders?.length) {
+                    return;
+                }
+                await service.ini.load(origin);
+                const configuration = vscode.workspace.getConfiguration('ra2-ini-intellisense', origin);
+                const previous = configuration.get<Record<string, string[]>>('project.entryPoints', {});
+                const root = service.resources.projectRoot(origin);
+                const files = await service.resources.listDocuments(origin);
+                const choices = files
+                    .filter((file) => /\.ini$/i.test(file.name))
+                    .map((file) => {
+                        const category = service.ini.category(file.uri);
+                        const relative = file.uri.path.startsWith(root.path + '/')
+                            ? file.uri.path.slice(root.path.length + 1)
+                            : file.name;
+                        return {
+                            label: relative,
+                            description: category,
+                            category,
+                            relative,
+                            picked:
+                                previous[category]?.some((item) => item.toLowerCase() === relative.toLowerCase()) ??
+                                false,
+                        };
+                    })
+                    .sort((a, b) => a.category.localeCompare(b.category) || a.label.localeCompare(b.label));
+                const chosen = await vscode.window.showQuickPick(choices, {
+                    canPickMany: true,
+                    title: localize('workbench.projectEntries', 'Project entry INIs'),
+                    placeHolder: localize(
+                        'workbench.chooseEntries',
+                        'Select the root rules, art and sound INIs; included files are followed automatically. Clear all to use editor context.'
+                    ),
+                });
+                if (!chosen) {
+                    return;
+                }
+                const entries: Record<string, string[]> = {};
+                chosen.forEach((item) => {
+                    (entries[item.category] ??= []).push(item.relative);
+                });
+                await configuration.update(
+                    'project.entryPoints',
+                    entries,
+                    vscode.workspace.getWorkspaceFolder(origin)
+                        ? vscode.ConfigurationTarget.WorkspaceFolder
+                        : vscode.ConfigurationTarget.Workspace
+                );
+            }),
             vscode.window.onDidChangeTextEditorSelection(schedule),
             vscode.window.onDidChangeActiveTextEditor(schedule),
             vscode.workspace.onDidChangeTextDocument((event) => {
                 if (event.document.languageId === 'ra2-ini') {
+                    service.ini.documentChanged(event.document);
                     schedule();
                     this.sessions.forEach((session) => {
                         if (session.pinned) {
@@ -583,14 +1056,19 @@ export class WorkbenchController
                     ) {
                         return;
                     }
-                    await vscode.commands.executeCommand(WorkbenchController.viewId + '.focus');
-                    await this.inspector?.inspect(
-                        target,
-                        new vscode.Position(
-                            Math.max(0, line ?? editor?.selection.active.line ?? 0),
-                            Math.max(0, character ?? editor?.selection.active.character ?? 0)
-                        )
-                    );
+                    try {
+                        const inspector = await this.revealInspector(false);
+                        this.autoRevealed = true;
+                        await inspector.inspect(
+                            target,
+                            new vscode.Position(
+                                Math.max(0, line ?? editor?.selection.active.line ?? 0),
+                                Math.max(0, character ?? editor?.selection.active.character ?? 0)
+                            )
+                        );
+                    } catch (error) {
+                        await this.reportRevealError(error);
+                    }
                 }
             ),
             vscode.commands.registerCommand('ra2-ini-intellisense.browseAssets', async () => {
@@ -627,6 +1105,59 @@ export class WorkbenchController
         schedule();
     }
 
+    private async revealInspector(preserveFocus: boolean): Promise<WorkbenchSession> {
+        if (!this.view || !this.inspector) {
+            await openContributedView(
+                vscode.commands,
+                WorkbenchController.viewId,
+                'ra2-media-workbench',
+                preserveFocus
+            );
+            // Opening a container may return before its webview provider has resolved.
+            if (!this.inspector) {
+                await new Promise<void>((resolve, reject) => {
+                    const listener = this.resolved.event(() => {
+                        clearTimeout(timeout);
+                        listener.dispose();
+                        resolve();
+                    });
+                    const timeout = setTimeout(() => {
+                        listener.dispose();
+                        reject(
+                            new Error(
+                                localize(
+                                    'workbench.viewTimeout',
+                                    'The asset workbench did not finish opening. Reload the window and try again.'
+                                )
+                            )
+                        );
+                    }, 15000);
+                });
+            }
+        }
+        if (!this.view || !this.inspector) {
+            throw new Error(
+                localize(
+                    'workbench.viewTimeout',
+                    'The asset workbench did not finish opening. Reload the window and try again.'
+                )
+            );
+        }
+        this.view.show(preserveFocus);
+        return this.inspector;
+    }
+
+    private async reportRevealError(error: unknown): Promise<void> {
+        const reload = localize('workbench.reloadWindow', 'Reload Window');
+        const selected = await vscode.window.showErrorMessage(
+            error instanceof Error ? error.message : String(error),
+            reload
+        );
+        if (selected === reload) {
+            await vscode.commands.executeCommand('workbench.action.reloadWindow');
+        }
+    }
+
     public resolveWebviewView(view: vscode.WebviewView): void {
         this.view = view;
         const session = new WorkbenchSession(
@@ -637,6 +1168,7 @@ export class WorkbenchController
             () => view.visible
         );
         this.inspector = session;
+        this.resolved.fire();
         this.sessions.add(session);
         this.disposables.push(
             view.onDidChangeVisibility(() => {
@@ -650,6 +1182,7 @@ export class WorkbenchController
                 this.sessions.delete(session);
                 if (this.inspector === session) {
                     this.inspector = undefined;
+                    this.view = undefined;
                 }
             })
         );
@@ -689,6 +1222,7 @@ export class WorkbenchController
         }
         this.sessions.forEach((session) => session.dispose());
         this.sessions.clear();
+        this.resolved.dispose();
         this.disposables.forEach((item) => item.dispose());
     }
 }

@@ -128,7 +128,7 @@ export async function activate(context: vscode.ExtensionContext) {
     const projectResources = new ProjectResources(mixWorkspaceManager);
     const decoder = new DecoderService(vscode.Uri.joinPath(context.extensionUri, 'dist', 'media-worker.js').fsPath);
     const media = new MediaService(projectResources, decoder, context.extensionUri);
-    const inspection = new InspectionService(projectResources, media, iniManager, schemaManager, fileTypeManager);
+    const inspection = new InspectionService(projectResources, media, iniManager, schemaManager, fileTypeManager, (key) => csfManager.getLabel(key)?.value);
     const workbench = new WorkbenchController(context, inspection, media);
     context.subscriptions.push(projectResources, decoder, inspection, workbench, new ResourceAudit(inspection),
         vscode.window.registerWebviewViewProvider(WorkbenchController.viewId, workbench, { webviewOptions: { retainContextWhenHidden: true } }),

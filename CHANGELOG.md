@@ -2,6 +2,15 @@
 
 # Change Log
 
+## [Unreleased]
+
+- Add a searchable, filterable project object catalogue with favorites, configurable property columns, object comparison and reviewed batch numeric changes.
+- Add effective-property provenance and local override editing with comment preservation, native undo, dictionary constraints and stale-edit protection.
+- Resolve configured project entry INIs and their include graphs, with explicit context and missing-file reporting.
+- Keep primary and secondary VXL lighting fixed relative to the inspection camera without changing authored INI values; add reference images and perspective panorama skies.
+- Open map title-bar previews in the bottom-panel map inspector, with embedded radar imagery, metadata and section navigation. Optionally render unsaved map text through a cancellable CNCMaps worker backend.
+- Recover asset workbench opening when generated view commands are missing after an update, wait for the inspector to initialize, and keep automatic reveal retryable after failures. Show a reload action when VS Code has not registered the new view.
+
 ## [0.0.6] - 2026-10-11
 
 - Add a bottom-panel asset workbench that follows the cursor, showing media, effective properties, inheritance and reference sources, with pinning and automatic reveal.

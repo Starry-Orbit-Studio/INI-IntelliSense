@@ -1,6 +1,12 @@
 import * as assert from 'assert';
 import { voxelCamera, orbitVoxelCamera } from '../media/voxel-camera';
-import { nativeLight, authoredLight, DEFAULT_VOXEL_LIGHT, GAME_LIGHT_FRAME } from '../media/voxel-light';
+import {
+    nativeLight,
+    authoredLight,
+    DEFAULT_VOXEL_LIGHT,
+    GAME_LIGHT_FRAME,
+    cameraLockedLight,
+} from '../media/voxel-light';
 import { foundationPoints, buildingPoint, moveBuildingPoint } from '../media/building-coordinates';
 import { paletteName, artPaletteName } from '../media/palette-policy';
 import { spriteClip } from '../media/sprite-playback';
@@ -9,6 +15,27 @@ import { mediaCapabilities } from '../media/media-capabilities';
 import { spriteRemap } from '../media/sprite-remap';
 
 suite('Workbench projection and policy', () => {
+    test('camera-locked light preserves screen direction and magnitude through arbitrary orbits', () => {
+        const dot = (a: readonly number[], b: number[]) => a.reduce((sum, value, i) => sum + value * b[i], 0);
+        for (const light of [DEFAULT_VOXEL_LIGHT, [2, -3, 1]]) {
+            for (const yaw of [-180, -45, 0, 60, 270]) {
+                for (const pitch of [-80, 0, 30, 85]) {
+                    const world = cameraLockedLight(light, yaw, pitch);
+                    const camera = voxelCamera(
+                        { mode: 'game', yaw, pitch, zoom: 1, fit: false },
+                        [0, 0, 0],
+                        [10, 10, 10],
+                        600,
+                        300
+                    );
+                    for (const axis of ['right', 'up', 'eye'] as const) {
+                        assert.ok(Math.abs(dot(camera[axis], world) - dot(GAME_LIGHT_FRAME[axis], light)) < 1e-10);
+                    }
+                    assert.ok(Math.abs(Math.hypot(...world) - Math.hypot(...light)) < 1e-10);
+                }
+            }
+        }
+    });
     test('SHP house colors follow the drawer rather than the format or palette filename', () => {
         assert.strictEqual(spriteRemap('techno'), true);
         assert.strictEqual(spriteRemap('animation'), false);

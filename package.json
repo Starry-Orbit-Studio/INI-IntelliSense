@@ -282,7 +282,7 @@
       "editor/title": [
         {
           "when": "resourceExtname == '.map' || resourceExtname == '.mpr' || resourceExtname == '.yrm'",
-          "command": "ra2-ini-intellisense.previewMapToSide",
+          "command": "ra2-ini-intellisense.previewMap",
           "group": "navigation"
         }
       ]
@@ -428,6 +428,22 @@
         "command": "ra2-ini-intellisense.auditResources",
         "title": "%command.auditResources.title%",
         "category": "%command.category%"
+      },
+      {
+        "command": "ra2-ini-intellisense.browseObjects",
+        "title": "%command.browseObjects.title%",
+        "category": "%command.category%"
+      },
+      {
+        "command": "ra2-ini-intellisense.configureProject",
+        "title": "%command.configureProject.title%",
+        "category": "%command.category%"
+      },
+      {
+        "command": "ra2-ini-intellisense.previewMap",
+        "title": "%command.previewMap.title%",
+        "category": "%command.category%",
+        "icon": "$(preview)"
       }
     ],
     "configuration": {
@@ -671,6 +687,72 @@
               }
             },
             "additionalProperties": false
+          }
+        },
+        "ra2-ini-intellisense.project.entryPoints": {
+          "type": "object",
+          "default": {},
+          "scope": "resource",
+          "additionalProperties": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "description": "%configuration.project.entryPoints%"
+        },
+        "ra2-ini-intellisense.project.objectColumns": {
+          "type": "array",
+          "default": [
+            "Strength",
+            "Cost",
+            "Speed",
+            "Armor"
+          ],
+          "scope": "resource",
+          "items": {
+            "type": "string"
+          },
+          "maxItems": 12,
+          "description": "%configuration.project.objectColumns%"
+        },
+        "ra2-ini-intellisense.maps.renderer": {
+          "type": "object",
+          "default": {},
+          "scope": "machine-overridable",
+          "description": "%configuration.maps.renderer%",
+          "additionalProperties": false,
+          "properties": {
+            "executable": {
+              "type": "string"
+            },
+            "mixDirectory": {
+              "type": "string"
+            },
+            "modDirectories": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            },
+            "rulesFiles": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            },
+            "artFiles": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            },
+            "extraMixes": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            }
           }
         }
       }

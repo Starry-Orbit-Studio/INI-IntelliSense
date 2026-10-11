@@ -3,6 +3,99 @@ import { WorkbenchLabels } from './workbench-protocol';
 
 export function workbenchLabels(): WorkbenchLabels {
     return {
+        renderMap: localize('workbench.renderMap', 'Render current map'),
+        configureMapRenderer: localize('workbench.configureMapRenderer', 'Configure map renderer'),
+        mapSections: localize('workbench.mapSections', 'Map sections — open in editor'),
+        embeddedMap: localize('workbench.embeddedMap', 'Embedded radar preview; it may not reflect unsaved changes.'),
+        renderedMap: localize(
+            'workbench.renderedMap',
+            'Rendered from the current map text with the configured game resources.'
+        ),
+        mapRendererConfiguration: localize(
+            'workbench.mapRendererConfiguration',
+            'Configure an absolute map renderer executable and game MIX directory first.'
+        ),
+        mapRendererTimeout: localize('workbench.mapRendererTimeout', 'Map rendering exceeded the two-minute limit.'),
+        mapRendererExited: localize('workbench.mapRendererExited', 'Map renderer exited before completion ({0}): {1}'),
+        mapRendererProtocol: localize('workbench.mapRendererProtocol', 'Invalid map renderer response.'),
+        mapRendererFailed: localize('workbench.mapRendererFailed', 'Map rendering failed: {0}'),
+        mapImageLimit: localize('workbench.mapImageLimit', 'Rendered map exceeds the 64 MiB image limit.'),
+        mapTrust: localize('workbench.mapTrust', 'Trust this workspace before running an external map renderer.'),
+        indexLimit: localize(
+            'workbench.indexLimit',
+            'Only the first {0} INI files were indexed. Narrow the project resource roots.'
+        ),
+        backgroundImage: localize('workbench.backgroundImage', 'Image background'),
+        backgroundSky: localize('workbench.backgroundSky', '360° panorama sky'),
+        chooseBackground: localize('workbench.chooseBackground', 'Choose background image'),
+        backgroundFailed: localize('workbench.backgroundFailed', 'Could not load background'),
+        backgroundLimit: localize('workbench.backgroundLimit', 'Choose a PNG, JPEG or WebP image smaller than 8 MiB.'),
+        backgroundHelp: localize(
+            'workbench.backgroundHelp',
+            'Session-only reference background. Use a 2:1 equirectangular image for the perspective sky. It does not change lighting or transparent PNG exports.'
+        ),
+        objects: localize('workbench.objects', 'Project objects'),
+        searchObjects: localize('workbench.searchObjects', 'Search object ID, game name or source'),
+        allCategories: localize('workbench.allCategories', 'All file categories'),
+        allTypes: localize('workbench.allTypes', 'All object types'),
+        favorites: localize('workbench.favorites', 'Favorites'),
+        compareObjects: localize('workbench.compareObjects', 'Compare selected objects'),
+        batchEdit: localize('workbench.batchEdit', 'Batch edit'),
+        propertyKey: localize('workbench.propertyKey', 'Property'),
+        operation: localize('workbench.operation', 'Operation'),
+        newValue: localize('workbench.newValue', 'Value'),
+        previewChanges: localize('workbench.previewChanges', 'Preview changes'),
+        batch_set: localize('workbench.batch_set', 'Set value'),
+        batch_add: localize('workbench.batch_add', 'Add amount'),
+        batch_percent: localize('workbench.batch_percent', 'Adjust by percent'),
+        batchHelp: localize(
+            'workbench.batchHelp',
+            'Changes are written to each selected object. Inherited values become local overrides. Integer types are rounded to the nearest integer. Preview and review every change before applying.'
+        ),
+        selectPage: localize('workbench.selectPage', 'Select this page'),
+        previous: localize('workbench.previous', 'Previous page'),
+        nextPage: localize('workbench.nextPage', 'Next page'),
+        clearSelection: localize('workbench.clearSelection', 'Clear selection'),
+        selected: localize('workbench.selected', 'Selected'),
+        definitions: localize('workbench.definitions', 'Definitions'),
+        onlyDifferences: localize('workbench.onlyDifferences', 'Only differences'),
+        close: localize('workbench.close', 'Close'),
+        column_name: localize('workbench.column_name', 'Object'),
+        column_type: localize('workbench.column_type', 'Type'),
+        column_category: localize('workbench.column_category', 'Category'),
+        configuredContext: localize('workbench.configuredContext', 'Configured load context'),
+        editorContext: localize('workbench.editorContext', 'Editor context'),
+        documents: localize('workbench.documents', 'INI files'),
+        indexIncomplete: localize('workbench.indexIncomplete', 'Index incomplete'),
+        contextHelp: localize(
+            'workbench.contextHelp',
+            'Explicit project entry INIs limit resolution to their include graph. Editor context prioritizes the current document and does not claim to emulate every engine load rule.'
+        ),
+        projectEntries: localize('workbench.projectEntries', 'Project entry INIs'),
+        chooseEntries: localize(
+            'workbench.chooseEntries',
+            'Select the root rules, art and sound INIs; included files are followed automatically. Clear all to use editor context.'
+        ),
+        duplicateEdit: localize(
+            'workbench.duplicateEdit',
+            'The change plan contains conflicting edits for the same property.'
+        ),
+        invalidPropertyValue: localize(
+            'workbench.invalidPropertyValue',
+            'The value does not satisfy the property type or range: {0}'
+        ),
+        editFailed: localize('workbench.editFailed', 'VS Code could not apply the change plan. No save was requested.'),
+        unknownProperty: localize(
+            'workbench.unknownProperty',
+            'The property is neither declared on the object nor defined in its dictionary: {0}'
+        ),
+        editProperty: localize('workbench.editProperty', 'Edit'),
+        writeTo: localize('workbench.writeTo', 'Write to'),
+        cancel: localize('workbench.cancel', 'Cancel'),
+        removeOverride: localize('workbench.removeOverride', 'Remove local declaration'),
+        unsetValue: localize('workbench.unsetValue', 'Not explicitly defined; consult project defaults'),
+        effective: localize('workbench.effective', 'Effective'),
+        overridden: localize('workbench.overridden', 'Overridden'),
         searchPalette: localize('workbench.searchPalette', 'Search palettes and sources'),
         zoom: localize('workbench.zoom', 'Zoom ×'),
         theater: localize('workbench.theater', 'Theater'),

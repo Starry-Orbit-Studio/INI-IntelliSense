@@ -73,7 +73,7 @@ const inspection = (id, media) => ({
     id,
     owner: 'TestUnit',
     type: 'UnitType',
-    focus: media.name,
+    focus: media?.name ?? '',
     properties: [
         { key: 'Image', value: 'body', inherited: false, source: { id: 'src', label: 'art.ini:3' } },
         { key: 'Strength', value: '100', inherited: true, source: { id: 'base', label: 'rules.ini:2' } },
@@ -81,8 +81,8 @@ const inspection = (id, media) => ({
     sources: [{ id: 'src', label: 'art.ini:3' }],
     references: [{ id: 'ref', label: 'Weapon → TestUnit' }],
     assets: [
-        { id: 'asset-1', name: media.name, source: 'expand.mix', priority: 500 },
-        { id: 'asset-2', name: media.name, source: 'local/', priority: 0 },
+        { id: 'asset-1', name: media?.name ?? '', source: 'expand.mix', priority: 500 },
+        { id: 'asset-2', name: media?.name ?? '', source: 'local/', priority: 0 },
     ],
     paletteOptions: [{ id: 'pal', name: 'unittem.pal', source: 'local/', priority: 0 }],
     selectedAsset: 'asset-2',
@@ -153,7 +153,7 @@ async function main() {
             await page.waitForFunction(
                 (id) =>
                     document.getElementById('app')?.dataset.inspection === id &&
-                    document.querySelector('.sprite-canvas,.voxel-canvas,audio'),
+                    document.querySelector('.sprite-canvas,.voxel-canvas,audio,.catalog-table,.map-sections'),
                 value.id
             );
         };
@@ -296,7 +296,7 @@ async function main() {
         await page.locator('.contacts button').filter({ hasText: '90°' }).click();
         await page.waitForFunction(() => document.querySelector('.direction-select')?.value === '2');
         await page.getByRole('button', { name: 'Keep for comparison', exact: true }).click();
-        assert.equal(await page.locator('#comparison canvas').count(), 1);
+        assert.equal(await page.locator('#comparison .sprite-canvas').count(), 1);
         await page.getByRole('button', { name: 'Attributes', exact: true }).click();
         assert.equal(await page.locator('table tr').count(), 2);
         await page.getByRole('button', { name: 'Preview', exact: true }).click();
@@ -465,7 +465,26 @@ async function main() {
             lightingAfterOrbit.projection,
             'orbit changes the inspection camera'
         );
-        for (const field of ['light', 'secondary', 'normal', 'orb']) {
+        assert.notDeepEqual(
+            lightingBeforeOrbit.light,
+            lightingAfterOrbit.light,
+            'world light follows the camera basis'
+        );
+        const screenLight = (state) =>
+            [0, 1].map((axis) => {
+                const basis = [state.projection[axis], state.projection[axis + 4], state.projection[axis + 8]];
+                return basis.reduce((sum, value, index) => sum + value * state.light[index], 0) / Math.hypot(...basis);
+            });
+        screenLight(lightingBeforeOrbit).forEach((value, axis) =>
+            assert.ok(Math.abs(value - screenLight(lightingAfterOrbit)[axis]) < 0.00001)
+        );
+        screenLight({ ...lightingBeforeOrbit, light: lightingBeforeOrbit.secondary }).forEach((value, axis) =>
+            assert.ok(
+                Math.abs(value - screenLight({ ...lightingAfterOrbit, light: lightingAfterOrbit.secondary })[axis]) <
+                    0.00001
+            )
+        );
+        for (const field of ['normal', 'orb']) {
             assert.deepEqual(
                 lightingBeforeOrbit[field],
                 lightingAfterOrbit[field],
@@ -776,6 +795,150 @@ async function main() {
                 ),
             'wide bottom panel must use a horizontal layout'
         );
+        const editable = inspection('property-edit', sprite);
+        editable.properties = [
+            {
+                key: 'Cost',
+                value: '100',
+                inherited: true,
+                source: { id: 'parent', label: 'Parent · rules.ini:2' },
+                editId: 'edit-cost',
+                editSource: { id: 'owner', label: 'Tank · rules.ini:20' },
+                valueType: 'int',
+                minimum: 0,
+                declarations: [
+                    {
+                        value: '100',
+                        via: ['Tank', 'Parent'],
+                        effective: true,
+                        source: { id: 'parent', label: 'Parent · rules.ini:2' },
+                    },
+                ],
+            },
+        ];
+        await send(editable);
+        await page.getByRole('button', { name: labels.attributes, exact: true }).click();
+        await page.getByRole('button', { name: labels.editProperty, exact: true }).click();
+        await page.getByLabel('Cost', { exact: true }).fill('120');
+        assert.ok((await page.locator('.edit-preview').textContent()).includes('100 → 120'));
+        await page.locator('.property-form button[type=submit]').click();
+        assert.ok(
+            await page.evaluate(() =>
+                window.messages.some(
+                    (message) =>
+                        message.type === 'property-edit' && message.id === 'edit-cost' && message.value === '120'
+                )
+            )
+        );
+        await page.getByRole('button', { name: labels.cancel, exact: true }).click();
+        const catalog = inspection('catalog', undefined);
+        catalog.objects = Array.from({ length: 250 }, (_, i) => ({
+            id: 'object-' + i,
+            name: 'UNIT' + i,
+            label: 'Guardian ' + i,
+            category: 'rules',
+            type: 'UnitType',
+            source: 'rules.ini:' + (i + 1),
+            definitions: 1,
+            values: { Cost: String(i) },
+        }));
+        catalog.objectColumns = ['Cost'];
+        await send(catalog);
+        assert.equal(await page.locator('.catalog-table tbody tr').count(), 100);
+        await page.getByLabel(labels.searchObjects).fill('Guardian UNIT249');
+        await page.waitForFunction(() => document.querySelectorAll('.catalog-table tbody tr').length === 1);
+        await page.getByLabel(labels.searchObjects).fill('');
+        await page.waitForFunction(() => document.querySelectorAll('.catalog-table tbody tr').length === 100);
+        await page.getByRole('checkbox', { name: 'UNIT0', exact: true }).check();
+        await page.getByRole('checkbox', { name: 'UNIT1', exact: true }).check();
+        await page.getByRole('button', { name: labels.compareObjects, exact: true }).click();
+        assert.ok(
+            await page.evaluate(() =>
+                window.messages.some((message) => message.type === 'compare-objects' && message.ids.length === 2)
+            )
+        );
+        await page.getByRole('button', { name: labels.batchEdit, exact: true }).click();
+        await page.getByLabel(labels.propertyKey, { exact: true }).fill('Cost');
+        await page.getByLabel(labels.newValue, { exact: true }).fill('20');
+        await page.getByRole('button', { name: labels.previewChanges, exact: true }).click();
+        const planRequest = await page.evaluate(() =>
+            window.messages.filter((message) => message.type === 'batch-plan').at(-1)
+        );
+        await page.evaluate(
+            (request) =>
+                window.postMessage(
+                    {
+                        type: 'batch-preview',
+                        inspection: 'catalog',
+                        request: request.request,
+                        id: 'change-plan',
+                        rows: [{ name: 'UNIT0', before: '0', after: '20', source: 'rules.ini' }],
+                    },
+                    '*'
+                ),
+            planRequest
+        );
+        await page.locator('.change-preview button').first().waitFor();
+        await page.getByLabel(labels.newValue, { exact: true }).fill('30');
+        assert.equal(
+            await page.locator('.change-preview button').count(),
+            0,
+            'changing the input invalidates the old plan'
+        );
+        await page.screenshot({ path: path.join(root, 'out', 'webview-qa', 'object-browser.png'), fullPage: true });
+        const map = inspection('map', undefined);
+        map.map = {
+            version: 1,
+            note: labels.embeddedMap,
+            sections: [{ id: 'waypoints', name: 'Waypoints', count: 4 }],
+            details: [{ key: 'Map.Theater', value: 'SNOW' }],
+        };
+        await send(map);
+        await page.getByRole('button', { name: 'Waypoints · 4', exact: true }).click();
+        assert.ok(
+            await page.evaluate(() =>
+                window.messages.some((message) => message.type === 'source' && message.id === 'waypoints')
+            )
+        );
+        await page.getByRole('button', { name: labels.renderMap, exact: true }).click();
+        assert.ok(await page.evaluate(() => window.messages.some((message) => message.type === 'render-map')));
+        await send(inspection('sky-test', voxel));
+        await page.evaluate(() => {
+            const canvas = document.createElement('canvas');
+            canvas.width = 128;
+            canvas.height = 64;
+            const context = canvas.getContext('2d');
+            const gradient = context.createLinearGradient(0, 0, 128, 64);
+            gradient.addColorStop(0, '#1267df');
+            gradient.addColorStop(1, '#de8124');
+            context.fillStyle = gradient;
+            context.fillRect(0, 0, 128, 64);
+            window.postMessage(
+                {
+                    type: 'background-file',
+                    bytes: canvas.toDataURL().split(',')[1],
+                    mime: 'image/png',
+                    name: 'test-panorama.png',
+                },
+                '*'
+            );
+        });
+        await page.waitForFunction(() => !document.querySelector('.environment-canvas').hidden);
+        await page.locator('[data-background]').selectOption('sky');
+        const skyBefore = await page
+            .locator('.environment-canvas')
+            .first()
+            .evaluate((canvas) => canvas.toDataURL());
+        const skyBounds = await page.locator('.voxel-overlay').first().boundingBox();
+        await page.mouse.move(skyBounds.x + 100, skyBounds.y + 160);
+        await page.mouse.down();
+        await page.mouse.move(skyBounds.x + 180, skyBounds.y + 170, { steps: 5 });
+        await page.mouse.up();
+        await page.waitForFunction(
+            (before) => document.querySelector('.environment-canvas').toDataURL() !== before,
+            skyBefore
+        );
+        await page.screenshot({ path: path.join(root, 'out', 'webview-qa', 'sky-preview.png'), fullPage: true });
         assert.deepEqual(errors, [], 'Webview must not emit browser or CSP errors');
         console.log(
             'Webview regression passed: worker pixels, source/palette selection, action edits, comparison, PNG, WebGL, light edits, narrow layout, audio pause, asset library.'

@@ -6,6 +6,10 @@ import { DEFAULT_VOXEL_LIGHT } from '../../src/media/voxel-light';
 import { DEFAULT_HOUSE_COLOR } from '../../src/media/render-defaults';
 import { spriteClip } from '../../src/media/sprite-playback';
 import { mediaCapabilities, mediaUsesRemap } from '../../src/media/media-capabilities';
+import { renderProperties } from './property-editor';
+import { objectBrowser, CatalogPreferences } from './object-browser';
+import { PreviewEnvironment, BackgroundMode } from './environment';
+import { mapView } from './map-view';
 
 declare function acquireVsCodeApi(): {
     postMessage(message: unknown): void;
@@ -30,6 +34,10 @@ let lastMediaKey = '';
 let lastMediaIdentity = '';
 let syncPointEditor: (() => void) | undefined;
 let syncTimeline: (() => void) | undefined;
+let disposeCatalog: (() => void) | undefined;
+let catalogPreferences: CatalogPreferences = {};
+const environment = new PreviewEnvironment();
+const disposeEnvironments = new Map<HTMLElement, () => void>();
 const transientWorkers = new Set<Worker>();
 const libraryThumbnails = new Map<string, string | undefined>();
 let thumbnailQueue: string[] = [],
@@ -73,8 +81,12 @@ const settings: ViewSettings = {
 };
 const mediaSettings = new Map<string, ViewSettings>();
 let settingsKind = '';
-const saved = api.getState() as (Partial<ViewSettings> & { version?: number; kind?: string }) | undefined;
+const saved = api.getState() as
+    (Partial<ViewSettings> & { version?: number; kind?: string; catalog?: CatalogPreferences }) | undefined;
 if (saved) {
+    if (saved.catalog && typeof saved.catalog === 'object') {
+        catalogPreferences = saved.catalog;
+    }
     if (saved.version === 2 && ['sprite', 'voxel', 'image', 'audio', 'palette'].includes(saved.kind ?? '')) {
         settingsKind = saved.kind!;
     }
@@ -128,6 +140,7 @@ const persist = () =>
         turret: settings.turret,
         mode: settings.mode,
         flhScale: settings.flhScale,
+        catalog: catalogPreferences,
     });
 const post = (type: string, data: object = {}) => api.postMessage({ type, inspection: current?.id, ...data });
 const element = <K extends keyof HTMLElementTagNameMap>(
@@ -330,6 +343,8 @@ function viewportControls(base: Renderer, viewport: HTMLElement, canvas: HTMLCan
         dispose: () => {
             cancel();
             base.dispose();
+            disposeEnvironments.get(viewport)?.();
+            disposeEnvironments.delete(viewport);
             viewport.removeEventListener('wheel', wheel);
             viewport.removeEventListener('pointerdown', down);
             viewport.removeEventListener('pointermove', move);
@@ -349,6 +364,17 @@ function checkbox(text: string, checked: boolean, handler: (value: boolean) => v
     return label;
 }
 function update(): void {
+    if (settings.mode !== 'perspective' && environment.mode === 'sky') {
+        environment.mode = 'image';
+    }
+    const background = document.querySelector<HTMLSelectElement>('[data-background]');
+    if (background) {
+        background.value = environment.mode;
+    }
+    const mode = document.querySelector<HTMLSelectElement>('.camera-mode');
+    if (mode) {
+        mode.value = settings.mode;
+    }
     document.querySelectorAll<HTMLInputElement>('.light-value').forEach((input, index) => {
         if (document.activeElement !== input) {
             input.value = String(settings.light[index]);
@@ -376,6 +402,10 @@ function stop(): void {
     }
 }
 function dispose(): void {
+    disposeEnvironments.forEach((dispose) => dispose());
+    disposeEnvironments.clear();
+    disposeCatalog?.();
+    disposeCatalog = undefined;
     syncPointEditor = undefined;
     syncTimeline = undefined;
     renderer?.dispose();
@@ -400,6 +430,9 @@ function createRenderer(media: MediaPayload, host: HTMLElement, compare = false)
     const canvas = element('canvas', media.kind === 'voxel' ? 'voxel-canvas' : 'sprite-canvas');
     viewport.append(canvas);
     host.append(viewport);
+    if (['image', 'sprite', 'voxel'].includes(media.kind)) {
+        disposeEnvironments.set(viewport, environment.attach(viewport, settings, media.kind === 'voxel'));
+    }
     if (media.kind === 'image') {
         return viewportControls(
             imageRenderer(canvas, media.width, media.height, fromBase64(media.pixels), settings),
@@ -566,19 +599,27 @@ function commonControls(host: HTMLElement, remap = true): void {
                     { value: 'checker', label: '◩' },
                     { value: 'dark', label: '●' },
                     { value: 'light', label: '○' },
+                    { value: 'image', label: labels.backgroundImage },
+                    ...(current?.media?.kind === 'voxel' ? [{ value: 'sky', label: labels.backgroundSky }] : []),
                 ],
-                'checker',
+                environment.mode,
                 (value) => {
-                    document.querySelectorAll('.viewport').forEach((view) => {
-                        view.classList.remove('dark', 'light');
-                        if (value !== 'checker') {
-                            view.classList.add(value);
-                        }
-                    });
+                    environment.mode = value as BackgroundMode;
+                    if (value === 'sky') {
+                        settings.mode = 'perspective';
+                        update();
+                    }
+                    if (['image', 'sky'].includes(value) && !environment.name) {
+                        post('background-file');
+                    }
                 }
             )
         )
     );
+    const choose = button(labels.chooseBackground, () => post('background-file'));
+    controls.querySelector('select')?.setAttribute('data-background', '');
+    choose.title = labels.backgroundHelp;
+    controls.append(choose);
     host.append(controls);
 }
 
@@ -1119,6 +1160,7 @@ function voxelControls(media: Extract<MediaPayload, { kind: 'voxel' }>, host: HT
             update();
         })
     );
+    controls.querySelector('select')?.classList.add('camera-mode');
     host.append(controls);
     const hvaFrames = Math.max(1, ...media.model.parts.map((part) => part.animation?.length ?? 1));
     const timeline = element('div', 'controls');
@@ -1291,6 +1333,8 @@ function voxelControls(media: Extract<MediaPayload, { kind: 'voxel' }>, host: HT
 }
 
 function render(inspection: Inspection): void {
+    app.classList.toggle('catalog-page', !!inspection.objects);
+    app.classList.toggle('map-page', !!inspection.map);
     const kind = inspection.media?.kind ?? '';
     if (settingsKind !== kind) {
         if (settingsKind) {
@@ -1363,7 +1407,8 @@ function render(inspection: Inspection): void {
         button('‹', () => post('back')),
         button(pinned ? labels.follow : labels.pin, () => post('pin')),
         button('↻', () => post('refresh')),
-        button(labels.browse, () => post('browse'))
+        button(labels.browse, () => post('browse')),
+        button(labels.objects, () => post('objects'))
     );
     const heading = element('header', 'identity');
     heading.append(
@@ -1374,6 +1419,40 @@ function render(inspection: Inspection): void {
     const status = element('p', 'status');
     status.id = 'status';
     app.append(toolbar, heading, status);
+    if (inspection.resolution) {
+        const resolution = inspection.resolution;
+        const summary = element('details', 'resolution-context');
+        summary.append(
+            element(
+                'summary',
+                '',
+                (resolution.configured ? labels.configuredContext : labels.editorContext) +
+                    ' · ' +
+                    resolution.documents +
+                    ' ' +
+                    labels.documents +
+                    (resolution.complete ? '' : ' · ' + labels.indexIncomplete)
+            )
+        );
+        summary.append(
+            element('p', '', labels.contextHelp),
+            button(labels.projectEntries, () => post('configure-project'))
+        );
+        resolution.entries.forEach((entry) => summary.append(element('div', '', entry)));
+        resolution.issues.forEach((issue) => summary.append(element('p', 'warning', issue)));
+        app.append(summary);
+    }
+    if (inspection.map) {
+        mapView(app, inspection, labels, post);
+        return;
+    }
+    if (inspection.objects) {
+        disposeCatalog = objectBrowser(app, inspection, labels, post, catalogPreferences, (next) => {
+            catalogPreferences = next;
+            persist();
+        });
+        return;
+    }
     if (inspection.library) {
         renderLibrary(inspection, app);
     }
@@ -1538,30 +1617,7 @@ function render(inspection: Inspection): void {
     for (const warning of inspection.warnings) {
         visual.append(element('p', 'warning', warning));
     }
-    const filter = element('input');
-    filter.placeholder = labels.filter;
-    attributes.append(filter);
-    const table = element('table'),
-        body = element('tbody');
-    table.append(body);
-    attributes.append(table);
-    const rows = inspection.properties.map((property) => {
-        const row = element('tr');
-        row.append(element('th', '', property.key), element('td', '', property.value));
-        const source = element('td');
-        source.append(
-            button((property.inherited ? '↳ ' : '') + property.source.label, () =>
-                post('source', { id: property.source.id })
-            )
-        );
-        row.append(source);
-        body.append(row);
-        return { row, property };
-    });
-    filter.oninput = () =>
-        rows.forEach(({ row, property }) => {
-            row.hidden = !(property.key + ' ' + property.value).toLowerCase().includes(filter.value.toLowerCase());
-        });
+    renderProperties(attributes, inspection, labels, post);
     links.append(element('p', 'eyebrow', labels.source));
     inspection.sources.forEach((source) =>
         links.append(button(source.label, () => post('source', { id: source.id }), 'link-row'))
@@ -1682,6 +1738,22 @@ function renderComparison(host: HTMLElement): void {
 }
 
 window.addEventListener('message', (event) => {
+    if (
+        event.data.type === 'background-file' &&
+        typeof event.data.bytes === 'string' &&
+        ['image/png', 'image/jpeg', 'image/webp'].includes(event.data.mime)
+    ) {
+        void environment
+            .load(fromBase64(event.data.bytes), event.data.mime, event.data.name)
+            .then(() => {
+                const select = app.querySelector<HTMLSelectElement>('[data-background]');
+                if (select) {
+                    select.value = environment.mode;
+                }
+            })
+            .catch((error) => message(labels.backgroundFailed + ': ' + String(error)));
+        return;
+    }
     if (event.data.type === 'thumbnail') {
         if (event.data.inspection === current?.id) {
             libraryThumbnails.set(event.data.id, event.data.bytes);

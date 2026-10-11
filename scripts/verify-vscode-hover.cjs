@@ -51,6 +51,15 @@ module.exports = async function verifyHover(
                     await new Promise((resolve) => setTimeout(resolve, 100));
                 }
             }
+            if (!ready) {
+                await mkdir(path.dirname(output), { recursive: true });
+                await page.screenshot({ path: output.replace(/\.png$/, '-panel-failed.png') });
+                for (const frame of page.frames()) {
+                    if (await frame.locator('#app').count()) {
+                        console.error('Workbench frame state:', await frame.locator('#app').textContent());
+                    }
+                }
+            }
             assert.ok(ready, 'automatic panel has finished rendering before hover');
         }
         for (let attempt = 0; attempt < 30; attempt++) {
@@ -262,6 +271,37 @@ module.exports = async function verifyHover(
             assert.ok(
                 await page.evaluate(() => document.querySelector('.part.panel')?.getBoundingClientRect().height < 20),
                 'closing the panel must suppress repeated automatic reveal'
+            );
+            const inspectLink = page
+                .locator('.monaco-hover a[data-href^="command:ra2-ini-intellisense.inspect"]:visible')
+                .first();
+            // Editor layout and semantic-token updates can dismiss the first hover
+            // after closing a panel. Reissue the user command once focus settles.
+            for (let attempt = 0; attempt < 20; attempt++) {
+                await showHover?.();
+                if (await inspectLink.isVisible()) {
+                    break;
+                }
+                await page.waitForTimeout(150);
+            }
+            try {
+                await inspectLink.waitFor({ timeout: 10000 });
+            } catch (error) {
+                await page.screenshot({ path: output.replace('.png', '-reopen-failed.png') });
+                console.error('Reopen hover:', await page.locator('.monaco-hover').allTextContents());
+                throw error;
+            }
+            await inspectLink.click();
+            await page.waitForFunction(
+                () => document.querySelector('.part.panel')?.getBoundingClientRect().height > 20,
+                undefined,
+                { timeout: 20000 }
+            );
+            await preview.locator('#app[data-inspection] .identity h1').waitFor();
+            assert.equal(
+                await preview.locator('#app .identity h1').textContent(),
+                owner,
+                'clicking View asset reopens the inspector with the requested target'
             );
         }
     } finally {

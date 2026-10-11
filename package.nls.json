@@ -65,5 +65,11 @@
     "configuration.media.theater": "Theater suffix for building filenames and custom palettes: tem, sno, urb, ubn, lun, des.",
     "configuration.media.semanticRules": "Additional contextual reference rules. First matching rule wins; dictionary types remain unchanged.",
     "configuration.media.autoReveal": "Reveal the workbench once per window session on the first valid resource section, preserving editor focus.",
-    "configuration.media.excludedDirectories": "Directory names excluded from asset discovery. Defaults skip temporary caches and tool copies; explicitly configured resource roots are still scanned."
+    "configuration.media.excludedDirectories": "Directory names excluded from asset discovery. Defaults skip temporary caches and tool copies; explicitly configured resource roots are still scanned.",
+    "command.browseObjects.title": "Browse project objects",
+    "command.configureProject.title": "Configure project entry INIs",
+    "configuration.project.entryPoints": "Root INI paths relative to the mod root, grouped by file category (rules, art, sound). Only these roots and their includes participate in resolution. Empty uses editor context.",
+    "configuration.project.objectColumns": "INI properties displayed as columns in the project object browser (up to 12).",
+    "command.previewMap.title": "Preview current map",
+    "configuration.maps.renderer": "Optional CNCMaps --worker JSON backend compatible with ra2rmg-rs. executable and mixDirectory require absolute paths. Supply modDirectories, rulesFiles, artFiles and extraMixes to match your project. Runs only on request in trusted workspaces."
 }

@@ -10,6 +10,14 @@ export interface PropertyRow {
     value: string;
     inherited: boolean;
     source: SourceLink;
+    declarations?: { value: string; source: SourceLink; via: string[]; effective: boolean }[];
+    editId?: string;
+    editSource?: SourceLink;
+    local?: boolean;
+    valueType?: string;
+    minimum?: number;
+    maximum?: number;
+    allowedValues?: string[];
 }
 export interface AssetOption {
     id: string;
@@ -17,6 +25,16 @@ export interface AssetOption {
     source: string;
     priority: number;
     role?: string;
+}
+export interface ObjectRow {
+    id: string;
+    name: string;
+    label: string;
+    category: string;
+    type: string;
+    source: string;
+    definitions: number;
+    values: Record<string, string>;
 }
 export interface ActionEdit {
     id: string;
@@ -130,6 +148,17 @@ export interface Inspection {
     cameos?: { tag: string; media: MediaPayload }[];
     lightEdit?: string;
     canReplace?: boolean;
+    resolution?: { configured: boolean; complete: boolean; documents: number; entries: string[]; issues: string[] };
+    objects?: ObjectRow[];
+    objectColumns?: string[];
+    map?: {
+        version: number;
+        sections: { id: string; name: string; count: number }[];
+        details: { key: string; value: string }[];
+        preview?: string;
+        note: string;
+        rendered?: boolean;
+    };
 }
 
 export interface WorkbenchLabels {

@@ -210,6 +210,45 @@ input[type='color'] {
 .viewport.light {
     background: #e6e7eb;
 }
+.map-viewport {
+    position: relative;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    height: clamp(240px, 65vh, 900px);
+    overflow: hidden;
+    background: var(--vscode-editor-background);
+    touch-action: none;
+    cursor: grab;
+    border: 1px solid var(--vscode-panel-border);
+}
+.map-viewport > img {
+    max-width: 100%;
+    max-height: 100%;
+    object-fit: contain;
+    transform-origin: center;
+}
+.map-sections {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+}
+.environment-canvas {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    pointer-events: none;
+    z-index: 0;
+}
+.viewport > .sprite-canvas,
+.viewport > .voxel-canvas {
+    position: relative;
+    z-index: 1;
+}
+.viewport > .voxel-overlay {
+    z-index: 2;
+}
 .sprite-canvas {
     image-rendering: pixelated;
     max-width: none;
@@ -573,6 +612,147 @@ td button,
 }
 [hidden] {
     display: none !important;
+}
+.resolution-context {
+    padding: 8px 12px;
+    margin-bottom: 12px;
+    border: 1px solid var(--vscode-panel-border);
+    border-radius: 6px;
+    font-size: 0.9em;
+}
+.property-table th {
+    text-align: left;
+    vertical-align: top;
+}
+.property-table td {
+    vertical-align: top;
+}
+.property-table code {
+    overflow-wrap: anywhere;
+}
+.property-form {
+    min-width: 180px;
+    max-width: 440px;
+    padding: 8px;
+}
+.property-form input {
+    width: 100%;
+}
+.property-form p {
+    margin: 4px 0 8px;
+    font-size: 0.9em;
+    overflow-wrap: anywhere;
+}
+.property-trace summary {
+    cursor: pointer;
+    overflow-wrap: anywhere;
+}
+.property-trace > div {
+    display: grid;
+    gap: 4px;
+    padding: 8px 0;
+    border-bottom: 1px solid var(--vscode-panel-border);
+}
+.overridden-declaration {
+    opacity: 0.75;
+}
+.effective-declaration {
+    border-left: 2px solid var(--vscode-focusBorder);
+    padding-left: 8px !important;
+}
+main.catalog-page,
+main.map-page {
+    display: block;
+}
+.resolution-context {
+    grid-column: 1 / -1;
+}
+.catalog-toolbar {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    align-items: center;
+    margin: 12px 0;
+}
+.catalog-toolbar input[type='search'] {
+    flex: 1;
+    min-width: 180px;
+}
+.catalog-toolbar select {
+    max-width: 190px;
+}
+.catalog-toolbar label {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+}
+.catalog-scroll {
+    overflow: auto;
+    max-height: 70vh;
+    border: 1px solid var(--vscode-panel-border);
+    border-radius: 6px;
+}
+.catalog-table {
+    width: 100%;
+    border-collapse: collapse;
+}
+.catalog-table thead {
+    position: sticky;
+    top: 0;
+    background: var(--vscode-editor-background);
+    z-index: 1;
+}
+.catalog-table td,
+.catalog-table th {
+    text-align: left;
+    padding: 6px 8px;
+    border-bottom: 1px solid var(--vscode-panel-border);
+    max-width: 280px;
+}
+.catalog-table small {
+    display: block;
+    opacity: 0.8;
+    overflow-wrap: anywhere;
+}
+.catalog-table tbody tr:hover {
+    background: var(--vscode-list-hoverBackground);
+}
+.catalog-table button {
+    background: transparent;
+    border: 0;
+    text-align: left;
+    padding: 2px;
+    min-height: 24px;
+}
+.batch-form,
+.object-comparison {
+    border: 1px solid var(--vscode-panel-border);
+    padding: 12px;
+    margin: 12px 0;
+    border-radius: 6px;
+    overflow: auto;
+}
+.batch-form > input {
+    max-width: 220px;
+    margin-right: 6px;
+}
+.batch-form > p {
+    font-size: 0.9em;
+    opacity: 0.85;
+}
+.change-preview {
+    max-height: 45vh;
+    overflow: auto;
+}
+.change-preview table,
+.object-comparison table {
+    width: 100%;
+    border-collapse: collapse;
+}
+.change-preview td,
+.object-comparison td {
+    max-width: 300px;
+    overflow-wrap: anywhere;
 }
 @media (max-width: 400px) {
     main {

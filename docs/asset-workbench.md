@@ -11,6 +11,52 @@ The Asset Workbench is the extension's bottom-panel inspector for INI-linked spr
 5. Use **Browse assets** for the project library, or open a resource directly in its custom editor. The editor attempts to recover the asset's rules/art owner. **Keep for comparison** retains a media snapshot and synchronizes the view; **Clear comparison** releases it.
 6. Use **Check project resources** for an explicit, cancellable audit. It does not run automatically when editing.
 
+## Project objects and safe edits
+
+Use **Browse project objects** from the command palette or **Project objects** in the workbench. Search matches IDs, translated CSF names, type and source paths. Category/type filters and favorites narrow the catalogue; pages contain at most 100 rows. Select 2–8 objects to compare effective attributes, or up to 1,000 to prepare a batch change. Set, add and percentage operations display old/new values and destination files before applying. Changing the inputs or selection invalidates that preview. Saving remains explicit, and VS Code provides native undo.
+
+The inspector's **Attributes** tab shows winning and overridden declarations with their source and inheritance path. Editing inherited values creates an override in the inspected object's last local section. Read-only archive sources and objects outside the effective load context cannot be edited here. Removing a declaration removes duplicates in that selected section block, keeps inline comments as standalone comments, then recalculates the value. It does not remove overrides in other repeated section blocks.
+
+Configure **Project entry INIs** to select rules/art/sound roots. Paths are relative to the mod root; included files inherit the root's category. Entry array order and include traversal determine precedence, with later visited files winning. This is an extension load context, not a guarantee that every engine or patch loader behaves identically. Without entries, editor context retains current-document precedence. Missing includes and incomplete indexing remain visible while editing known declarations; review these before relying on effective values from a partial graph. Changed parents or resources invalidate a prepared batch.
+
+```jsonc
+{
+    "ra2-ini-intellisense.project.entryPoints": {
+        "rules": ["Rules/ruleses.ini"],
+        "art": ["Rules/artes.ini"],
+        "sound": ["Rules/soundes.ini"]
+    },
+    "ra2-ini-intellisense.project.objectColumns": ["Strength", "Cost", "Speed", "Armor"]
+}
+```
+
+## Preview environments
+
+**Choose background image** accepts local PNG/JPEG/WebP files up to 8 MiB. Images are downsampled to at most 2,048 pixels per dimension. **360° panorama sky** uses a 2:1 equirectangular image and switches voxel viewing to perspective. The sky follows camera orientation using the model camera's field of view; it supplies scenery, not environment lighting. Images are personal to the current webview session. Transparent PNG export continues to contain the asset itself.
+
+Both primary and auxiliary voxel lighting are reconstructed in the current camera basis from the authored game-view direction. Orbiting preserves the screen-space light direction; dragging the light orb changes that direction. The original game camera retains the project's original light vector. Applying light edits writes authored values, not transient camera-transformed vectors.
+
+## Maps
+
+The map editor title-bar preview button opens the bottom-panel inspector. It displays the embedded radar preview when present, map/basic/lighting metadata, and links to map sections. Wheel zoom, drag pan and reset work on map images. Embedded previews are labeled because they can be stale. The older **Preview Map to Side** command remains available.
+
+Full rendering requires the CNCMaps JSON `--worker` backend used by `ra2rmg-rs`; a legacy CNCMaps executable is not necessarily compatible. No renderer binary or game data is bundled. Configure the complete resource context, then click **Render current map** in a trusted workspace:
+
+```jsonc
+{
+    "ra2-ini-intellisense.maps.renderer": {
+        "executable": "C:/Tools/CNCMaps/CNCMaps.Renderer.exe",
+        "mixDirectory": "E:/Games/YurisRevenge",
+        "modDirectories": ["E:/MyMod/Rules", "E:/MyMod/Resources"],
+        "rulesFiles": ["ruleses.ini"],
+        "artFiles": ["artes.ini"],
+        "extraMixes": []
+    }
+}
+```
+
+The extension sends an unsaved-text snapshot through a temporary map, runs the worker without a shell, supports cancellation and a two-minute timeout, and removes its temporary files afterward. A changed map invalidates an in-flight result. Output is limited to 64 MiB and 64M pixels. Worker-protocol, cancellation and cleanup are covered by subprocess tests; final visual fidelity still requires acceptance against a compatible installed renderer and the project's game data. This view does not place or edit units on maps.
+
 ## Configuration
 
 Split mod layouts such as `ES/Rules/*.ini` and `ES/Resources/Models/*.vxl` share the `ES` catalog. Opening only `Rules` or `Resources`, nested INI includes, and directly opened resources use that same mod root, including root MIX archives. Sibling resource changes are watched even outside the open workspace folder. `validationFolderPath` supplies an explicit project root for documents within that directory; additional asset locations use `media.resourceRoots`. Root resolution is cached and refreshed after workspace/configuration or catalog changes.
@@ -107,6 +153,8 @@ npx @vscode/vsce package --no-dependencies
 `npm test` launches the real extension development host. Tests cover malformed binary inputs, exact token ranges, dictionaries, rules/art/sound chains, project isolation, unsaved edits, MIX hash/range lookup, encrypted headers, cache ownership and native undo/stale edit protection. Fixtures are generated in temporary directories and cleanup validates those paths.
 
 Optional read-only mod acceptance uses `RA2_WORKBENCH_REAL_PROJECT` and `RA2_WORKBENCH_DICTIONARY` to check GACNST, P_EXPA_120B, TanyaPrimeSelect and ALIFV, writing `out/real-media-acceptance.json`. For a dedicated UI run, set `RA2_WORKBENCH_TEST_PATTERN=out/test/real-project-media.test.js`, `RA2_WORKBENCH_UI_PORT=9328` and `RA2_WORKBENCH_VERIFY_PANEL=1`. This verifies actual hover PNGs, rendered automatic panel content, retained editor focus and suppression after manual close. The dictionary setting is restored after the test.
+
+Release acceptance must also cover the installed bundle. On Windows, set `RA2_WORKBENCH_TEST_CODE` to the `Code.exe` being tested and run `node scripts/test-installed-vsix.cjs <vsix-path>` after compiling the tests; a separate minimal test driver ensures the installed extension is used, with an isolated profile and extension directory under `out`. Use a separate `RA2_WORKBENCH_TEST_USER_DATA` for each VS Code version. The native UI check also clicks the hover's View asset link after manually closing the panel. Opening failures remain retryable; if an extension update has not registered the new view contribution, the extension offers Reload Window instead of silently failing.
 
 The ES catalog survey writes `out/real-project-catalog.json` with every registered infantry, vehicle, aircraft and building resource match or miss. Set `RA2_WORKBENCH_WORKSPACE=E:/Extreme Starry/Rules` to assert that the actual development host opens a child-folder workspace, `RA2_WORKBENCH_SURVEY_DECODE=1` to decode representatives across resource directories, and `RA2_WORKBENCH_SURVEY_BINARY=1` to validate every loose Resources SHP/VXL header/span structure plus the first populated SHP frame. Binary failures remain in the report; a resolved registered entry does not by itself prove full scene or animation playback.
 

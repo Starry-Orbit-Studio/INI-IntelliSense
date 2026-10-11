@@ -15,3 +15,20 @@ export function authoredLight(native: number[]): number[] {
 export function nativeNormal(normal: number[]): number[] {
     return [...normal];
 }
+
+/** Keep the authored game-view light fixed on screen while the inspection camera orbits. */
+export function cameraLockedLight(light: number[], yaw: number, pitch: number): number[] {
+    const y = (yaw * Math.PI) / 180,
+        p = (pitch * Math.PI) / 180;
+    const axes = [
+        [Math.cos(y), -Math.sin(y), 0],
+        [Math.sin(y) * Math.sin(p), Math.cos(y) * Math.sin(p), Math.cos(p)],
+        [-Math.sin(y) * Math.cos(p), -Math.cos(y) * Math.cos(p), Math.sin(p)],
+    ];
+    const coordinates = [GAME_LIGHT_FRAME.right, GAME_LIGHT_FRAME.up, GAME_LIGHT_FRAME.eye].map((axis) =>
+        axis.reduce((sum, value, index) => sum + value * light[index], 0)
+    );
+    return [0, 1, 2].map((index) =>
+        axes.reduce((sum, axis, coordinate) => sum + axis[index] * coordinates[coordinate], 0)
+    );
+}

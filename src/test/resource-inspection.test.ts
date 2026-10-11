@@ -48,6 +48,7 @@ suite('Project-scoped media integration', () => {
         const remapBytes = shpFixture(0);
         remapBytes.set([16, 17, 31, 32], 32);
         await Promise.all([
+            writeFile(path.join(directory, 'art-entry.ini'), '[#include]\n0=art.ini\n'),
             ...['anim', 'cameo'].map((name) =>
                 writeFile(path.join(directory, name + '.pal'), new Uint8Array(768).fill(32))
             ),
@@ -232,6 +233,53 @@ suite('Project-scoped media integration', () => {
                         : layers.find((layer) => layer.tag === tag);
                 assert.strictEqual(layer?.remap, false, tag);
             }
+        }
+    });
+    test('object catalogue resolves typed objects and targets the final repeated owner section', async () => {
+        const catalog = await service.catalog(rules.uri, token.token);
+        const tank = [...catalog.objects!.values()].find(
+            (object) => object.name === 'Tank' && object.category === 'rules'
+        )!;
+        assert.strictEqual(tank.type, 'UnitType');
+        assert.strictEqual(tank.properties.get('image')?.effective.value, 'TankArt');
+        assert.strictEqual(tank.properties.get('fireangle')?.effective.value, '32');
+        const definitions = service.ini.sources(rules.uri, 'Tank', 'rules');
+        assert.strictEqual(
+            tank.source.section.startLine,
+            definitions.filter((item) => item.document.uri.toString() === rules.uri.toString()).at(-1)!.section
+                .startLine
+        );
+        assert.ok(catalog.isCurrent?.());
+        service.ini.invalidate();
+        assert.strictEqual(catalog.isCurrent?.(), false);
+    });
+    test('configured entry graph excludes unrelated files and remains stable across active editors', async () => {
+        const configuration = vscode.workspace.getConfiguration('ra2-ini-intellisense', rules.uri);
+        const before = configuration.inspect('project.entryPoints')?.globalValue;
+        try {
+            await configuration.update(
+                'project.entryPoints',
+                { rules: ['rules.ini'], art: ['art-entry.ini'], sound: ['sound.ini'] },
+                vscode.ConfigurationTarget.Global
+            );
+            service.ini.invalidate();
+            await service.ini.load(rules.uri);
+            const snapshot = service.ini.snapshot(rules.uri);
+            assert.ok(snapshot.context.configured);
+            assert.strictEqual(snapshot.context.documents, 4);
+            assert.strictEqual(snapshot.sources('GACNST', 'art').length, 0);
+            assert.strictEqual(snapshot.sources('TankArt', 'art').length, 2);
+            assert.strictEqual(service.ini.effective(art.uri, 'Tank', 'rules').get('image')?.value, 'TankArt');
+            service.ini.invalidate();
+            assert.strictEqual(snapshot.isCurrent(), false);
+            assert.strictEqual(
+                snapshot.sources('TankArt', 'art').length,
+                2,
+                'frozen source order survives invalidation'
+            );
+        } finally {
+            await configuration.update('project.entryPoints', before, vscode.ConfigurationTarget.Global);
+            service.ini.invalidate();
         }
     });
     test('untyped keys infer media from declared targets, preserving typed scalars and unknown targets', async () => {

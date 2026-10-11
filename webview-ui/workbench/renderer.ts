@@ -1,6 +1,6 @@
 import { voxelTransform, normalTransform, transformPoint } from '../../src/media/voxel-math';
 import type { MediaPayload } from '../../src/context/workbench-protocol';
-import { nativeLight, authoredLight, GAME_LIGHT_FRAME } from '../../src/media/voxel-light';
+import { nativeLight, authoredLight, GAME_LIGHT_FRAME, cameraLockedLight } from '../../src/media/voxel-light';
 import { voxelCamera, orbitVoxelCamera } from '../../src/media/voxel-camera';
 import { spriteBounds } from '../../src/media/sprite-raster';
 import { spriteClip } from '../../src/media/sprite-playback';
@@ -372,9 +372,9 @@ export function voxelRenderer(
         const length = Math.hypot(...settings.light) || 1;
         gl.uniform3fv(
             uniform('light'),
-            nativeLight(settings.light).map((value) => value / length)
+            nativeLight(cameraLockedLight(settings.light, settings.yaw, settings.pitch)).map((value) => value / length)
         );
-        gl.uniform3fv(uniform('eye'), [0, 0, 1]);
+        gl.uniform3fv(uniform('eye'), cameraLockedLight([0, 0, 1], settings.yaw, settings.pitch));
         gl.uniform3fv(
             uniform('house'),
             settings.color.map((value) => value / 255)

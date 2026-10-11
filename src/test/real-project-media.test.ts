@@ -32,6 +32,21 @@ suite('Optional real mod acceptance', () => {
         }
         const extension = vscode.extensions.getExtension('Astralette.ra2-ini-intellisense')!;
         await extension.activate();
+        if (process.env.RA2_WORKBENCH_VERIFY_PANEL) {
+            const commands = await vscode.commands.getCommands(true);
+            assert.ok(commands.includes('ra2-ini-intellisense.inspect'));
+            assert.ok(
+                commands.includes('ra2-object-inspector.focus'),
+                'VS Code registers the contributed inspector view'
+            );
+            if (process.env.RA2_WORKBENCH_TEST_VSIX) {
+                assert.notStrictEqual(
+                    path.resolve(extension.extensionPath),
+                    path.resolve(__dirname, '..', '..'),
+                    'acceptance test must load the installed VSIX, not the development extension'
+                );
+            }
+        }
         const subscriptions: vscode.Disposable[] = [];
         const context = {
             subscriptions,
@@ -51,6 +66,33 @@ suite('Optional real mod acceptance', () => {
         try {
             const origin = vscode.Uri.file(path.join(root, 'Rules', 'ruleses_AL.ini'));
             await service.ini.load(origin);
+            if (process.env.RA2_WORKBENCH_VERIFY_CATALOG) {
+                const started = Date.now();
+                const catalog = await service.catalog(origin, token.token);
+                const tank = [...catalog.objects!.values()].find(
+                    (object) => object.name === 'ALTNK' && object.category === 'rules'
+                );
+                assert.strictEqual(tank?.type, 'UnitType');
+                assert.ok(catalog.isCurrent?.());
+                report.push({
+                    objectCatalog: catalog.objects!.size,
+                    elapsedMs: Date.now() - started,
+                    serializedBytes: Buffer.byteLength(JSON.stringify(catalog.inspection)),
+                    tankImage: tank.properties.get('image')?.effective.value,
+                });
+                if (process.env.RA2_WORKBENCH_PLATFORM_UI_PORT) {
+                    await vscode.commands.executeCommand('ra2-ini-intellisense.browseObjects', origin);
+                    const verify: (
+                        port: number,
+                        output: string
+                    ) => Promise<void> = require('../../scripts/verify-vscode-platform.cjs');
+                    await verify(
+                        Number(process.env.RA2_WORKBENCH_PLATFORM_UI_PORT),
+                        path.join(extension.extensionPath, 'out', 'webview-qa', 'vscode-platform.png')
+                    );
+                    report.push({ nativeCatalogBatchPreview: true });
+                }
+            }
             for (const file of ['artes.ini', 'artes_AL.ini', 'artes_Regular.ini', 'artes_Explosion.ini']) {
                 assert.strictEqual(service.ini.category(vscode.Uri.file(path.join(root, 'Rules', file))), 'art', file);
             }
@@ -119,6 +161,7 @@ suite('Optional real mod acceptance', () => {
                     path.join(extension.extensionPath, 'out', 'webview-qa', 'vscode-unknown-animation.png'),
                     async () => {
                         await vscode.commands.executeCommand('workbench.action.focusActiveEditorGroup');
+                        editor.selection = new vscode.Selection(effectPosition, effectPosition);
                         await vscode.commands.executeCommand('editor.action.showHover');
                     },
                     'MirageAnimAE',
@@ -316,7 +359,12 @@ suite('Optional real mod acceptance', () => {
                         Number(process.env.RA2_WORKBENCH_UI_PORT),
                         path.join(extension.extensionPath, 'out', 'webview-qa', 'vscode-hover.png'),
                         async () => {
-                            await vscode.commands.executeCommand('workbench.action.focusActiveEditorGroup');
+                            const hovered = await vscode.window.showTextDocument(document, {
+                                viewColumn: editor.viewColumn,
+                                preserveFocus: false,
+                            });
+                            hovered.selection = new vscode.Selection(line, 1, line, 1);
+                            hovered.revealRange(new vscode.Range(line, 0, line, 1));
                             await vscode.commands.executeCommand('editor.action.showHover');
                         },
                         name,

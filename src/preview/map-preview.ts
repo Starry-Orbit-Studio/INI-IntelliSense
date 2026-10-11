@@ -14,6 +14,10 @@ export function createMapPreview(bytes: Uint8Array, title: string): RgbaImagePre
             };
         }
 
+        if (previewSize.width < 1 || previewSize.height < 1 || previewSize.width * previewSize.height > 16 * 1024 * 1024 || packedBase64.length > 64 * 1024 * 1024) {
+            throw new Error('Map preview exceeds the decoding limit.');
+        }
+
         const packedBytes = Uint8Array.from(Buffer.from(packedBase64, 'base64'));
         const pixelData = decompressBlocks(packedBytes);
         const expectedLength = previewSize.width * previewSize.height * 3;
@@ -123,12 +127,15 @@ function getKeyValue(sectionText: string, key: string): string | undefined {
 
 function decompressBlocks(source: Uint8Array): Uint8Array {
     let offset = 0;
+    let expanded = 0;
     const chunks: Uint8Array[] = [];
 
     while (offset + 4 <= source.byteLength) {
         const view = new DataView(source.buffer, source.byteOffset + offset, 4);
         const inputSize = view.getUint16(0, true);
         const outputSize = view.getUint16(2, true);
+        expanded += outputSize;
+        if (expanded > 48 * 1024 * 1024) { throw new Error('Map preview exceeds the decoding limit.'); }
         const block = source.slice(offset + 4, offset + 4 + inputSize);
         if (block.byteLength !== inputSize) {
             break;

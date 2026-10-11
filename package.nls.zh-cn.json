@@ -65,5 +65,11 @@
     "configuration.media.theater": "建筑 NewTheater、Theater 文件名与自定义色盘的战区后缀：tem、sno、urb、ubn、lun、des。",
     "configuration.media.semanticRules": "额外的上下文资源语义规则，首个匹配项生效，不改变字典中的验证类型。",
     "configuration.media.autoReveal": "首次选中有效素材节时自动显示底部工作台，每个窗口会话只显示一次并保留编辑器焦点。",
-    "configuration.media.excludedDirectories": "素材发现时跳过的目录名称，默认排除临时缓存和工具副本；显式配置的素材根目录仍会扫描。"
+    "configuration.media.excludedDirectories": "素材发现时跳过的目录名称，默认排除临时缓存和工具副本；显式配置的素材根目录仍会扫描。",
+    "command.browseObjects.title": "浏览项目对象",
+    "command.configureProject.title": "配置项目入口 INI",
+    "configuration.project.entryPoints": "按文件类别（rules、art、sound）指定相对于 Mod 根目录的入口 INI；仅入口及其包含文件参与解析。留空使用编辑器上下文。",
+    "configuration.project.objectColumns": "项目对象浏览器显示的 INI 属性列（最多 12 列）。",
+    "command.previewMap.title": "预览当前地图",
+    "configuration.maps.renderer": "可选的 CNCMaps --worker JSON 后端，协议与 ra2rmg-rs 一致。executable、mixDirectory 必须是绝对路径；通过 modDirectories、rulesFiles、artFiles、extraMixes 指定项目加载资源。仅在受信任工作区显式点击渲染时运行。"
 }

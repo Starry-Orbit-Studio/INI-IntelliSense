@@ -10,6 +10,10 @@
 
 ### Asset Workbench and Cursor-following Inspector
 
+**Browse project objects** opens a searchable, filterable catalogue with favorites, configurable property columns, object comparison and reviewed set/add/percentage batch changes. The inspector's **Attributes** tab exposes effective and overridden declarations, local override editing and native undo. Dictionary constraints and document snapshots are checked before writes. **Configure project entry INIs** limits rules/art/sound resolution to explicit roots and includes, with missing sources reported in the context summary.
+
+Previews support reference images and perspective panorama skies, with primary and auxiliary voxel lighting fixed relative to the camera. The map title-bar preview opens a bottom-panel inspector with zoom, pan, metadata and section links. Full rendering optionally uses the CNCMaps worker protocol shared with `ra2rmg-rs`; configure a compatible executable and game resources. Embedded radar imagery and freshly rendered maps are labeled separately. See the [configuration examples](docs/asset-workbench.md).
+
 The **Asset Workbench** defaults to the bottom panel and reveals once on the first valid resource section while preserving editor focus. Closing it does not cause repeated popups. Cursor movement resolves the section type, effective properties, inheritance sources, icon and assets. Pin an object or move the view to your preferred location. Section headers and image references support inline thumbnails; reference hovers show animated PNG images with actions appropriate to the media type.
 
 - **Precise references**: target the selected member of `AnimList`, resolve `VoiceMove` through sound sections, and audition individual whitespace/comma-separated `Sounds` samples.
