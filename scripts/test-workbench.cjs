@@ -157,6 +157,60 @@ async function main() {
                 value.id
             );
         };
+        const remapBytes = shpFixture(0);
+        remapBytes.set([16, 17, 31, 32], 32);
+        const ordinary = {
+            ...sprite,
+            bytes: Buffer.from(remapBytes).toString('base64'),
+            file: readShp(remapBytes),
+            remap: false,
+            actions: [],
+        };
+        for (const remap of [false, true]) {
+            const state = inspection('remap-' + remap, { ...ordinary, remap });
+            state.cameos = [{ tag: 'Cameo', media: ordinary }];
+            await send(state);
+            await page.waitForFunction(
+                () =>
+                    document.querySelector('.sprite-canvas')?.getContext('2d').getImageData(0, 0, 1, 1).data[3] === 255
+            );
+            assert.equal(await page.getByLabel(labels.remap, { exact: true }).count(), remap ? 1 : 0);
+            if (remap) {
+                await page.getByLabel(labels.remap, { exact: true }).fill('#00ff00');
+                await page.getByLabel(labels.remap, { exact: true }).dispatchEvent('input');
+            }
+            const expected = remap ? [0, 255, 0] : [16, 16, 16];
+            await page.waitForFunction(
+                (rgb) =>
+                    [...document.querySelector('.sprite-canvas').getContext('2d').getImageData(0, 0, 1, 1).data]
+                        .slice(0, 3)
+                        .join() === rgb.join(),
+                expected
+            );
+            await page.waitForFunction(
+                () => document.querySelector('.cameo')?.getContext('2d').getImageData(0, 0, 1, 1).data[3] === 255
+            );
+            assert.deepEqual(
+                await page
+                    .locator('.cameo')
+                    .evaluate((c) => [...c.getContext('2d').getImageData(0, 0, 1, 1).data].slice(0, 3)),
+                [16, 16, 16]
+            );
+            await page.getByRole('button', { name: labels.contact, exact: true }).click();
+            await page.waitForFunction(
+                (rgb) =>
+                    [
+                        ...(document.querySelector('.contact-thumbnail')?.getContext('2d').getImageData(0, 0, 1, 1)
+                            .data ?? []),
+                    ]
+                        .slice(0, 3)
+                        .join() === rgb.join(),
+                expected
+            );
+            await page.getByRole('button', { name: labels.exportPng, exact: true }).click();
+            const exported = await page.evaluate(() => window.messages.filter((m) => m.type === 'export').at(-1));
+            assert.deepEqual([...Buffer.from(exported.pixels, 'base64').subarray(0, 3)], expected);
+        }
         await send(inspection('sprite', sprite));
         await page.waitForFunction(() => {
             const c = document.querySelector('.sprite-canvas');
@@ -381,6 +435,56 @@ async function main() {
         const beforeLight = await page
             .locator('.light-value')
             .evaluateAll((inputs) => inputs.map((input) => input.value));
+        const lightingSnapshot = async () =>
+            page
+                .locator('.voxel-overlay')
+                .first()
+                .evaluate((overlay) => {
+                    const gl = overlay.parentElement.querySelector('canvas:not(.voxel-overlay)').getContext('webgl2');
+                    const program = gl.getParameter(gl.CURRENT_PROGRAM);
+                    const uniform = (name) => Array.from(gl.getUniform(program, gl.getUniformLocation(program, name)));
+                    return {
+                        light: uniform('light'),
+                        secondary: uniform('eye'),
+                        normal: uniform('normalMatrix'),
+                        projection: uniform('projection'),
+                        orb: Array.from(overlay.getContext('2d').getImageData(overlay.width - 100, 16, 84, 84).data),
+                    };
+                });
+        const lightingBeforeOrbit = await lightingSnapshot();
+        const orbitBounds = await page.locator('.voxel-overlay').first().boundingBox();
+        await page.mouse.move(orbitBounds.x + orbitBounds.width - 160, orbitBounds.y + orbitBounds.height - 130);
+        await page.mouse.down();
+        await page.mouse.move(orbitBounds.x + orbitBounds.width - 195, orbitBounds.y + orbitBounds.height - 140, {
+            steps: 5,
+        });
+        await page.mouse.up();
+        const lightingAfterOrbit = await lightingSnapshot();
+        assert.notDeepEqual(
+            lightingBeforeOrbit.projection,
+            lightingAfterOrbit.projection,
+            'orbit changes the inspection camera'
+        );
+        for (const field of ['light', 'secondary', 'normal', 'orb']) {
+            assert.deepEqual(
+                lightingBeforeOrbit[field],
+                lightingAfterOrbit[field],
+                'orbit must keep ' + field + ' fixed in game space'
+            );
+        }
+        assert.deepEqual(
+            await page.locator('.light-value').evaluateAll((inputs) => inputs.map((input) => input.value)),
+            beforeLight
+        );
+        // Middle-drag over the orb is still camera pan, never a light edit.
+        await page.mouse.move(orb.x, orb.y);
+        await page.mouse.down({ button: 'middle' });
+        await page.mouse.move(orb.x + 10, orb.y + 8, { steps: 3 });
+        await page.mouse.up({ button: 'middle' });
+        assert.deepEqual(
+            await page.locator('.light-value').evaluateAll((inputs) => inputs.map((input) => input.value)),
+            beforeLight
+        );
         await page.mouse.move(orb.x, orb.y);
         await page.mouse.down();
         await page.mouse.move(orb.x + 18, orb.y - 12, { steps: 5 });

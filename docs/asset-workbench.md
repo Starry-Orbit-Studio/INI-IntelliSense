@@ -1,4 +1,6 @@
-# Asset Workbench
+# Asset Workbench: Usage and Development Guide
+
+The Asset Workbench is the extension's bottom-panel inspector for INI-linked sprites, voxel models and audio. This guide covers how to use and configure it, how its resource and rendering layers fit together, and how to verify changes. See the [user overview](../README.md#asset-workbench-and-cursor-following-inspector) for the feature summary and the [changelog](../CHANGELOG.md) for release history.
 
 ## User workflow
 
@@ -14,6 +16,8 @@
 Split mod layouts such as `ES/Rules/*.ini` and `ES/Resources/Models/*.vxl` share the `ES` catalog. Opening only `Rules` or `Resources`, nested INI includes, and directly opened resources use that same mod root, including root MIX archives. Sibling resource changes are watched even outside the open workspace folder. `validationFolderPath` supplies an explicit project root for documents within that directory; additional asset locations use `media.resourceRoots`. Root resolution is cached and refreshed after workspace/configuration or catalog changes.
 
 Building images without an explicit `NewTheater` value first use the authored filename, then try theater and generic prefixes. `NewTheater=no` disables the fallback. Theater-suffixed sprites are decoded as SHP and validated by their binary header; terrain TMP files with those suffixes are not SHP sprites. RA2 VXL lighting uses the game's normal table even when a mod model retains legacy limb normal-mode metadata.
+
+House-color remapping follows the rendering context, not the SHP format or palette filename. Technos, building bodies/Bibs/buildup and building animations using the unit drawer remap indices 16–31; ordinary animations remap only with `AltPalette=yes`. Building animation layers respect `ShouldUseCellDrawer` and its project default. Ordinary animations, particles, cameos and unclassified SHPs keep the palette's original colors, and their previews omit the house-color control. An explicit/custom palette alone does not enable or disable remapping. This policy is shared by interactive frames, contact sheets, hover thumbnails, comparisons and PNG exports. Particle `Palette=` is an exact filename in rules; particles otherwise default to `anim.pal`. See the [Phobos animation rules](https://phobos.readthedocs.io/en/stable/Fixed-or-Improved-Logics.html#animations) and [Ares particle palettes](https://ares-developers.github.io/Ares-docs/new/particles.html).
 
 ```jsonc
 {

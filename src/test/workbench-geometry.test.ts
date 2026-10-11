@@ -1,13 +1,23 @@
 import * as assert from 'assert';
-import { voxelCamera } from '../media/voxel-camera';
-import { nativeLight, authoredLight, DEFAULT_VOXEL_LIGHT } from '../media/voxel-light';
+import { voxelCamera, orbitVoxelCamera } from '../media/voxel-camera';
+import { nativeLight, authoredLight, DEFAULT_VOXEL_LIGHT, GAME_LIGHT_FRAME } from '../media/voxel-light';
 import { foundationPoints, buildingPoint, moveBuildingPoint } from '../media/building-coordinates';
 import { paletteName, artPaletteName } from '../media/palette-policy';
 import { spriteClip } from '../media/sprite-playback';
 import { projectLighting } from '../media/project-lighting';
 import { mediaCapabilities } from '../media/media-capabilities';
+import { spriteRemap } from '../media/sprite-remap';
 
 suite('Workbench projection and policy', () => {
+    test('SHP house colors follow the drawer rather than the format or palette filename', () => {
+        assert.strictEqual(spriteRemap('techno'), true);
+        assert.strictEqual(spriteRemap('animation'), false);
+        assert.strictEqual(spriteRemap('animation', true), true);
+        assert.strictEqual(spriteRemap('animation', false, true), true);
+        for (const role of ['cameo', 'particle', 'raw'] as const) {
+            assert.strictEqual(spriteRemap(role, true, true), false);
+        }
+    });
     test('project lighting rejects invalid vectors and shares media capability rules', () => {
         assert.deepStrictEqual(projectLighting('0.2,-0.9,-0.3', 'yes'), { light: [0.2, -0.9, -0.3], fixed: true });
         for (const value of ['0,0,0', '1,,2', 'NaN,1,2', '1,2']) {
@@ -23,6 +33,30 @@ suite('Workbench projection and policy', () => {
         assert.deepStrictEqual(authoredLight(nativeLight([1, 2, 3])), [1, 2, 3]);
     });
     for (const mode of ['game', 'perspective']) {
+        test(mode + ' orbit makes a camera-facing surface follow the horizontal and vertical pointer', () => {
+            for (const yaw of [-135, -45, 0, 90]) {
+                const options = { mode, yaw, pitch: 30, zoom: 1, fit: false };
+                const before = voxelCamera(options, [0, 0, 0], [20, 20, 20], 600, 300);
+                const surface = before.eye.map((value) => value * 10);
+                for (const [dx, dy] of [
+                    [-10, 0],
+                    [10, 0],
+                    [0, -10],
+                    [0, 10],
+                ]) {
+                    const after = voxelCamera(
+                        { ...options, ...orbitVoxelCamera(yaw, 30, dx, dy) },
+                        [0, 0, 0],
+                        [20, 20, 20],
+                        600,
+                        300
+                    );
+                    const start = before.project(surface),
+                        end = after.project(surface);
+                    assert.ok(dx ? (end[0] - start[0]) * dx > 0 : (end[1] - start[1]) * dy > 0);
+                }
+            }
+        });
         test(mode + ' point dragging preserves screen movement and GPU projection', () => {
             const camera = voxelCamera(
                 { mode, yaw: -45, pitch: 35.264, zoom: 1, fit: false },
@@ -44,6 +78,18 @@ suite('Workbench projection and policy', () => {
             assert.ok(Math.abs((1 - component(1) / component(3)) * 150 - before[1]) < 0.001);
         });
     }
+    test('light control keeps the native game frame while inspection camera orbits', () => {
+        const game = voxelCamera(
+            { mode: 'game', yaw: -45, pitch: 30, zoom: 1, fit: false },
+            [0, 0, 0],
+            [20, 20, 20],
+            600,
+            300
+        );
+        for (const axis of ['right', 'up', 'eye'] as const) {
+            GAME_LIGHT_FRAME[axis].forEach((value, index) => assert.ok(Math.abs(value - game[axis][index]) < 1e-10));
+        }
+    });
     test('perspective foreshortens distant geometry; game view keeps native pixel scale', () => {
         const camera = voxelCamera(
             { mode: 'perspective', yaw: 0, pitch: 0, zoom: 1, fit: false },

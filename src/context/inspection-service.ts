@@ -10,11 +10,12 @@ import { parseSequenceAction, validateSequence, isShpFilename } from '../media/s
 import { BagSample } from '../media/audio';
 import { localize } from '../i18n';
 import { ProjectIni, EffectiveProperty } from './project-ini';
-import { SemanticReferences, SemanticRule } from './semantic-reference';
+import { SemanticReferences, SemanticRule, SemanticReference } from './semantic-reference';
 import { parsePropertyLine, valueAtCharacter, soundValueAtCharacter } from './ini-position';
 import { Inspection, ActionEdit, PointEdit, SourceLink } from './workbench-protocol';
 import { resolveSpriteScene, spriteCandidates } from './sprite-scene';
-import { artPaletteName } from '../media/palette-policy';
+import { artPaletteName, paletteName } from '../media/palette-policy';
+import { spriteRemap, SpriteRole } from '../media/sprite-remap';
 import { projectLighting } from '../media/project-lighting';
 
 export interface EditCapability {
@@ -75,6 +76,24 @@ export class InspectionService implements vscode.Disposable {
         }
         this.previewTheaters.set(key, theater);
         this.previewChanged.fire(origin);
+    }
+
+    /** Dictionary rules win; unknown keys can reference media declared in the project's registries. */
+    private resolveReference(
+        origin: vscode.Uri,
+        owner: string,
+        category: string,
+        key: string,
+        type: string | undefined,
+        value: string,
+        custom: SemanticRule[]
+    ): SemanticReference | undefined {
+        return this.semantics.resolve(owner, category, key, type, value, custom, (target) => {
+            if (this.ini.sources(origin, target, 'rules').length || this.ini.sources(origin, target, 'art').length) {
+                return this.ini.type(origin, target, 'rules');
+            }
+            return this.ini.sources(origin, target, 'sound').length ? 'Sound' : undefined;
+        });
     }
 
     public dispose(): void {
@@ -158,7 +177,8 @@ export class InspectionService implements vscode.Disposable {
         const rules = vscode.workspace
             .getConfiguration('ra2-ini-intellisense', document.uri)
             .get<SemanticRule[]>('media.semanticRules', []);
-        const reference = this.semantics.resolve(
+        const reference = this.resolveReference(
+            document.uri,
             type,
             category,
             property.key,
@@ -200,7 +220,8 @@ export class InspectionService implements vscode.Disposable {
             .get<SemanticRule[]>('media.semanticRules', []);
         let reference =
             property && position.character <= property.valueEnd
-                ? this.semantics.resolve(
+                ? this.resolveReference(
+                      document.uri,
                       type,
                       category,
                       property.key,
@@ -213,7 +234,8 @@ export class InspectionService implements vscode.Disposable {
         if (category === 'art' && type === 'Unknown') {
             type = this.ownerTypeForArt(document.uri, section.name);
             if (property) {
-                reference = this.semantics.resolve(
+                reference = this.resolveReference(
+                    document.uri,
                     type,
                     category,
                     property.key,
@@ -402,6 +424,9 @@ export class InspectionService implements vscode.Disposable {
                       : (reference.type ?? this.ini.type(document.uri, target, 'rules'));
         }
         let art = this.ini.effective(document.uri, artName, 'art');
+        if (reference && ['object', 'animation'].includes(reference.kind)) {
+            inspection.focusType = targetType;
+        }
         let base = value(art, 'Image') ?? image;
         const audioVisual = this.ini.effective(document.uri, 'AudioVisual', 'rules');
         const numbers = (text?: string): number[] => {
@@ -464,17 +489,28 @@ export class InspectionService implements vscode.Disposable {
         options.theater = selectedTheater;
         inspection.theater = theater;
         const isCameo = property && /^(cameo|altcameo)(pcx)?$/i.test(property.key);
-        options.paletteName = artPaletteName(
-            isCameo ? undefined : value(art, 'CustomPalette'),
-            isCameo ? undefined : value(art, 'Palette'),
-            theater,
-            isCameo
-                ? 'cameo'
-                : options.animation &&
-                    !/^(yes|true|1)$/i.test(value(art, 'Remapable') ?? value(art, 'AltPalette') ?? '')
+        const particle = this.semantics.inherits(targetType, 'ParticleType');
+        const role: SpriteRole = isCameo
+            ? 'cameo'
+            : reference?.kind === 'image' && property?.key.toLowerCase() !== 'image'
+              ? 'raw'
+              : particle
+                ? 'particle'
+                : options.animation
                   ? 'animation'
-                  : 'unit'
-        );
+                  : this.semantics.inherits(targetType, 'TechnoType')
+                    ? 'techno'
+                    : 'raw';
+        options.remap = spriteRemap(role, /^(yes|true|1)$/i.test(value(art, 'AltPalette') ?? ''));
+        const particlePalette = particle ? value(targetProperties, 'Palette') : undefined;
+        options.paletteName = particlePalette
+            ? paletteName(particlePalette, theater, 'animation')
+            : artPaletteName(
+                  isCameo ? undefined : value(art, 'CustomPalette'),
+                  isCameo ? undefined : value(art, 'Palette'),
+                  theater,
+                  isCameo ? 'cameo' : particle || (options.animation && !options.remap) ? 'animation' : 'unit'
+              );
         session.options = options;
         if (reference?.kind === 'lighting' || reference?.kind === 'flh') {
             inspection.focus = property!.key;
@@ -658,6 +694,59 @@ export class InspectionService implements vscode.Disposable {
                 const targetRules = this.ini.effective(document.uri, target, 'rules');
                 const targetArtName = value(targetRules, 'Image') ?? target;
                 const targetArt = this.ini.effective(document.uri, targetArtName, 'art');
+                const memberType = this.ini.type(document.uri, target, 'rules');
+                const animation = reference?.kind === 'animation' || this.semantics.inherits(memberType, 'AnimType');
+                const memberParticle = this.semantics.inherits(memberType, 'ParticleType');
+                const remap = spriteRemap(
+                    isCameo
+                        ? 'cameo'
+                        : direct
+                          ? 'raw'
+                          : memberParticle
+                            ? 'particle'
+                            : animation
+                              ? 'animation'
+                              : this.semantics.inherits(memberType, 'TechnoType')
+                                ? 'techno'
+                                : 'raw',
+                    /^(yes|true|1)$/i.test(value(targetArt, 'AltPalette') ?? '')
+                );
+                const memberPalette = memberParticle ? value(targetRules, 'Palette') : undefined;
+                const memberOptions: MediaOptions = {
+                    ...options,
+                    scene: undefined,
+                    actions: undefined,
+                    points: [],
+                    turret: false,
+                    turretOffset: undefined,
+                    fireAngle: undefined,
+                    animation,
+                    remap,
+                    paletteName: memberPalette
+                        ? paletteName(memberPalette, theater, 'animation')
+                        : artPaletteName(
+                              isCameo ? undefined : value(targetArt, 'CustomPalette'),
+                              isCameo ? undefined : value(targetArt, 'Palette'),
+                              theater,
+                              isCameo ? 'cameo' : memberParticle || (animation && !remap) ? 'animation' : 'unit'
+                          ),
+                    shadow: /^(yes|true|1)$/i.test(
+                        value(targetArt, 'Shadow') ??
+                            value(targetRules, 'Shadow') ??
+                            (this.semantics.inherits(memberType, 'TechnoType') ? 'yes' : 'no')
+                    ),
+                };
+                if (animation && !direct) {
+                    memberOptions.scene = await resolveSpriteScene(
+                        this.ini,
+                        this.resources,
+                        document.uri,
+                        targetArtName,
+                        'animation',
+                        memberOptions,
+                        targetRules
+                    );
+                }
                 const targetBase = direct ? target : (value(targetArt, 'Image') ?? targetArtName);
                 const targetVoxel =
                     this.semantics.inherits(this.ini.type(document.uri, target, 'rules'), 'VoxelAnimType') ||
@@ -666,7 +755,7 @@ export class InspectionService implements vscode.Disposable {
                     ? targetBase
                     : targetBase + (direct ? (reference!.extension ?? '.shp') : targetVoxel ? '.vxl' : '.shp');
                 for (const candidate of await this.resources.find(document.uri, targetFile, token)) {
-                    add(candidate, { ...options, actions: undefined, points: [], turret: false });
+                    add(candidate, memberOptions);
                 }
             }
             if (!found.length) {
@@ -714,7 +803,7 @@ export class InspectionService implements vscode.Disposable {
                     try {
                         const media = await this.media.load(
                             file,
-                            { paletteName: 'cameo.pal', origin: document.uri },
+                            { paletteName: 'cameo.pal', origin: document.uri, remap: false },
                             token
                         );
                         inspection.cameos.push({ tag, media });

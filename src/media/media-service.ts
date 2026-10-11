@@ -25,6 +25,7 @@ export interface MediaOptions {
     palette?: vscode.Uri;
     paletteName?: string;
     animation?: boolean;
+    remap?: boolean;
     shadow?: boolean;
     actions?: ActionEdit[];
     points?: PointEdit[];
@@ -202,6 +203,7 @@ export class MediaService {
                 paletteName: options.paletteName ?? (options.animation ? 'anim.pal' : 'unittem.pal'),
                 actions: options.actions ?? [],
                 shadow: (options.shadow ?? false) && file.frames.length > 1 && file.frames.length % 2 === 0,
+                remap: options.remap ?? false,
                 scene,
             };
         }

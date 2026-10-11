@@ -28,6 +28,7 @@ import { spriteCandidates } from '../context/sprite-scene';
 import { indexMix } from '../resources/mix-resource-index';
 import { nativeLight, authoredLight, nativeNormal } from '../media/voxel-light';
 import { voxelThumbnail } from '../media/voxel-thumbnail';
+import { spriteRaster } from '../media/sprite-raster';
 
 suite('Project-scoped media integration', () => {
     let directory: string,
@@ -44,6 +45,8 @@ suite('Project-scoped media integration', () => {
         other = await mkdtemp(path.join(os.tmpdir(), 'ra2-other-project-'));
         const source =
             '[VehicleTypes]\n0=Tank\n[InfantryTypes]\n0=Soldier\n[Animations]\n0=ExpOne\n1=ExpTwo\n[Tank]\nImage=TankArt\nTurret=yes\nVoiceMove=GuardianGIMove\nAnimList=ExpOne,ExpTwo,ExpOne\n[Soldier]\nImage=SoldierArt\nPreviewArt=preview.pcx\n[AudioVisual]\nVoxelLightSource=0.2,-0.9,-0.3\nUseFixedVoxelLighting=yes\n[Tank]\nFireAngle=32\n';
+        const remapBytes = shpFixture(0);
+        remapBytes.set([16, 17, 31, 32], 32);
         await Promise.all([
             ...['anim', 'cameo'].map((name) =>
                 writeFile(path.join(directory, name + '.pal'), new Uint8Array(768).fill(32))
@@ -51,12 +54,13 @@ suite('Project-scoped media integration', () => {
             writeFile(
                 path.join(directory, 'rules.ini'),
                 source +
-                    '[VoxelAnims]\n0=Fragment\n[Fragment]\nImage=body\n[BuildingTypes]\n9=SceneBuilding\n[General]\nDamageFireTypes=ExpOne\n[SceneBuilding]\nTurretAnim=body\nTurretAnimIsVoxel=yes\nTurretAnimX=8\nDamageSmokeOffset=100,100,275\nDamageParticleSystems=TestSmokeSys\n[TestSmokeSys]\nHoldsWhat=TestSmoke\n[TestSmoke]\nImage=exp1\n[BuildingTypes]\n10=TheaterBuilding\n11=FireOverride\n[TheaterBuilding]\n[FireOverride]\nImage=SceneBuilding\nDamageFireTypes=ExpTwo\n'
+                    '[VoxelAnims]\n0=Fragment\n[Fragment]\nImage=body\n[BuildingTypes]\n9=SceneBuilding\n[General]\nDamageFireTypes=ExpOne\n[SceneBuilding]\nTurretAnim=body\nTurretAnimIsVoxel=yes\nTurretAnimX=8\nDamageSmokeOffset=100,100,275\nDamageParticleSystems=TestSmokeSys\n[TestSmokeSys]\nHoldsWhat=TestSmoke\n[TestSmoke]\nImage=exp1\n[BuildingTypes]\n10=TheaterBuilding\n11=FireOverride\n[TheaterBuilding]\n[FireOverride]\nImage=SceneBuilding\nDamageFireTypes=ExpTwo\n' +
+                    '[Particles]\n0=TestParticle\n1=ExplicitParticle\n2=RulesPaletteParticle\n[TestParticle]\nImage=exp1\n[ExplicitParticle]\nImage=ParticleArt\n[RulesPaletteParticle]\nImage=team-sprite\nPalette=blue.pal\n[MirageAnimAE]\nDuration=1\nAnimation=ExpOne\nUnknownAnimList=ExpOne,ExpTwo\nMixedAnimList=TeamAnim,PlainAnim\nMissingTarget=NotRegistered\nUntypedTarget=PlainSection\n[PlainSection]\nDuration=1\n[Tank]\nLabel=ExpOne\n[Animations]\n2=TeamAnim\n3=PlainAnim\n4=CellAnim\n[InfantryTypes]\n1=RemapSoldier\n[RemapSoldier]\nImage=UnitSprite\n'
             ),
             writeFile(
                 path.join(directory, 'art.ini'),
                 '[TankArt]\nVoxel=yes\nImage=body\nPrimaryFireFLH=100,0,80\nCameo=icon\n[SoldierArt]\nImage=infantry\nSequence=SoldierSequence\n[SoldierSequence]\nReady=0,1,0,2 ; preserved\n[ExpOne]\nImage=exp1\nNext=ExpTwo\n[ExpTwo]\nImage=exp2\n' +
-                    '[TankArt]\nAltCameoPCX=preview.pcx\nTurretOffset=80,-8,16\n[SceneBuilding]\nImage=buildingbody\nCustomPalette=red.pal\nNewTheater=no\nFoundation=2x2\nBibShape=bib\nProductionAnim=Production\nProductionAnimDamaged=DamagedProduction\nActiveAnim=InheritedAnim\nDamageFireOffset0=10,20\n[Production]\nImage=exp1\nCustomPalette=red.pal\n[DamagedProduction]\nImage=exp2\nCustomPalette=blue.pal\n[InheritedAnim]\nImage=exp1\n[TheaterBuilding]\nImage=XGTEST\nNewTheater=yes\nActiveAnim=TheaterAnim\nBibShape=XGTESTBB\nBuildup=XGTESTMK\n[TheaterAnim]\nImage=XGTEST_A\nPalette=effect\n'
+                    '[TankArt]\nAltCameoPCX=preview.pcx\nTurretOffset=80,-8,16\n[SceneBuilding]\nImage=buildingbody\nCustomPalette=red.pal\nNewTheater=no\nFoundation=2x2\nBibShape=bib\nProductionAnim=Production\nProductionAnimDamaged=DamagedProduction\nActiveAnim=InheritedAnim\nActiveAnimTwo=CellAnim\nActiveAnimThree=TeamAnim\nDamageFireOffset0=10,20\n[Production]\nImage=exp1\nCustomPalette=red.pal\nShouldUseCellDrawer=no\n[DamagedProduction]\nImage=exp2\nCustomPalette=blue.pal\nShouldUseCellDrawer=no\n[InheritedAnim]\nImage=exp1\n[TheaterBuilding]\nImage=XGTEST\nNewTheater=yes\nActiveAnim=TheaterAnim\nBibShape=XGTESTBB\nBuildup=XGTESTMK\n[TheaterAnim]\nImage=XGTEST_A\nPalette=effect\n[ParticleArt]\nImage=exp2\nCustomPalette=blue.pal\n[TeamAnim]\nImage=team-sprite\nAltPalette=yes\nRemapable=no\n[PlainAnim]\nImage=team-sprite\nCustomPalette=unittem.pal\nRemapable=yes\n[CellAnim]\nImage=team-sprite\nShouldUseCellDrawer=no\n[UnitSprite]\nImage=team-sprite\nRemapable=no\n'
             ),
             ...['xgtest', 'xatest', 'xgtest_a', 'xatest_a', 'xgtestbb', 'xatestbb', 'xgtestmk', 'xatestmk'].map(
                 (name) => writeFile(path.join(directory, name + '.shp'), shpFixture())
@@ -84,7 +88,9 @@ suite('Project-scoped media integration', () => {
             writeFile(path.join(directory, 'bodytur.vxl'), voxelFixture()),
             writeFile(path.join(directory, 'bodybarl.vxl'), voxelFixture()),
             writeFile(path.join(directory, 'infantry.shp'), shpFixture()),
-            writeFile(path.join(directory, 'icon.shp'), shpFixture()),
+            writeFile(path.join(directory, 'icon.shp'), remapBytes),
+            writeFile(path.join(directory, 'team-sprite.shp'), remapBytes),
+            writeFile(path.join(directory, 'unittem.pal'), new Uint8Array(768).fill(32)),
             writeFile(path.join(directory, 'exp1.shp'), shpFixture()),
             writeFile(path.join(directory, 'exp2.shp'), shpFixture()),
             writeFile(path.join(directory, 'audio.idx'), idxFixture()),
@@ -127,7 +133,7 @@ suite('Project-scoped media integration', () => {
         const media = new MediaService(resources, decoder, extension.extensionUri);
         const schema = new SchemaManager();
         const dictionary =
-            '[Registries]\nVehicleTypes=UnitType\nInfantryTypes=InfantryType\nAnimations=AnimType\n[Sections]\nUnitType=VehicleTypes\nInfantryType=InfantryTypes\nAnimType=Animations\n[ObjectType]\nImage=string\n[TechnoType]:[ObjectType]\nVoiceMove=Sound\nAnimList=AnimList\nPreviewArt=PCXFile\n[UnitType]:[TechnoType]\n[InfantryType]:[TechnoType]\n[AnimType]:[ObjectType]\n[Lists]\nAnimList\n[AnimList]\nType=AnimType\n';
+            '[Registries]\nVehicleTypes=UnitType\nInfantryTypes=InfantryType\nAnimations=AnimType\n[Sections]\nUnitType=VehicleTypes\nInfantryType=InfantryTypes\nAnimType=Animations\n[ObjectType]\nImage=string\n[TechnoType]:[ObjectType]\nVoiceMove=Sound\nAnimList=AnimList\nPreviewArt=PCXFile\nLabel=string\n[UnitType]:[TechnoType]\n[InfantryType]:[TechnoType]\n[AnimType]:[ObjectType]\n[Lists]\nAnimList\n[AnimList]\nType=AnimType\n';
         await writeFile(path.join(directory, 'dictionary.ini'), dictionary);
         schema.loadSchema(dictionary, path.join(directory, 'dictionary.ini'));
         assert.ok(schema.isSchemaLoaded());
@@ -145,6 +151,138 @@ suite('Project-scoped media integration', () => {
             assert.strictEqual(path.dirname(path.resolve(folder)), path.resolve(os.tmpdir()));
             assert.ok(/^ra2-(workbench|other-project)-/.test(path.basename(folder)));
             await rm(folder, { recursive: true, force: true });
+        }
+    });
+    test('sprite roles preserve ordinary palette colors and remap only game drawers', async () => {
+        const lines = rules.getText().split('\n');
+        for (const [name, remap, palette] of [
+            ['TeamAnim', true, 'unittem.pal'],
+            ['PlainAnim', false, 'unittem.pal'],
+            ['CellAnim', false, 'anim.pal'],
+            ['RemapSoldier', true, 'unittem.pal'],
+            ['RulesPaletteParticle', false, 'blue.pal'],
+        ] as const) {
+            // Animation registrations are references too; inspect their art headers.
+            const document = name.endsWith('Anim') ? art : rules;
+            const line = document
+                .getText()
+                .split('\n')
+                .indexOf('[' + name + ']');
+            const session = (await service.inspect(document, new vscode.Position(line, 0), token.token))!;
+            const media = session.inspection.media;
+            assert.strictEqual(media?.kind, 'sprite', name);
+            if (media?.kind !== 'sprite') {
+                continue;
+            }
+            assert.strictEqual(media.remap, remap, name);
+            assert.strictEqual(session.options.paletteName, palette, name);
+            const raster = spriteRaster(
+                Buffer.from(media.bytes, 'base64'),
+                media.file,
+                media.palette,
+                0,
+                false,
+                [255, 0, 0],
+                media.remap
+            );
+            assert.deepStrictEqual(
+                [...raster.pixels.slice(0, 3)],
+                remap ? [255, 0, 0] : palette === 'blue.pal' ? [0, 0, 252] : [128, 128, 128],
+                name
+            );
+        }
+        const mixedLine = lines.findIndex((line) => line.startsWith('MixedAnimList='));
+        const mixed = (await service.inspect(rules, new vscode.Position(mixedLine, 0), token.token))!;
+        const candidates = [...mixed.assets.entries()].filter(([, asset]) => asset.candidate.name.endsWith('.shp'));
+        assert.strictEqual(candidates.length, 2);
+        assert.strictEqual(candidates[0][1].options.remap, true);
+        assert.strictEqual(candidates[1][1].options.remap, false);
+        await service.select(mixed, candidates[1][0], token.token);
+        assert.strictEqual(mixed.inspection.media?.kind, 'sprite');
+        if (mixed.inspection.media?.kind === 'sprite') {
+            assert.strictEqual(
+                mixed.inspection.media.scene?.layers.find((layer) => layer.tag === 'body')?.remap,
+                false
+            );
+        }
+        const unit = (await service.inspect(rules, new vscode.Position(lines.indexOf('[Tank]'), 0), token.token))!;
+        const cameo = unit.inspection.cameo;
+        assert.strictEqual(cameo?.kind, 'sprite');
+        if (cameo?.kind === 'sprite') {
+            assert.strictEqual(cameo.remap, false);
+            assert.deepStrictEqual(
+                [...spriteRaster(Buffer.from(cameo.bytes, 'base64'), cameo.file, cameo.palette, 0).pixels.slice(0, 3)],
+                [128, 128, 128]
+            );
+        }
+        const building = (await service.inspect(
+            rules,
+            new vscode.Position(lines.indexOf('[SceneBuilding]'), 0),
+            token.token
+        ))!;
+        if (building.inspection.media?.kind === 'sprite') {
+            const layers = building.inspection.media.scene!.layers;
+            for (const tag of ['body', 'BibShape', 'ActiveAnim', 'ActiveAnimThree']) {
+                assert.strictEqual(layers.find((layer) => layer.tag === tag)?.remap, true, tag);
+            }
+            for (const tag of ['ProductionAnim', 'ActiveAnimTwo', 'DamageFireOffset0']) {
+                const layer =
+                    tag === 'DamageFireOffset0'
+                        ? layers.find((layer) => layer.pointName === tag)
+                        : layers.find((layer) => layer.tag === tag);
+                assert.strictEqual(layer?.remap, false, tag);
+            }
+        }
+    });
+    test('untyped keys infer media from declared targets, preserving typed scalars and unknown targets', async () => {
+        await service.ini.load(rules.uri);
+        const lines = rules.getText().split('\n');
+        for (const [key, target, expected] of [
+            ['Animation', 'ExpOne', 'exp1.shp'],
+            ['UnknownAnimList', 'ExpTwo', 'exp2.shp'],
+        ]) {
+            const line = lines.findIndex((text) => text.startsWith(key + '='));
+            assert.ok(service.isReference(rules, line));
+            const session = (await service.inspect(
+                rules,
+                new vscode.Position(line, lines[line].indexOf(target) + 1),
+                token.token
+            ))!;
+            assert.strictEqual(session.inspection.focus, target);
+            assert.strictEqual(session.inspection.focusType, 'AnimType');
+            assert.strictEqual(session.inspection.media?.name, expected);
+            assert.strictEqual(session.options.paletteName, 'anim.pal');
+            assert.strictEqual(session.replacement?.type, 'AnimType');
+        }
+        for (const key of ['MissingTarget', 'UntypedTarget', 'Label']) {
+            const line = lines.findIndex((text) => text.startsWith(key + '='));
+            assert.strictEqual(service.isReference(rules, line), false, key);
+        }
+    });
+    test('particle section and Image previews default to anim, with explicit art palettes winning', async () => {
+        const lines = rules.getText().split('\n');
+        for (const [name, expected, palette] of [
+            ['TestParticle', 'exp1.shp', 'anim.pal'],
+            ['ExplicitParticle', 'exp2.shp', 'blue.pal'],
+        ]) {
+            const line = lines.indexOf('[' + name + ']');
+            for (const offset of [0, 1]) {
+                const session = (await service.inspect(
+                    rules,
+                    new vscode.Position(line + offset, offset ? 8 : 0),
+                    token.token
+                ))!;
+                assert.strictEqual(session.inspection.type, 'ParticleType');
+                assert.strictEqual(session.inspection.media?.name, expected);
+                assert.strictEqual(session.options.paletteName, palette);
+                if (session.inspection.media?.kind === 'sprite') {
+                    assert.strictEqual(session.inspection.media.remap, false);
+                    assert.deepStrictEqual(
+                        session.inspection.media.palette.slice(0, 3),
+                        palette === 'anim.pal' ? [128, 128, 128] : [0, 0, 252]
+                    );
+                }
+            }
         }
     });
     test('unit context resolves rules → art → body/HVA, turret, barrel, cameo and Phobos light', async () => {
@@ -548,6 +686,8 @@ suite('Project-scoped media integration', () => {
             const repeated = await thumbnails.create(copy, token.token, true);
             assert.strictEqual(animated?.toString(), repeated?.toString());
             assert.notStrictEqual(animated?.toString(), (await thumbnails.create(copy, token.token))?.toString());
+            copy.remap = !soldier.remap;
+            assert.notStrictEqual(animated?.toString(), (await thumbnails.create(copy, token.token, true))?.toString());
         }
     });
     test('included art inherits its file category and composes theater body, active animation, buildup and foundation', async () => {

@@ -6,6 +6,7 @@ import { MediaOptions, SpriteSceneRecipe } from '../media/media-service';
 import { SpriteLayer } from './workbench-protocol';
 import { localize } from '../i18n';
 import { artPaletteName } from '../media/palette-policy';
+import { spriteRemap } from '../media/sprite-remap';
 
 const yes = (value?: string) => /^(yes|true|1)$/i.test(value ?? '');
 const value = (properties: Map<string, EffectiveProperty>, name: string) => properties.get(name.toLowerCase())?.value;
@@ -140,26 +141,32 @@ export async function resolveSpriteScene(
         const theater =
             options.theater ??
             vscode.workspace.getConfiguration('ra2-ini-intellisense', origin).get<string>('media.theater', 'tem');
+        const structural = /^(body|buildup|bibshape)$/i.test(tag);
+        const unitDrawer =
+            kind === 'building' &&
+            !pointName &&
+            (structural ||
+                yes(
+                    value(properties, 'ShouldUseCellDrawer') ??
+                        value(ini.effective(origin, 'AudioVisual', 'rules'), 'Anim.ShouldUseCellDrawer') ??
+                        'yes'
+                ));
+        layer.remap =
+            structural && kind === 'building'
+                ? options.remap === true
+                : spriteRemap('animation', yes(value(properties, 'AltPalette')), unitDrawer);
         const resolvedPalette = artPaletteName(
             value(properties, 'CustomPalette'),
             value(properties, 'Palette'),
             theater,
-            (tag !== 'body' || kind === 'animation') &&
-                !yes(value(properties, 'Remapable') ?? value(properties, 'AltPalette'))
-                ? 'animation'
-                : 'unit',
-            kind === 'building' && !pointName ? options.paletteName : undefined
+            layer.remap ? 'unit' : 'animation',
+            unitDrawer ? options.paletteName : undefined
         );
         layer.paletteName = resolvedPalette;
         layer.paletteInherited =
-            kind === 'building' &&
-            !pointName &&
+            unitDrawer &&
             (/^(buildup|bibshape)$/i.test(tag) ||
                 !(value(properties, 'CustomPalette') ?? value(properties, 'Palette')));
-        layer.remap =
-            /^(body|buildup|bibshape)$/i.test(tag) ||
-            yes(value(properties, 'Remapable')) ||
-            (!pointName && !yes(value(properties, 'AltPalette')));
         recipe.layers.push({
             layer,
             candidate,
@@ -169,6 +176,7 @@ export async function resolveSpriteScene(
                 scene: undefined,
                 actions: [],
                 animation: tag !== 'body' || kind === 'animation',
+                remap: layer.remap,
                 shadow: yes(value(properties, 'Shadow') ?? (kind === 'building' && !pointName ? 'yes' : 'no')),
                 paletteName: resolvedPalette,
             },

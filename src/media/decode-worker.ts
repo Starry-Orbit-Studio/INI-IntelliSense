@@ -93,7 +93,9 @@ parentPort?.on(
                             file,
                             message.options?.palette ?? [],
                             message.options?.frame ?? 0,
-                            message.options?.shadow
+                            message.options?.shadow,
+                            undefined,
+                            message.options?.remap === true
                         )
                     );
                     result = encodePng(raster.width, raster.height, raster.pixels);

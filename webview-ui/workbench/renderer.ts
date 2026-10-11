@@ -1,7 +1,7 @@
 import { voxelTransform, normalTransform, transformPoint } from '../../src/media/voxel-math';
 import type { MediaPayload } from '../../src/context/workbench-protocol';
-import { nativeLight, authoredLight } from '../../src/media/voxel-light';
-import { voxelCamera } from '../../src/media/voxel-camera';
+import { nativeLight, authoredLight, GAME_LIGHT_FRAME } from '../../src/media/voxel-light';
+import { voxelCamera, orbitVoxelCamera } from '../../src/media/voxel-camera';
 import { spriteBounds } from '../../src/media/sprite-raster';
 import { spriteClip } from '../../src/media/sprite-playback';
 
@@ -119,6 +119,7 @@ export function spriteRenderer(
             frame,
             shadow: settings.shadow,
             color: settings.color,
+            remap: media.remap === true,
             trim: true,
         });
         canvas.style.width = canvas.width * settings.zoom + 'px';
@@ -332,7 +333,7 @@ export function voxelRenderer(
         | { id: string; axis: number; start: number[]; x: number; y: number; dx: number; dy: number; distance: number }
         | undefined;
     let orbit: { x: number; y: number; yaw: number; pitch: number; pan: number[]; panning: boolean } | undefined;
-    let lightDrag: { x: number; y: number; azimuth: number; elevation: number; start: number[] } | undefined;
+    let lightDrag: { x: number; y: number; start: number[] } | undefined;
     let hoveredPoint = '';
     const camera = () => {
         return voxelCamera(
@@ -522,7 +523,7 @@ export function voxelRenderer(
                 ctx.ellipse(x, y, 36, 12, rotation, 0, Math.PI * 2);
                 ctx.stroke();
             }
-            const view = camera();
+            const view = GAME_LIGHT_FRAME;
             const lx = light.reduce((sum, value, axis) => sum + value * view.right[axis], 0) / length;
             const ly = light.reduce((sum, value, axis) => sum + value * view.up[axis], 0) / length;
             const front = light.reduce((sum, value, axis) => sum + value * view.eye[axis], 0) >= 0;
@@ -550,14 +551,18 @@ export function voxelRenderer(
         if (event.button !== 0 && event.button !== 1 && event.button !== 2) {
             return;
         }
+        // Prevent Chromium's middle-button autoscroll from competing with viewport pan.
+        event.preventDefault();
         const [x, y] = coordinates(event);
-        if (settings.lightGizmo && Math.hypot(x - (overlay.width - 58), y - 58) <= 40) {
-            const light = nativeLight(settings.light);
+        if (
+            settings.lightGizmo &&
+            event.button === 0 &&
+            !event.shiftKey &&
+            Math.hypot(x - (overlay.width - 58), y - 58) <= 40
+        ) {
             lightDrag = {
                 x,
                 y,
-                azimuth: Math.atan2(light[1], light[0]),
-                elevation: Math.atan2(light[2], Math.hypot(light[0], light[1])),
                 start: [...settings.light],
             };
             overlay.setPointerCapture(event.pointerId);
@@ -620,7 +625,7 @@ export function voxelRenderer(
     const move = (event: PointerEvent) => {
         const [x, y] = coordinates(event);
         if (lightDrag) {
-            const turn = (vector: number[], axis: number[], angle: number) => {
+            const turn = (vector: number[], axis: readonly number[], angle: number) => {
                 const c = Math.cos(angle),
                     s = Math.sin(angle);
                 const dot = vector.reduce((sum, value, index) => sum + value * axis[index], 0);
@@ -631,7 +636,7 @@ export function voxelRenderer(
                 ];
                 return vector.map((value, index) => value * c + cross[index] * s + axis[index] * dot * (1 - c));
             };
-            const view = camera();
+            const view = GAME_LIGHT_FRAME;
             settings.light = authoredLight(
                 turn(
                     turn(nativeLight(lightDrag.start), view.up, (x - lightDrag.x) / 36),
@@ -671,8 +676,7 @@ export function voxelRenderer(
                 const delta = camera().screenDelta(center, x - orbit.x, y - orbit.y);
                 settings.pan = orbit.pan.map((value, axis) => value - delta[axis]);
             } else {
-                settings.yaw = orbit.yaw - (x - orbit.x) * 0.4;
-                settings.pitch = Math.max(-85, Math.min(85, orbit.pitch + (y - orbit.y) * 0.3));
+                Object.assign(settings, orbitVoxelCamera(orbit.yaw, orbit.pitch, x - orbit.x, y - orbit.y));
             }
             update();
         } else {

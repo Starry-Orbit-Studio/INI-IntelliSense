@@ -5,7 +5,7 @@ import { sceneRenderer } from './scene-renderer';
 import { DEFAULT_VOXEL_LIGHT } from '../../src/media/voxel-light';
 import { DEFAULT_HOUSE_COLOR } from '../../src/media/render-defaults';
 import { spriteClip } from '../../src/media/sprite-playback';
-import { mediaCapabilities } from '../../src/media/media-capabilities';
+import { mediaCapabilities, mediaUsesRemap } from '../../src/media/media-capabilities';
 
 declare function acquireVsCodeApi(): {
     postMessage(message: unknown): void;
@@ -1009,6 +1009,7 @@ function spriteControls(media: Extract<MediaPayload, { kind: 'sprite' }>, host: 
                     frame: sourceFrame(next),
                     shadow: false,
                     color: settings.color,
+                    remap: media.remap === true,
                 });
             } else {
                 contactWorker?.terminate();
@@ -1042,6 +1043,7 @@ function spriteControls(media: Extract<MediaPayload, { kind: 'sprite' }>, host: 
             frame: sourceFrame(first),
             shadow: false,
             color: settings.color,
+            remap: media.remap === true,
         });
     };
 }
@@ -1452,7 +1454,7 @@ function render(inspection: Inspection): void {
         try {
             renderer = createRenderer(media, visual);
             if (capabilities?.zoom) {
-                commonControls(visual, capabilities.remap);
+                commonControls(visual, mediaUsesRemap(media));
             }
             if (media.kind === 'sprite') {
                 spriteControls(media, visual);
@@ -1514,7 +1516,7 @@ function render(inspection: Inspection): void {
                 file: image.file,
                 palette: image.palette,
             });
-            worker.postMessage({ type: 'frame', id: 0, frame: 0, shadow: false, color: settings.color });
+            worker.postMessage({ type: 'frame', id: 0, frame: 0, shadow: false, remap: false, color: settings.color });
             worker.onmessage = (event) => {
                 if (event.data.type === 'frame') {
                     canvas.width = image.file.width;

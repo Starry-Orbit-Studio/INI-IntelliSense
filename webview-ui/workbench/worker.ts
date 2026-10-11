@@ -56,7 +56,7 @@ self.onmessage = (event: MessageEvent) => {
             file,
             palette,
             message.color,
-            message.remap !== false,
+            message.remap === true,
             !!message.trim
         );
         const output = new Uint8ClampedArray(raster.pixels.buffer);

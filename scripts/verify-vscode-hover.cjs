@@ -60,7 +60,14 @@ module.exports = async function verifyHover(
             }
             await page.waitForTimeout(150);
         }
-        await page.locator('.monaco-hover img[src^="data:image/png;base64,"]').first().waitFor({ timeout: 10000 });
+        try {
+            await page.locator('.monaco-hover img[src^="data:image/png;base64,"]').first().waitFor({ timeout: 10000 });
+        } catch (error) {
+            await mkdir(path.dirname(output), { recursive: true });
+            await page.screenshot({ path: output.replace(/\.png$/, '-failed.png') });
+            console.error('Native hover state:', await page.locator('.monaco-hover').allTextContents());
+            throw error;
+        }
         await page.waitForFunction(() => {
             const image = document.querySelector('.monaco-hover img[src^="data:image/png;base64,"]');
             return image?.complete && image.naturalWidth > 0;
@@ -132,6 +139,13 @@ module.exports = async function verifyHover(
                     'both icons are expanded'
                 );
                 assert.equal(await preview.getByRole('button', { name: '导出音频', exact: true }).count(), 0);
+            }
+            if (owner === 'MirageAnimAE') {
+                assert.equal(
+                    await preview.getByLabel('所属色', { exact: true }).count(),
+                    0,
+                    'ordinary animations keep palette colors and do not expose remap controls'
+                );
             }
             if (owner === 'NASAM' && expectedSnow) {
                 const before = await preview.locator('#app').getAttribute('data-inspection');

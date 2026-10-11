@@ -2,62 +2,26 @@
 
 # Change Log
 
-All notable changes to the "ra2-ini-intellisense" extension will be documented in this file.
+## [0.0.6] - 2026-10-11
 
-Check [Keep a Changelog](http://keepachangelog.com/) for recommendations on how to structure this file.
-
-## [Unreleased]
-
-- Cover all four SuperAnim and SpecialAnim slots, including damaged variants. Unify building turret and vehicle VXL orientation with RA2's 30-degree game projection, native normals and project VPL lighting.
-- Apply TurretOffset in lepton coordinates and read FireAngle barrel elevation. Bind unnamed HVA sections by their original order, restoring V22 rotor placement and animation.
-- Resolve elite, numbered weapon, burst and alternate FLH points; keep point editing collapsed until explicitly opened, prefer selected overlapping points and synchronize cancelled drags.
-- Replace shrinking source cards with bounded, non-overlapping name/provenance/path rows. Generate cached, bounded APNG hover previews in the decode worker; inline decorations stay static and all animation frames share one trimmed canvas.
-
-- Share animated building composition and default house color between hover and details, including Bib and voxel turrets. Trim SHP using one union of all authored frame rectangles, preserving frame alignment without decoding every frame.
-- Add searchable, width-limited palette controls, viewport wheel zoom and drag/middle-drag pan with a floating zoom input. Hide building animation palette controls and bound the compact layer list.
-
-- Unify project voxel lighting, preserve native INI light axes and the game's vertical secondary light and keep VPL shading in both game orthographic and true perspective views. Add camera pan and a spherical light control.
-- Move FLH editing into the viewport; support direct point and axis dragging with perspective-aware coordinates, readable selected-point labels and native INI undo.
-- Show normal and promoted SHP/PCX icons expanded. Share media capabilities so audio has audio export and no palette, PNG or image-comparison controls.
-- Resolve theater palette prefixes separately from exact CustomPalette filenames. Building animation palettes inherit the body only when unspecified, while keeping explicit animation palettes independent. Add project-scoped theater selection shared by hover, inline previews and workbench, with synchronized body/Bib/buildup/animation filenames and palette prefixes; it does not change INIs or settings.
-- Render BibShape, production/door/deployment/upgrade animation layers and combined damaged states with a shared game ground anchor. Keep body/Bib normal and damaged frames static, hide Bib during buildup, and compose SHP buildings with VXL turrets using project VPL lighting. Replace inaccurate particle/smoke simulation and building Next explosions with DamageFireTypes from the building or General, using animation palettes and editable fire points.
-- Play infantry actions by selected direction with clip-relative timelines, source frame numbers and an eight-direction contact sheet. Resolve VoxelAnimType resources as VXL without requiring an art Voxel flag.
-
-## [0.1.3] - 2026-10-10
-
-- Fix file category globs crossing directory separators: `rules*.ini` no longer classifies `Rules/artes.ini` or `Rules/soundes.ini` as rules. This restores voxel format decisions and art/sound lookup when opening the full mod workspace; recursive paths use `**`.
-- Refresh cached section queries when background include discovery changes a file category; retain art `Voxel=yes` across unchanged documents and duplicate art sections. Verify ALTNK through the actual extension hover and inspector.
-- Expose voxel art property sources in the inspector, including the `Voxel` format decision.
-
-## [0.1.2] - 2026-10-10
-
-- Resolve the mod root for Rules/Resources child-folder workspaces, nested INIs, directly opened assets and MIX entries; honor the configured project directory within its scope and watch sibling resource changes.
-- Add cached root resolution, building theater filename fallback (respecting explicit NewTheater=no), and decoding for theater-named SHP sprites.
-- Resolve cross-directory includes through the mod root and unique catalog filenames, preserving relative-match precedence and Windows case-insensitive paths.
-- Accept legacy VXL limb normal-mode metadata with RA2 game lighting instead of rejecting otherwise valid ES models.
-- Support padded transparent SHP row tails and empty-frame format metadata; share a bounded one-million-voxel budget for large models and assembled parts.
-- Add real Rules-workspace acceptance, a complete registered techno resource survey and an optional full Resources SHP/VXL decoding report.
-
-## [0.1.1] - 2026-10-10
-
-- Moved the inspector to the bottom panel with a compact horizontal layout and one-time automatic reveal that preserves editor focus.
-- Added background project and audio-bank indexing, targeted cache invalidation, visible source cards and lower-priority backup sources.
-- Corrected encrypted MIX Blowfish byte order and legacy CRC filename lookup; nested media now use directory and sample range reads.
-- Added NewTheater building resolution, attached animations, buildup/damaged/production states, foundation grids and animation ConcurrentAnim/Next chains with provenance.
-- Corrected voxel light/normal coordinate conversion, game-scale camera defaults and interactive light dragging; playback controls now follow media capabilities.
-- Changed FLH overlays to unobtrusive points with names/coordinates beside the preview, visibility control and axes for the selected point only. Game hover thumbnails now share VPL lighting and the default house remap.
-- Fixed actual PNG media hovers and stock nested IDX/BAG sound resolution, including dollar-prefixed sound names and event volume.
-- Added real mod acceptance and VS Code hover-image checks, alongside bottom-panel, scene and lighting browser regressions.
-
-## [0.1.0] - 2026-10-10
-
-- Added a cursor-following object inspector, inline thumbnails and media hovers with dictionary-driven, exact-member reference resolution.
-- Added project-scoped rules/art/sound resolution, unsaved document support, source selection, asset roots and explicit MIX precedence.
-- Rebuilt SHP previews with playback, directions, house colors, contact sheets and sequence editing with native undo.
-- Added WebGL2 VXL/HVA rendering, body/turret/barrel assembly, Phobos voxel lighting controls, HVA playback and visual FLH editing.
-- Added IDX/BAG/WAV audition, an asset library, snapshot comparison, PNG/WAV export, semantic reference replacement and on-demand resource audits.
-- Added encrypted MIX read access with explicit read-only protection, bounded/cancellable decoding workers and caches, CSP restrictions and localized workbench UI.
-- Added extension-host integration tests and browser regressions covering decoders, project isolation, references, edits, rendering and media lifecycle.
+- Add a bottom-panel asset workbench that follows the cursor, showing media, effective properties, inheritance and reference sources, with pinning and automatic reveal.
+- Add inline thumbnails and animated media hovers with audio audition; show normal and elite cameos expanded by default.
+- Resolve dictionary-driven media references and individual list members, with custom rules and declared-target inference for untyped tags.
+- Resolve rules/art and assets across includes, inheritance and unsaved text, with split Rules/Resources layouts and background indexing.
+- Expand SHP playback, frame stepping, directions, speed, shadows and contact sheets; share a trimmed canvas across frames for stable animation positions.
+- Preview infantry action/direction combinations and edit sequences, preserving extra fields and comments, reporting invalid bounds and supporting native undo.
+- Expand VXL/HVA assembly and animation with part visibility, turret heading, TurretOffset placement and FireAngle elevation.
+- Provide game orthographic and free perspective views with game projection/pixel-scale defaults, rotation, pan, zoom and reset.
+- Use RA2 normals, project VPL and Phobos lighting settings, with spherical light adjustment and writeback; keep lights fixed during camera rotation.
+- Add visual FLH editing for standard, elite, numbered weapon, burst and AlternateFLH points, with point/axis dragging, visibility and undo.
+- Compose building bodies, Bibs, buildup and foundation grids, with normal/damaged frame selection and Bibs hidden during construction.
+- Preview building active, idle, production, door, deploying, upgrade and four special/superweapon animation groups, with combined states and layer sources.
+- Compose SHP buildings with SHP/voxel turrets and building/global DamageFireTypes effects, including editable fire points.
+- Add theater selection synchronized across building bodies, attachments, Bibs, buildup, palettes, hovers and inspector previews.
+- Resolve default/explicit palettes by purpose, with independent building-animation palettes and palette search; remap only technos and eligible drawers, preserving ordinary animation/particle/cameo colors.
+- Support assets and IDX/BAG/WAV audio in directories and nested/encrypted MIX archives, with sound-event resolution, sample audition, volume and loop controls.
+- Add a searchable asset library and complete source lists, configurable resource priority, synchronized preview comparison and PNG/decoded-WAV export.
+- Add media reference replacement, definition/incoming-reference links and on-demand resource audits; update English/Chinese user documentation and the workbench development guide.
 
 ## [0.0.5] - 2026-07-17
 

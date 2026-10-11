@@ -7,7 +7,7 @@ import { localize } from '../i18n';
 import { Inspection, MediaPayload } from './workbench-protocol';
 import { ByteCache } from '../media/byte-cache';
 interface HoverPreview {
-    inspection: Pick<Inspection, 'focus' | 'type' | 'assets'>;
+    inspection: Pick<Inspection, 'focus' | 'type' | 'focusType' | 'assets'>;
     kind?: MediaPayload['kind'];
     image?: string;
 }
@@ -102,6 +102,7 @@ export class MediaHoverProvider implements vscode.HoverProvider, vscode.Disposab
                                 inspection: {
                                     focus: inspection.focus,
                                     type: inspection.type,
+                                    focusType: inspection.focusType,
                                     assets: inspection.assets,
                                 },
                                 kind: inspection.media?.kind,
@@ -145,6 +146,7 @@ export class MediaHoverProvider implements vscode.HoverProvider, vscode.Disposab
                 return undefined;
             }
             const inspection = preview?.inspection ?? {
+                focusType: undefined,
                 focus: element?.value ?? section.name,
                 type: this.service.ini.type(document.uri, section.name, this.service.ini.category(document.uri)),
                 media: undefined,
@@ -155,7 +157,7 @@ export class MediaHoverProvider implements vscode.HoverProvider, vscode.Disposab
             }
             const markdown = new vscode.MarkdownString('', true);
             markdown.isTrusted = { enabledCommands: ['ra2-ini-intellisense.inspect'] };
-            markdown.appendText(inspection.focus + ' · ' + inspection.type);
+            markdown.appendText(inspection.focus + ' · ' + (inspection.focusType ?? inspection.type));
             if (preview?.image) {
                 markdown.appendMarkdown('\n\n![](' + preview.image + ')');
             } else if (!preview) {

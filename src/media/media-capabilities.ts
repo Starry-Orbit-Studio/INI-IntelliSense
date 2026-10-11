@@ -12,3 +12,14 @@ const CAPABILITIES = {
 export function mediaCapabilities(kind: MediaPayload['kind']) {
     return CAPABILITIES[kind];
 }
+
+/** Only offer house colors when a sprite drawer or a voxel in this preview uses them. */
+export function mediaUsesRemap(media: MediaPayload): boolean {
+    return (
+        media.kind === 'voxel' ||
+        (media.kind === 'sprite' &&
+            (media.scene
+                ? media.scene.layers.some((layer) => !!layer.voxel || (layer.remap ?? layer.media?.remap) === true)
+                : media.remap === true))
+    );
+}

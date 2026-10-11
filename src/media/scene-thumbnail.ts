@@ -20,7 +20,7 @@ export function sceneRaster(media: Extract<MediaPayload, { kind: 'sprite' }>, fr
                 layerFrame(layer, scene.kind, frame),
                 layer.media.shadow,
                 undefined,
-                layer.remap
+                layer.remap ?? layer.media.remap ?? false
             );
             const bounds = layerBounds(layer)!;
             planes.push({ ...raster, x: bounds.x, y: bounds.y });

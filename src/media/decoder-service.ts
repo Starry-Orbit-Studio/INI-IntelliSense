@@ -12,6 +12,7 @@ export interface DecodeOptions {
     voxel?: Extract<MediaPayload, { kind: 'voxel' }>;
     sprite?: Extract<MediaPayload, { kind: 'sprite' }>;
     shadow?: boolean;
+    remap?: boolean;
     animate?: boolean;
     image?: { width: number; height: number };
 }

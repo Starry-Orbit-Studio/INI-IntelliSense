@@ -20,6 +20,7 @@ const RULES: SemanticRule[] = [
     { category: 'art', key: 'Image', kind: 'image' },
     { owner: 'AnimType', key: 'Image', kind: 'animation' },
     { owner: 'ObjectType', key: 'Image', kind: 'object' },
+    { owner: 'ParticleType', key: 'Image', kind: 'object' },
     { owner: 'TechnoType', category: 'art', key: 'Sequence', kind: 'sequence' },
     { owner: 'InfantryType', key: 'Sequence', kind: 'sequence' },
     { owner: 'AudioVisual', key: 'VoxelLightSource', kind: 'lighting' },
@@ -36,10 +37,12 @@ const RULES: SemanticRule[] = [
     { valueType: 'PCXFile', kind: 'image', extension: '.pcx' },
     { valueType: 'PALFile', kind: 'palette', extension: '.pal' },
     { valueType: 'Palette', kind: 'palette', extension: '.pal' },
-    ...['UnitType', 'AircraftType', 'InfantryType', 'BuildingType', 'TechnoType', 'VoxelAnimType'].map((valueType) => ({
-        valueType,
-        kind: 'object' as const,
-    })),
+    ...['UnitType', 'AircraftType', 'InfantryType', 'BuildingType', 'TechnoType', 'VoxelAnimType', 'ParticleType'].map(
+        (valueType) => ({
+            valueType,
+            kind: 'object' as const,
+        })
+    ),
 ];
 
 /** Additive rules keep validation types and shared dictionaries compatible. */
@@ -71,7 +74,8 @@ export class SemanticReferences {
         key: string,
         type: string | undefined,
         value: string,
-        custom: SemanticRule[] = []
+        custom: SemanticRule[] = [],
+        targetType?: (value: string) => string | undefined
     ): SemanticReference | undefined {
         for (const rule of [...custom, ...RULES]) {
             if (
@@ -117,6 +121,27 @@ export class SemanticReferences {
             category === 'art'
         ) {
             return { kind: 'flh', value };
+        }
+        // Infer only untyped keys from actual project declarations; typed scalar keys stay authoritative.
+        if (!type && targetType) {
+            for (const member of value
+                .split(',')
+                .map((item) => item.trim())
+                .filter(Boolean)) {
+                const inferred = targetType(member);
+                if (!inferred) {
+                    continue;
+                }
+                if (this.inherits(inferred, 'AnimType')) {
+                    return { kind: 'animation', value, type: inferred };
+                }
+                if (this.inherits(inferred, 'ObjectType') || this.inherits(inferred, 'ParticleType')) {
+                    return { kind: 'object', value, type: inferred };
+                }
+                if (inferred === 'Sound') {
+                    return { kind: 'sound', value, type: inferred };
+                }
+            }
         }
         return undefined;
     }

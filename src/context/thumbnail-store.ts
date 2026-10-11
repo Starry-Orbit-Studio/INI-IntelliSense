@@ -19,12 +19,13 @@ export class ThumbnailStore {
             return undefined;
         }
         const hash = createHash('sha256')
-            .update(animate ? 'animated-v1' : 'static-v2')
+            .update(animate ? 'animated-v3' : 'static-v3')
             .update(
                 media.kind === 'sprite'
                     ? media.bytes +
                           media.palette.join(',') +
                           String(media.shadow) +
+                          String(media.remap === true) +
                           JSON.stringify(media.actions.map((entry) => [entry.action, entry.valid])) +
                           JSON.stringify(
                               media.scene?.layers.map((layer) => ({
@@ -61,6 +62,7 @@ export class ThumbnailStore {
                           palette: media.palette,
                           frame: 0,
                           shadow: media.shadow,
+                          remap: media.remap === true,
                           sprite: media,
                           animate,
                       }

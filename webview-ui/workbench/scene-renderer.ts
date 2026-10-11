@@ -196,7 +196,7 @@ export function sceneRenderer(
                     frame: layerFrame(layer, scene.kind, settings.frame, !!settings.damaged),
                     shadow: settings.shadow && layer.media!.shadow,
                     color: settings.color,
-                    remap: layer.remap,
+                    remap: layer.remap ?? layer.media?.remap ?? false,
                     trim: true,
                 });
             }

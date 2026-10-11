@@ -56,10 +56,86 @@ suite('Optional real mod acceptance', () => {
             }
             assert.strictEqual(service.ini.category(vscode.Uri.file(path.join(root, 'Rules', 'soundes.ini'))), 'sound');
             assert.strictEqual(service.ini.effective(origin, 'GTNK', 'art').get('voxel')?.value, 'yes');
+            const effect = await vscode.workspace.openTextDocument(
+                vscode.Uri.file(path.join(root, 'Rules', 'ruleses_Attacheffect.ini'))
+            );
+            const effectLine = effect
+                .getText()
+                .split(/\r?\n/)
+                .findIndex((line) => /^Animation=auhuany-330\s*$/.test(line));
+            assert.ok(effectLine >= 0);
+            assert.ok(
+                service.isReference(effect, effectLine),
+                'unknown Animation tag is classified from the target registry'
+            );
+            const effectPosition = new vscode.Position(effectLine, 13);
+            const effectSession = (await service.inspect(effect, effectPosition, token.token))!;
+            assert.strictEqual(effectSession.inspection.focus, 'auhuany-330');
+            assert.strictEqual(effectSession.inspection.media?.name.toLowerCase(), 'auhuany-330.shp');
+            assert.strictEqual(effectSession.options.paletteName, 'auhuany_ae.pal');
+            assert.strictEqual(effectSession.options.remap, false);
+            if (effectSession.inspection.media?.kind === 'sprite') {
+                assert.ok(effectSession.inspection.media.scene?.layers.every((layer) => !layer.remap));
+            }
+            let effectHover = '';
+            for (let attempt = 0; attempt < 40; attempt++) {
+                const results = await vscode.commands.executeCommand<vscode.Hover[]>(
+                    'vscode.executeHoverProvider',
+                    effect.uri,
+                    effectPosition
+                );
+                effectHover = (results ?? [])
+                    .flatMap((hover) => hover.contents)
+                    .map((content) =>
+                        typeof content === 'object' && 'value' in content ? content.value : String(content)
+                    )
+                    .join('\n');
+                if (effectHover.includes('data:image/png;base64,')) {
+                    break;
+                }
+                await new Promise((resolve) => setTimeout(resolve, 100));
+            }
+            assert.ok(
+                effectHover.includes('data:image/png;base64,'),
+                'actual unknown Animation tag hover contains a rendered image: ' + effectHover
+            );
+            assert.ok(
+                effectHover
+                    .replace(/\\/g, '')
+                    .replace(/&nbsp;/g, ' ')
+                    .includes('auhuany-330 · AnimType'),
+                effectHover.slice(0, 180)
+            );
+            if (process.env.RA2_WORKBENCH_UI_OWNER === 'MirageAnimAE') {
+                const editor = await vscode.window.showTextDocument(effect);
+                editor.selection = new vscode.Selection(effectPosition, effectPosition);
+                editor.revealRange(
+                    new vscode.Range(effectPosition, effectPosition),
+                    vscode.TextEditorRevealType.InCenter
+                );
+                const verifyHover = require('../../scripts/verify-vscode-hover.cjs');
+                await verifyHover(
+                    Number(process.env.RA2_WORKBENCH_UI_PORT),
+                    path.join(extension.extensionPath, 'out', 'webview-qa', 'vscode-unknown-animation.png'),
+                    async () => {
+                        await vscode.commands.executeCommand('workbench.action.focusActiveEditorGroup');
+                        await vscode.commands.executeCommand('editor.action.showHover');
+                    },
+                    'MirageAnimAE',
+                    'sprite'
+                );
+            }
+            report.push({
+                name: 'MirageAnimAE:Animation',
+                focus: effectSession.inspection.focus,
+                palette: effectSession.options.paletteName,
+                warnings: effectSession.inspection.warnings,
+            });
             for (const [file, name, kind] of [
                 ['ruleses.ini', 'GACNST', 'sprite'],
                 ['artes_Explosion.ini', 'P_EXPA_120B', 'sprite'],
                 ['soundes.ini', 'TanyaPrimeSelect', 'audio'],
+                ['ruleses.ini', 'GasCloud1', 'sprite'],
                 ['ruleses_AL.ini', 'ALIFV', 'voxel'],
                 ['ruleses_AL.ini', 'ALTNK', 'voxel'],
                 ['ruleses_AL.ini', 'ALV22B', 'voxel'],
@@ -111,6 +187,11 @@ suite('Optional real mod acceptance', () => {
                     kind,
                     name + ': ' + session.inspection.warnings.join('; ')
                 );
+                if (name === 'GasCloud1') {
+                    assert.strictEqual(session.inspection.type, 'ParticleType');
+                    assert.strictEqual(session.options.paletteName, 'anim.pal');
+                    assert.strictEqual(session.options.remap, false);
+                }
                 if (name === 'GACNST' && session.inspection.media?.kind === 'sprite') {
                     assert.strictEqual(session.inspection.media.scene?.foundation.length, 16);
                     assert.ok(

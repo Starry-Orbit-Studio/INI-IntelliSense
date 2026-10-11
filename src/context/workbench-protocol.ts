@@ -78,6 +78,7 @@ export type MediaPayload =
           paletteName?: string;
           actions: ActionEdit[];
           shadow: boolean;
+          remap?: boolean;
           name: string;
           scene?: SpriteScene;
       }
@@ -112,6 +113,7 @@ export interface Inspection {
     owner: string;
     type: string;
     focus: string;
+    focusType?: string;
     properties: PropertyRow[];
     sources: SourceLink[];
     assets: AssetOption[];

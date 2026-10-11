@@ -6,6 +6,37 @@ import { Raster, spriteRaster, thumbnailRaster } from './sprite-raster';
 import { spriteClip } from './sprite-playback';
 import { voxelRaster } from './voxel-raster';
 
+// VS Code truncates Markdown at 100,000 characters; base64 and labels need room as well.
+export const MAX_HOVER_PNG_BYTES = 64 * 1024;
+
+/** Reduce temporal/spatial sampling until the complete data URI fits a native hover. */
+export function encodeHoverAnimation(images: Raster[], duration: number): Uint8Array {
+    if (!images.length || !Number.isFinite(duration) || duration <= 0) {
+        throw new Error('Hover animation requires frames and a positive finite duration.');
+    }
+    let count = images.length,
+        side = 128;
+    for (;;) {
+        const sampled = Array.from({ length: count }, (_, index) =>
+            thumbnailRaster(images[Math.floor((index * images.length) / count)], side)
+        );
+        const png = encodeAnimatedPng(
+            sampled[0].width,
+            sampled[0].height,
+            sampled.map((image) => image.pixels),
+            (Math.min(10, duration) * 1000) / count
+        );
+        if (png.length <= MAX_HOVER_PNG_BYTES) {
+            return png;
+        }
+        if (count > 8) {
+            count = Math.max(8, Math.floor(count / 2));
+        } else {
+            side = Math.max(1, Math.floor(side * 0.8));
+        }
+    }
+}
+
 /** Worker-only bounded APNG generation. Decorations continue using static thumbnails. */
 export function animatedThumbnail(media: Extract<MediaPayload, { kind: 'sprite' | 'voxel' }>): Uint8Array {
     let duration = 1 / 15,
@@ -56,7 +87,16 @@ export function animatedThumbnail(media: Extract<MediaPayload, { kind: 'sprite' 
         duration = frames / 15;
         work = media.file.width * media.file.height;
         const bytes = Buffer.from(media.bytes, 'base64');
-        raster = (tick) => spriteRaster(bytes, media.file, media.palette, clip.frame(Math.floor(tick)), media.shadow);
+        raster = (tick) =>
+            spriteRaster(
+                bytes,
+                media.file,
+                media.palette,
+                clip.frame(Math.floor(tick)),
+                media.shadow,
+                undefined,
+                media.remap === true
+            );
     }
     // Cap decoding work, duration, output frames and final pixels independently.
     const count = Math.max(1, Math.min(32, frames, Math.floor((24 * 1024 * 1024) / work)));
@@ -64,7 +104,7 @@ export function animatedThumbnail(media: Extract<MediaPayload, { kind: 'sprite' 
     const bounds = unionBounds(images);
     if (bounds.width * bounds.height * count > 16 * 1024 * 1024) {
         const first = thumbnailRaster(images[0]);
-        return encodeAnimatedPng(first.width, first.height, [first.pixels]);
+        return encodeHoverAnimation([first], duration);
     }
     const output = images.map((image) => {
         const pixels = new Uint8Array(bounds.width * bounds.height * 4);
@@ -74,10 +114,5 @@ export function animatedThumbnail(media: Extract<MediaPayload, { kind: 'sprite' 
         }
         return thumbnailRaster({ ...bounds, pixels });
     });
-    return encodeAnimatedPng(
-        output[0].width,
-        output[0].height,
-        output.map((image) => image.pixels),
-        (Math.min(10, duration) * 1000) / count
-    );
+    return encodeHoverAnimation(output, duration);
 }

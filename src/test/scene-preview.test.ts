@@ -5,7 +5,7 @@ import { spriteBounds, spriteRaster } from '../media/sprite-raster';
 import { layerFrame, layerVisible, layerBounds } from '../media/scene-layout';
 import { readShp } from '../media/shp';
 import { sceneThumbnail } from '../media/scene-thumbnail';
-import { animatedThumbnail } from '../media/animated-thumbnail';
+import { animatedThumbnail, encodeHoverAnimation, MAX_HOVER_PNG_BYTES } from '../media/animated-thumbnail';
 import { crc32 } from '../mix/core/crc32';
 
 /** Frames move inside one authored canvas; the union must remain fixed. */
@@ -32,14 +32,44 @@ function sprite(): Extract<MediaPayload, { kind: 'sprite' }> {
         palette: new Array(768).fill(80),
         actions: [],
         shadow: true,
+        remap: true,
     };
 }
 
 function layer(tag: string, media = sprite()): SpriteLayer {
-    return { id: tag, name: tag, tag, source: '', state: 'normal', z: 0, offset: [0, 0], start: 0, end: -1, media };
+    return { id: tag, name: tag, tag, source: '', state: 'normal', z: 0, offset: [0, 0], start: 0, end: -1, remap: true, media };
 }
 
 suite('Shared building and hover preview', () => {
+    test('high-entropy animated hovers fit native Markdown without losing animation or cycle duration', () => {
+        let seed = 1234;
+        const images = Array.from({ length: 32 }, () => ({
+            x: 0,
+            y: 0,
+            width: 128,
+            height: 128,
+            pixels: Uint8Array.from({ length: 128 * 128 * 4 }, (_, index) => {
+                seed = (Math.imul(seed, 1664525) + 1013904223) >>> 0;
+                return index % 4 === 3 ? 255 : seed >>> 24;
+            }),
+        }));
+        const png = Buffer.from(encodeHoverAnimation(images, 2));
+        assert.ok(png.length <= MAX_HOVER_PNG_BYTES);
+        assert.ok(png.toString('base64').length + 4096 < 100000);
+        let frames = 0,
+            duration = 0;
+        for (let offset = 8; offset < png.length;) {
+            const size = png.readUInt32BE(offset),
+                kind = png.toString('ascii', offset + 4, offset + 8);
+            if (kind === 'fcTL') {
+                frames++;
+                duration += png.readUInt16BE(offset + 28) / png.readUInt16BE(offset + 30);
+            }
+            offset += size + 12;
+        }
+        assert.ok(frames >= 2);
+        assert.ok(Math.abs(duration - 2) < 0.01);
+    });
     test('slow animation sampling includes the full cycle instead of repeatedly sampling its first frame', () => {
         const media = sprite();
         media.scene = { kind: 'animation', foundation: [], trace: [], layers: [{ ...layer('body', media), rate: 1 }] };
@@ -90,8 +120,8 @@ suite('Shared building and hover preview', () => {
         const media = sprite(),
             bytes = Buffer.from(media.bytes, 'base64');
         assert.deepStrictEqual(spriteBounds(media.file), { x: 3, y: 4, width: 5, height: 1 });
-        const first = spriteRaster(bytes, media.file, media.palette, 0, true);
-        const second = spriteRaster(bytes, media.file, media.palette, 1, true);
+        const first = spriteRaster(bytes, media.file, media.palette, 0, true, undefined, true);
+        const second = spriteRaster(bytes, media.file, media.palette, 1, true, undefined, true);
         assert.strictEqual(first.width, second.width);
         assert.strictEqual(first.height, second.height);
         assert.deepStrictEqual([...first.pixels.slice(0, 4)], [220, 55, 55, 255]);

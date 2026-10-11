@@ -40,7 +40,7 @@ export function spriteRaster(
     frame: number,
     shadow = false,
     color = DEFAULT_HOUSE_COLOR,
-    remap = true,
+    remap = false,
     trim = true
 ): Raster {
     const indexed = decodeShpFrame(bytes, file, frame);
@@ -56,7 +56,7 @@ export function indexedRaster(
     file: ShpFile,
     palette: number[],
     color = DEFAULT_HOUSE_COLOR,
-    remap = true,
+    remap = false,
     trim = true
 ): Raster {
     const bounds = trim ? spriteBounds(file) : { x: 0, y: 0, width: file.width, height: file.height };

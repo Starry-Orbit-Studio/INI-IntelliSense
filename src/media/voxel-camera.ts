@@ -8,6 +8,11 @@ export interface CameraOptions {
 }
 const dot = (a: number[], b: number[]) => a.reduce((sum, value, index) => sum + value * b[index], 0);
 
+/** Direct manipulation: a surface facing the camera follows the pointer in screen space. */
+export function orbitVoxelCamera(yaw: number, pitch: number, dx: number, dy: number) {
+    return { yaw: yaw + dx * 0.4, pitch: Math.max(-85, Math.min(85, pitch + dy * 0.3)) };
+}
+
 /** Z-up camera shared by rendering, picking and screen-plane point manipulation. */
 export function voxelCamera(options: CameraOptions, center: number[], size: number[], width: number, height: number) {
     const yaw = (options.yaw * Math.PI) / 180,

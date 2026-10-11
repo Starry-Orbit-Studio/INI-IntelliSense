@@ -313,6 +313,8 @@ export class ProjectIni {
             BuildingTypes: 'BuildingType',
             Animations: 'AnimType',
             VoxelAnims: 'VoxelAnimType',
+            Particles: 'ParticleType',
+            ParticleSystems: 'ParticleSystemType',
         };
         const declared = [...new Set(['Animations', ...Object.keys(builtins), ...this.schema.getRegistryNames()])].find(
             (registry) =>
