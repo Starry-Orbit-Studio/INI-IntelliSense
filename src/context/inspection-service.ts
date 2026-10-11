@@ -14,6 +14,8 @@ import { SemanticReferences, SemanticRule } from './semantic-reference';
 import { parsePropertyLine, valueAtCharacter, soundValueAtCharacter } from './ini-position';
 import { Inspection, ActionEdit, PointEdit, SourceLink } from './workbench-protocol';
 import { resolveSpriteScene, spriteCandidates } from './sprite-scene';
+import { artPaletteName } from '../media/palette-policy';
+import { projectLighting } from '../media/project-lighting';
 
 export interface EditCapability {
     uri: vscode.Uri;
@@ -21,7 +23,7 @@ export interface EditCapability {
     key: string;
     original?: string;
     version: number;
-    kind: 'point' | 'sequence' | 'light' | 'reference';
+    kind: 'point' | 'pixel' | 'sequence' | 'light' | 'reference';
     linked?: { key: string; original?: string };
 }
 export interface InspectionSession {
@@ -59,6 +61,18 @@ export class InspectionService {
         this.semantics = new SemanticReferences(schema);
     }
 
+    public async projectMediaOptions(origin: vscode.Uri): Promise<MediaOptions> {
+        await this.ini.load(origin);
+        const properties = this.ini.effective(origin, 'AudioVisual', 'rules');
+        return {
+            origin,
+            ...projectLighting(
+                properties.get('voxellightsource')?.value,
+                properties.get('usefixedvoxellighting')?.value
+            ),
+        };
+    }
+
     /** Cheap classification for audits; binary work begins only for recognized references. */
     public async inspectResource(
         candidate: ResourceCandidate,
@@ -89,7 +103,14 @@ export class InspectionService {
                     ).toLowerCase() === art.name.toLowerCase()
             );
         if (!owner) {
-            return undefined;
+            const document = documents.find((doc) => doc.sections.includes(art));
+            return document
+                ? this.inspect(
+                      await vscode.workspace.openTextDocument(document.uri),
+                      new vscode.Position(art.startLine, 0),
+                      token
+                  )
+                : undefined;
         }
         return this.inspect(
             await vscode.workspace.openTextDocument(owner.doc.uri),
@@ -363,7 +384,10 @@ export class InspectionService {
                 ? elements.map(Number)
                 : [];
         };
-        const light = numbers(value(audioVisual, 'VoxelLightSource'));
+        const lighting = projectLighting(
+            value(audioVisual, 'VoxelLightSource'),
+            value(audioVisual, 'UseFixedVoxelLighting')
+        );
         const points: PointEdit[] = [];
         for (const entry of art.values()) {
             if (
@@ -387,8 +411,7 @@ export class InspectionService {
                     (['InfantryType', 'BuildingType'].includes(targetType) ? 'yes' : 'no')
             ),
             points,
-            light: light.length === 3 ? light : undefined,
-            fixed: /^(yes|true|1)$/i.test(value(audioVisual, 'UseFixedVoxelLighting') ?? ''),
+            ...lighting,
             turret: /^(yes|true|1)$/i.test(
                 value(
                     category === 'art'
@@ -403,17 +426,25 @@ export class InspectionService {
             ),
             turretOffset: numbers(value(art, 'TurretOffset')),
         };
-        const customPalette = value(art, 'CustomPalette') ?? value(art, 'Palette');
-        if (property && /^(cameo|altcameo)$/i.test(property.key)) {
-            options.paletteName = 'cameo.pal';
-        }
-        if (customPalette) {
-            const theater = vscode.workspace
-                .getConfiguration('ra2-ini-intellisense', document.uri)
-                .get<string>('media.theater', 'tem');
-            options.paletteName =
-                customPalette.replace(/~~~/g, theater) + (/\.pal$/i.test(customPalette) ? '' : '.pal');
-        }
+        const contextRules =
+            category === 'art'
+                ? this.ini.effective(document.uri, this.ownerNameForArt(document.uri, artName) ?? artName, 'rules')
+                : targetProperties;
+        const theater = vscode.workspace
+            .getConfiguration('ra2-ini-intellisense', document.uri)
+            .get<string>('media.theater', 'tem');
+        const isCameo = property && /^(cameo|altcameo)(pcx)?$/i.test(property.key);
+        options.paletteName = artPaletteName(
+            isCameo ? undefined : value(art, 'CustomPalette'),
+            isCameo ? undefined : value(art, 'Palette'),
+            theater,
+            isCameo
+                ? 'cameo'
+                : options.animation &&
+                    !/^(yes|true|1)$/i.test(value(art, 'Remapable') ?? value(art, 'AltPalette') ?? '')
+                  ? 'animation'
+                  : 'unit'
+        );
         session.options = options;
         if (reference?.kind === 'lighting' || reference?.kind === 'flh') {
             inspection.focus = property!.key;
@@ -503,7 +534,10 @@ export class InspectionService {
         } else {
             const direct = reference?.kind === 'image' || reference?.kind === 'palette';
             if (direct) {
-                base = reference!.value;
+                base =
+                    reference?.kind === 'palette' && category === 'art' && property?.key.toLowerCase() === 'palette'
+                        ? options.paletteName!
+                        : reference!.value;
             }
             if (reference?.kind === 'sequence') {
                 const owner = this.ini
@@ -520,7 +554,9 @@ export class InspectionService {
                     base = value(art, 'Image') ?? artName;
                 }
             }
-            const voxel = /^(yes|true|1)$/i.test(value(art, 'Voxel') ?? '');
+            const voxel =
+                this.semantics.inherits(targetType, 'VoxelAnimType') ||
+                /^(yes|true|1)$/i.test(value(art, 'Voxel') ?? '');
             const filename = path.posix.extname(base)
                 ? base
                 : base +
@@ -550,15 +586,65 @@ export class InspectionService {
                       )
                     : { names: [filename], candidates: await this.resources.find(document.uri, filename, token) };
             const found = resolved.candidates;
-            if (sceneKind) {
+            if (sceneKind && !voxel) {
                 options.scene = await resolveSpriteScene(
                     this.ini,
                     this.resources,
                     document.uri,
                     artName,
                     sceneKind,
-                    options
+                    options,
+                    contextRules
                 );
+                if (sceneKind === 'building') {
+                    const scenePoints: PointEdit[] = [];
+                    for (let index = 0; index < 8; index++) {
+                        const key = 'DamageFireOffset' + index;
+                        const entry = art.get(key.toLowerCase());
+                        const id = await capability(artName, key, 'pixel', entry);
+                        const point = numbers(entry?.value);
+                        if (id) {
+                            scenePoints.push({
+                                id,
+                                name: key,
+                                value: point.length === 2 ? point : [0, 0],
+                                space: 'pixel',
+                                absent: !entry,
+                                deletable: !!entry && !entry.inherited,
+                            });
+                        }
+                    }
+                    const smoke = contextRules.get('damagesmokeoffset');
+                    const rulesOwner =
+                        category === 'art'
+                            ? (this.ownerNameForArt(document.uri, artName) ?? artName)
+                            : reference?.kind === 'object' && property?.key.toLowerCase() !== 'image'
+                              ? reference.value
+                              : section.name;
+                    const own = this.ini.sources(document.uri, rulesOwner, 'rules')[0];
+                    if (own) {
+                        const doc = await vscode.workspace.openTextDocument(own.document.uri);
+                        const id = randomUUID();
+                        const original = [
+                            ...(new IniDocument(doc.uri, doc.getText()).getSection(own.section.name)?.properties ?? []),
+                        ].find(([key]) => key.toLowerCase() === 'damagesmokeoffset')?.[1];
+                        session.edits.set(id, {
+                            uri: doc.uri,
+                            section: own.section.name,
+                            key: 'DamageSmokeOffset',
+                            original,
+                            version: doc.version,
+                            kind: 'point',
+                        });
+                        scenePoints.push({
+                            id,
+                            name: 'DamageSmokeOffset',
+                            value: numbers(smoke?.value).length === 3 ? numbers(smoke?.value) : [0, 0, 0],
+                            space: 'lepton',
+                        });
+                    }
+                    options.scene.points = scenePoints;
+                }
             }
             for (const entry of art.values()) {
                 inspection.sources.push(source(entry.uri, entry.line, artName + ' · ' + entry.key));
@@ -571,7 +657,9 @@ export class InspectionService {
                 const targetArtName = value(targetRules, 'Image') ?? target;
                 const targetArt = this.ini.effective(document.uri, targetArtName, 'art');
                 const targetBase = direct ? target : (value(targetArt, 'Image') ?? targetArtName);
-                const targetVoxel = /^(yes|true|1)$/i.test(value(targetArt, 'Voxel') ?? '');
+                const targetVoxel =
+                    this.semantics.inherits(this.ini.type(document.uri, target, 'rules'), 'VoxelAnimType') ||
+                    /^(yes|true|1)$/i.test(value(targetArt, 'Voxel') ?? '');
                 const targetFile = path.posix.extname(targetBase)
                     ? targetBase
                     : targetBase + (direct ? (reference!.extension ?? '.shp') : targetVoxel ? '.vxl' : '.shp');
@@ -606,18 +694,31 @@ export class InspectionService {
                 }
                 options.actions = actions;
             }
-            const cameo = value(art, 'Cameo') ?? value(properties, 'Cameo');
-            if (cameo) {
+            inspection.cameos = [];
+            for (const tag of ['Cameo', 'AltCameo']) {
+                const pcx = value(art, tag + 'PCX') ?? value(targetProperties, tag + 'PCX');
+                const cameo = pcx ?? value(art, tag) ?? value(targetProperties, tag);
+                if (!cameo || /^(none|<none>)$/i.test(cameo)) {
+                    continue;
+                }
                 const file = (
-                    await this.resources.find(document.uri, path.posix.extname(cameo) ? cameo : cameo + '.shp', token)
+                    await this.resources.find(
+                        document.uri,
+                        path.posix.extname(cameo) ? cameo : cameo + (pcx ? '.pcx' : '.shp'),
+                        token
+                    )
                 )[0];
                 if (file) {
                     try {
-                        inspection.cameo = await this.media.load(
+                        const media = await this.media.load(
                             file,
                             { paletteName: 'cameo.pal', origin: document.uri },
                             token
                         );
+                        inspection.cameos.push({ tag, media });
+                        if (tag === 'Cameo') {
+                            inspection.cameo = media;
+                        }
                     } catch (error) {
                         inspection.warnings.push(
                             localize('workbench.cameoError', 'Cameo could not be decoded: {0}', String(error))
@@ -626,7 +727,7 @@ export class InspectionService {
                 }
             }
         }
-        const palettes = await this.resources.list(document.uri, ['.pal']);
+        const palettes = reference?.kind === 'sound' ? [] : await this.resources.list(document.uri, ['.pal']);
         inspection.paletteOptions = palettes.map((candidate) => {
             const id = randomUUID();
             session.assets.set(id, { candidate, options: {} });
@@ -665,14 +766,38 @@ export class InspectionService {
         session: InspectionSession,
         id: string,
         token: vscode.CancellationToken,
-        paletteId?: string
+        paletteId?: string,
+        layerId?: string
     ): Promise<void> {
         const asset = session.assets.get(id);
         if (!asset) {
             return;
         }
+        if (paletteId && !session.inspection.paletteOptions.some((option) => option.id === paletteId)) {
+            return;
+        }
         const palette = paletteId && session.assets.get(paletteId)?.candidate.uri;
-        const options = { ...asset.options, ...(palette ? { palette } : {}) };
+        if (layerId) {
+            const layer = asset.options.scene?.layers.find((entry) => entry.layer.id === layerId);
+            if (!layer) {
+                return;
+            }
+            layer.options.palette = palette || undefined;
+            layer.layer.selectedPalette = paletteId;
+        }
+        const selectedPalette = layerId ? session.inspection.selectedPalette : paletteId;
+        const rootPalette = selectedPalette && session.assets.get(selectedPalette)?.candidate.uri;
+        const options = { ...asset.options, palette: rootPalette || undefined };
+        if (options.scene) {
+            options.scene = {
+                ...options.scene,
+                layers: options.scene.layers.map((entry) =>
+                    entry.layer.tag === 'body' || (entry.layer.paletteInherited && !entry.layer.selectedPalette)
+                        ? { ...entry, options: { ...entry.options, palette: rootPalette || undefined } }
+                        : entry
+                ),
+            };
+        }
         try {
             const media = await this.media.load(asset.candidate, options, token);
             if (token.isCancellationRequested) {
@@ -680,7 +805,11 @@ export class InspectionService {
             }
             if (media.kind === 'sprite') {
                 for (const action of media.actions) {
-                    action.valid = validateSequence(action.action, media.file.frames.length, 8);
+                    action.valid = validateSequence(
+                        action.action,
+                        media.shadow ? Math.floor(media.file.frames.length / 2) : media.file.frames.length,
+                        8
+                    );
                     if (!action.valid) {
                         session.inspection.warnings.push(
                             localize(
@@ -694,7 +823,7 @@ export class InspectionService {
             }
             session.selected = id;
             session.inspection.selectedAsset = id;
-            session.inspection.selectedPalette = paletteId;
+            session.inspection.selectedPalette = selectedPalette;
             session.inspection.mediaRevision = (session.inspection.mediaRevision ?? 0) + 1;
             session.inspection.media = media;
         } catch (error) {

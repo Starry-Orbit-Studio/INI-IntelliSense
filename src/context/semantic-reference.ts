@@ -26,6 +26,8 @@ const RULES: SemanticRule[] = [
     { category: 'art', key: 'Sequence', kind: 'sequence' },
     { key: 'Cameo', kind: 'image', extension: '.shp' },
     { key: 'AltCameo', kind: 'image', extension: '.shp' },
+    { key: 'CameoPCX', kind: 'image', extension: '.pcx' },
+    { key: 'AltCameoPCX', kind: 'image', extension: '.pcx' },
     { key: 'AnimList', kind: 'animation', valueType: undefined },
     { valueType: 'Sound', kind: 'sound' },
     { valueType: 'AnimType', kind: 'animation' },

@@ -60,6 +60,8 @@ suite('Optional real mod acceptance', () => {
                 ['soundes.ini', 'TanyaPrimeSelect', 'audio'],
                 ['ruleses_AL.ini', 'ALIFV', 'voxel'],
                 ['ruleses_AL.ini', 'ALTNK', 'voxel'],
+                ['ruleses_AL.ini', 'ALMINDebris', 'voxel'],
+                ['ruleses.ini', 'GAWEAP', 'sprite'],
                 ['ruleses_AL.ini', 'ALMARV', 'voxel'],
                 ['ruleses_SO.ini', 'SOMRBST1', 'voxel'],
                 ['ruleses_AL.ini', 'AACSPH', 'sprite'],
@@ -84,6 +86,15 @@ suite('Optional real mod acceptance', () => {
                     milliseconds: Date.now() - start,
                     assets: session.inspection.assets,
                     warnings: session.inspection.warnings,
+                    sprite:
+                        session.inspection.media?.kind === 'sprite'
+                            ? {
+                                  width: session.inspection.media.file.width,
+                                  height: session.inspection.media.file.height,
+                                  frames: session.inspection.media.file.frames.length,
+                                  shadow: session.inspection.media.shadow,
+                              }
+                            : undefined,
                     scene:
                         session.inspection.media?.kind === 'sprite' ? session.inspection.media.scene?.trace : undefined,
                     index: name === 'GACNST' ? await resources.describeIndex(document.uri) : undefined,
@@ -97,6 +108,20 @@ suite('Optional real mod acceptance', () => {
                     assert.strictEqual(session.inspection.media.scene?.foundation.length, 16);
                     assert.ok(
                         session.inspection.media.scene.layers.some((layer) => layer.tag === 'Buildup' && layer.media)
+                    );
+                }
+                if (name === 'ALIFV' || name === 'ALTNK') {
+                    assert.deepStrictEqual(
+                        session.inspection.cameos?.map((item) => item.tag),
+                        ['Cameo', 'AltCameo']
+                    );
+                }
+                if (name === 'GAWEAP' && session.inspection.media?.kind === 'sprite') {
+                    assert.ok(
+                        session.inspection.media.scene?.layers.some((layer) => layer.tag === 'DoorAnim' && layer.media)
+                    );
+                    assert.ok(
+                        session.inspection.media.scene?.points?.some((point) => point.name === 'DamageSmokeOffset')
                     );
                 }
                 if (name === 'P_EXPA_120B') {
@@ -151,7 +176,8 @@ suite('Optional real mod acceptance', () => {
                         port: number,
                         output: string,
                         showHover: () => Promise<void>,
-                        owner: string
+                        owner: string,
+                        kind: string
                     ) => Promise<void> = require('../../scripts/verify-vscode-hover.cjs');
                     await verifyHover(
                         Number(process.env.RA2_WORKBENCH_UI_PORT),
@@ -159,7 +185,8 @@ suite('Optional real mod acceptance', () => {
                         async () => {
                             await vscode.commands.executeCommand('editor.action.showHover');
                         },
-                        name
+                        name,
+                        kind
                     );
                     report.push({ actualHoverImage: true });
                 }

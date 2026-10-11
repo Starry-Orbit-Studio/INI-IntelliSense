@@ -1,6 +1,8 @@
 import { voxelTransform, normalTransform, transformPoint } from '../../src/media/voxel-math';
 import type { MediaPayload } from '../../src/context/workbench-protocol';
 import { nativeLight, authoredLight } from '../../src/media/voxel-light';
+import { voxelCamera } from '../../src/media/voxel-camera';
+import { spriteClip } from '../../src/media/sprite-playback';
 
 export interface ViewSettings {
     frame: number;
@@ -28,6 +30,9 @@ export interface ViewSettings {
     layers: Set<string>;
     showPoints: boolean;
     selectedPoint: string;
+    pan?: number[];
+    damaged?: boolean;
+    sceneFit?: boolean;
 }
 export interface Renderer {
     update(): void;
@@ -97,9 +102,9 @@ export function spriteRenderer(
     worker.onerror = (event) => failed(event.message);
     const update = () => {
         const action = media.actions[settings.action]?.action;
-        const index = action
-            ? action.start + settings.direction * action.stride + (settings.frame % action.count)
-            : settings.frame;
+        const index = spriteClip(media.file.frames.length, media.shadow, action, settings.direction).frame(
+            settings.frame
+        );
         if (index < 0 || index >= media.file.frames.length) {
             failed('Sequence exceeds available frames: ' + index);
             return;
@@ -114,9 +119,7 @@ export function spriteRenderer(
         }
         if (!comparison && settings.playing && !document.hidden && time - last >= 1000 / settings.fps) {
             const action = media.actions[settings.action]?.action;
-            const count =
-                action?.count ??
-                (media.shadow ? Math.max(1, Math.floor(media.file.frames.length / 2)) : media.file.frames.length);
+            const count = spriteClip(media.file.frames.length, media.shadow, action, settings.direction).count;
             settings.frame = (settings.frame + 1) % count;
             last = time;
             update();
@@ -188,10 +191,10 @@ export function voxelRenderer(
             'vec4 world=model*vec4(position+corner,1.0); gl_Position=projection*world;\n' +
             'vec3 n=normalize(normalMatrix*normal.yxz); float f1=max(0.0,dot(n,light)); vec3 secondary=light+(fixedLight?vec3(0):eye); vec3 halfVector=length(secondary)>0.000001?normalize(secondary):vec3(0); float h=dot(n,halfVector);\n' +
             'int level=int(clamp(floor(16.0*(f1+max(0.0,h/(3.0-2.0*h)))),0.0,31.0)); int index=int(colorIndex);\n' +
-            'if(mode==0){index=int(texelFetch(vpl,ivec2(index,min(level,textureSize(vpl,0).y-1)),0).r*255.0+0.5);}\n' +
+            'if(mode!=2){index=int(texelFetch(vpl,ivec2(index,min(level,textureSize(vpl,0).y-1)),0).r*255.0+0.5);}\n' +
             'pixelColor=texelFetch(palette,ivec2(index,0),0).rgb;\n' +
             'if(float(index)>=remapStart && float(index)<=remapEnd){pixelColor=house*(0.28+0.72*(remapEnd-float(index))/max(1.0,remapEnd-remapStart));}\n' +
-            'if(mode==1){pixelColor*=0.4+0.6*f1;} if(mode==2){pixelColor=n*0.5+0.5;}\n' +
+            'if(mode==2){pixelColor=n*0.5+0.5;}\n' +
             'visible=(mode!=3 || abs(position.z-cut)<0.5)?1.0:0.0;\n}'
     );
     const fragment = shader(
@@ -309,63 +312,32 @@ export function voxelRenderer(
     let animation = 0,
         last = 0,
         disposed = false;
-    let handles: { id: string; axis: number; x: number; y: number; dx: number; dy: number }[] = [];
-    let drag: { id: string; axis: number; start: number[]; x: number; y: number; dx: number; dy: number } | undefined;
-    let orbit: { x: number; y: number; yaw: number; pitch: number } | undefined;
-    let lightDrag: { x: number; y: number; azimuth: number; elevation: number } | undefined;
+    let handles: { id: string; axis: number; x: number; y: number; dx: number; dy: number; distance: number }[] = [];
+    let drag:
+        | { id: string; axis: number; start: number[]; x: number; y: number; dx: number; dy: number; distance: number }
+        | undefined;
+    let orbit: { x: number; y: number; yaw: number; pitch: number; pan: number[]; panning: boolean } | undefined;
+    let lightDrag: { x: number; y: number; azimuth: number; elevation: number; start: number[] } | undefined;
+    let hoveredPoint = '';
     const camera = () => {
-        const yaw = (settings.yaw * Math.PI) / 180,
-            pitch = (settings.pitch * Math.PI) / 180;
-        const aspect = canvas.width / canvas.height;
-        const c = Math.cos(yaw),
-            s = Math.sin(yaw),
-            p = Math.sin(pitch),
-            q = Math.cos(pitch);
-        const dimensions = max.map((value, axis) => value - min[axis]);
-        const horizontal = Math.abs(c) * dimensions[0] + Math.abs(s) * dimensions[1];
-        const vertical =
-            Math.abs(s * p) * dimensions[0] + Math.abs(c * p) * dimensions[1] + Math.abs(q) * dimensions[2];
-        const scale =
-            settings.fit || settings.mode === 'perspective'
-                ? (1.5 * settings.zoom) / 2 / Math.max(horizontal / aspect, vertical, 1)
-                : (2 * settings.zoom) / canvas.height;
-        const rows = [
-            [(c * scale) / aspect, (-s * scale) / aspect, 0],
-            [-s * p * scale, -c * p * scale, q * scale],
-            [(-s * q) / extent, (-c * q) / extent, -p / extent],
-        ];
-        const perspective = settings.mode === 'perspective' ? 0.28 : 0;
-        return new Float32Array([
-            rows[0][0],
-            rows[1][0],
-            rows[2][0],
-            perspective * rows[2][0],
-            rows[0][1],
-            rows[1][1],
-            rows[2][1],
-            perspective * rows[2][1],
-            rows[0][2],
-            rows[1][2],
-            rows[2][2],
-            perspective * rows[2][2],
-            -rows[0].reduce((v, n, i) => v + n * center[i], 0),
-            -rows[1].reduce((v, n, i) => v + n * center[i], 0),
-            -rows[2].reduce((v, n, i) => v + n * center[i], 0),
-            1 - perspective * rows[2].reduce((v, n, i) => v + n * center[i], 0),
-        ]);
+        return voxelCamera(
+            settings,
+            center,
+            max.map((value, axis) => value - min[axis]),
+            canvas.width,
+            canvas.height
+        );
     };
     const project = (point: number[]) => {
-        const m = camera();
-        const x = m[0] * point[0] + m[4] * point[1] + m[8] * point[2] + m[12];
-        const y = m[1] * point[0] + m[5] * point[1] + m[9] * point[2] + m[13];
-        const w = m[3] * point[0] + m[7] * point[1] + m[11] * point[2] + m[15];
-        return [((x / w + 1) * canvas.width) / 2, ((1 - y / w) * canvas.height) / 2];
+        return camera().project(point);
     };
-    const pointWorld = (value: number[]) =>
-        rotate(
+    const pointWorld = (value: number[]) => {
+        const offset = media.model.parts.find((part) => part.role === 'turret')?.offset ?? [0, 0, 0];
+        return rotate(
             value.map((v) => v / settings.flhScale),
             (settings.turret * Math.PI) / 180
-        );
+        ).map((v, axis) => v + offset[axis]);
+    };
     const update = () => {
         fit();
         const width = Math.max(200, canvas.parentElement?.clientWidth ?? 600);
@@ -380,29 +352,20 @@ export function voxelRenderer(
         gl.clearColor(0, 0, 0, 0);
         gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
         gl.useProgram(program);
-        gl.uniformMatrix4fv(uniform('projection'), false, camera());
+        gl.uniformMatrix4fv(uniform('projection'), false, camera().matrix);
         const length = Math.hypot(...settings.light) || 1;
         gl.uniform3fv(
             uniform('light'),
             nativeLight(settings.light).map((value) => value / length)
         );
-        const yaw = (settings.yaw * Math.PI) / 180,
-            pitch = (settings.pitch * Math.PI) / 180;
-        gl.uniform3fv(uniform('eye'), [
-            Math.sin(yaw) * Math.cos(pitch),
-            Math.cos(yaw) * Math.cos(pitch),
-            Math.sin(pitch),
-        ]);
+        gl.uniform3fv(uniform('eye'), [-Math.sqrt(1 / 3), Math.sqrt(1 / 3), Math.sqrt(1 / 3)]);
         gl.uniform3fv(
             uniform('house'),
             settings.color.map((value) => value / 255)
         );
         gl.uniform1f(uniform('remapStart'), media.model.remapStart);
         gl.uniform1f(uniform('remapEnd'), media.model.remapEnd);
-        gl.uniform1i(
-            uniform('mode'),
-            settings.mode === 'game' ? 0 : settings.mode === 'normal' ? 2 : settings.mode === 'slice' ? 3 : 1
-        );
+        gl.uniform1i(uniform('mode'), settings.mode === 'normal' ? 2 : settings.mode === 'slice' ? 3 : 0);
         gl.uniform1f(uniform('cut'), settings.slice);
         gl.uniform1i(uniform('fixedLight'), settings.fixed ? 1 : 0);
         for (const { part, vao, count, id } of limbs) {
@@ -462,28 +425,49 @@ export function voxelRenderer(
         for (const point of settings.showPoints ? media.points : []) {
             const world = pointWorld(point.value),
                 screen = project(world);
+            if (!screen.every(Number.isFinite)) {
+                continue;
+            }
             const selected = point.name === settings.selectedPoint;
             ctx.fillStyle = selected ? '#ffd166' : '#c2ccd8';
             ctx.beginPath();
             ctx.arc(screen[0], screen[1], selected ? 4 : 2.5, 0, Math.PI * 2);
             ctx.fill();
+            if (selected || point.id === hoveredPoint) {
+                ctx.font = '11px sans-serif';
+                ctx.fillText(point.name, screen[0] + 9, screen[1] - 7);
+            }
             if (!selected) {
                 continue;
             }
             for (let axis = 0; axis < 3; axis++) {
                 const native = [...point.value];
-                native[axis] += (extent / 7) * settings.flhScale;
+                native[axis] += settings.flhScale;
+                const basis = project(pointWorld(native));
+                const projectedUnit = Math.hypot(basis[0] - screen[0], basis[1] - screen[1]);
+                if (projectedUnit < 0.01) {
+                    continue;
+                }
+                const distance = (44 / projectedUnit) * settings.flhScale;
+                native[axis] = point.value[axis] + distance;
                 const end = pointWorld(native);
                 const projected = project(end),
                     dx = projected[0] - screen[0],
                     dy = projected[1] - screen[1];
+                if (!projected.every(Number.isFinite)) {
+                    continue;
+                }
                 ctx.strokeStyle = ['#f87070', '#7ddc91', '#72b9ff'][axis];
                 ctx.lineWidth = 2;
                 ctx.beginPath();
                 ctx.moveTo(screen[0], screen[1]);
                 ctx.lineTo(projected[0], projected[1]);
                 ctx.stroke();
-                handles.push({ id: point.id, axis, x: projected[0], y: projected[1], dx, dy });
+                ctx.fillStyle = ctx.strokeStyle;
+                ctx.beginPath();
+                ctx.arc(projected[0], projected[1], 3, 0, Math.PI * 2);
+                ctx.fill();
+                handles.push({ id: point.id, axis, x: projected[0], y: projected[1], dx, dy, distance });
             }
             if (settings.fire) {
                 const end = project(
@@ -508,14 +492,27 @@ export function voxelRenderer(
             ctx.beginPath();
             ctx.arc(x, y, 36, 0, Math.PI * 2);
             ctx.stroke();
+            ctx.strokeStyle = '#ffd16666';
+            for (const rotation of [0, Math.PI / 2]) {
+                ctx.beginPath();
+                ctx.ellipse(x, y, 36, 12, rotation, 0, Math.PI * 2);
+                ctx.stroke();
+            }
+            const view = camera();
+            const lx = light.reduce((sum, value, axis) => sum + value * view.right[axis], 0) / length;
+            const ly = light.reduce((sum, value, axis) => sum + value * view.up[axis], 0) / length;
+            const front = light.reduce((sum, value, axis) => sum + value * view.eye[axis], 0) >= 0;
+            ctx.strokeStyle = front ? '#ffd166' : '#ffd16666';
+            ctx.setLineDash(front ? [] : [3, 3]);
             ctx.beginPath();
             ctx.moveTo(x, y);
-            ctx.lineTo(x + (light[0] / length) * 30, y - (light[2] / length) * 30);
+            ctx.lineTo(x + lx * 30, y - ly * 30);
             ctx.stroke();
+            ctx.setLineDash([]);
             ctx.fillStyle = '#ffd166';
             ctx.beginPath();
-            ctx.arc(x + (light[0] / length) * 30, y - (light[2] / length) * 30, 5, 0, Math.PI * 2);
-            ctx.fill();
+            ctx.arc(x + lx * 30, y - ly * 30, 5, 0, Math.PI * 2);
+            front ? ctx.fill() : ctx.stroke();
         }
     };
     const coordinates = (event: PointerEvent) => {
@@ -534,68 +531,130 @@ export function voxelRenderer(
                 y,
                 azimuth: Math.atan2(light[1], light[0]),
                 elevation: Math.atan2(light[2], Math.hypot(light[0], light[1])),
+                start: [...settings.light],
             };
             overlay.setPointerCapture(event.pointerId);
             return;
         }
         // At native game scale the axis handles are close together; select the nearest, not the first hit.
-        const handle = [...handles]
-            .sort((a, b) => Math.hypot(a.x - x, a.y - y) - Math.hypot(b.x - x, b.y - y))
-            .find((item) => Math.hypot(item.x - x, item.y - y) < 12);
+        const direct = settings.showPoints
+            ? media.points
+                  .map((point) => ({ point, screen: project(pointWorld(point.value)) }))
+                  .sort(
+                      (a, b) =>
+                          Math.hypot(a.screen[0] - x, a.screen[1] - y) - Math.hypot(b.screen[0] - x, b.screen[1] - y)
+                  )
+                  .find((item) => Math.hypot(item.screen[0] - x, item.screen[1] - y) <= 6)
+            : undefined;
+        const handle = direct
+            ? undefined
+            : [...handles]
+                  .sort((a, b) => Math.hypot(a.x - x, a.y - y) - Math.hypot(b.x - x, b.y - y))
+                  .find((item) => Math.hypot(item.x - x, item.y - y) < 12);
         if (handle) {
             drag = { ...handle, start: [...media.points.find((point) => point.id === handle.id)!.value], x, y };
+            settings.playing = false;
         } else {
-            const point = settings.showPoints
-                ? media.points
-                      .map((point) => ({ point, screen: project(pointWorld(point.value)) }))
-                      .sort(
-                          (a, b) =>
-                              Math.hypot(a.screen[0] - x, a.screen[1] - y) -
-                              Math.hypot(b.screen[0] - x, b.screen[1] - y)
-                      )
-                      .find((item) => Math.hypot(item.screen[0] - x, item.screen[1] - y) <= 8)
-                : undefined;
+            const point =
+                direct ??
+                (settings.showPoints
+                    ? media.points
+                          .map((point) => ({ point, screen: project(pointWorld(point.value)) }))
+                          .sort(
+                              (a, b) =>
+                                  Math.hypot(a.screen[0] - x, a.screen[1] - y) -
+                                  Math.hypot(b.screen[0] - x, b.screen[1] - y)
+                          )
+                          .find((item) => Math.hypot(item.screen[0] - x, item.screen[1] - y) <= 8)
+                    : undefined);
             if (point) {
                 settings.selectedPoint = point.point.name;
+                drag = { id: point.point.id, axis: -1, start: [...point.point.value], x, y, dx: 0, dy: 0, distance: 0 };
+                settings.playing = false;
                 update();
                 changed();
-                return;
+            } else {
+                orbit = {
+                    x,
+                    y,
+                    yaw: settings.yaw,
+                    pitch: settings.pitch,
+                    pan: [...(settings.pan ?? [0, 0, 0])],
+                    panning: event.button === 1 || event.button === 2 || event.shiftKey,
+                };
             }
-            orbit = { x, y, yaw: settings.yaw, pitch: settings.pitch };
         }
         overlay.setPointerCapture(event.pointerId);
     };
     const move = (event: PointerEvent) => {
         const [x, y] = coordinates(event);
         if (lightDrag) {
-            const azimuth = lightDrag.azimuth + (x - lightDrag.x) * 0.025;
-            const elevation = Math.max(
-                -Math.PI / 2,
-                Math.min(Math.PI / 2, lightDrag.elevation - (y - lightDrag.y) * 0.025)
+            const turn = (vector: number[], axis: number[], angle: number) => {
+                const c = Math.cos(angle),
+                    s = Math.sin(angle);
+                const dot = vector.reduce((sum, value, index) => sum + value * axis[index], 0);
+                const cross = [
+                    axis[1] * vector[2] - axis[2] * vector[1],
+                    axis[2] * vector[0] - axis[0] * vector[2],
+                    axis[0] * vector[1] - axis[1] * vector[0],
+                ];
+                return vector.map((value, index) => value * c + cross[index] * s + axis[index] * dot * (1 - c));
+            };
+            const view = camera();
+            settings.light = authoredLight(
+                turn(
+                    turn(nativeLight(lightDrag.start), view.up, (x - lightDrag.x) / 36),
+                    view.right,
+                    (y - lightDrag.y) / 36
+                )
             );
-            settings.light = authoredLight([
-                Math.cos(azimuth) * Math.cos(elevation),
-                Math.sin(azimuth) * Math.cos(elevation),
-                Math.sin(elevation),
-            ]);
             update();
             changed();
         } else if (drag) {
             const point = media.points.find((point) => point.id === drag!.id)!;
             const length = drag.dx * drag.dx + drag.dy * drag.dy;
-            if (length > 0.01) {
-                point.value[drag.axis] = Math.round(
-                    drag.start[drag.axis] +
-                        (((((x - drag.x) * drag.dx + (y - drag.y) * drag.dy) / length) * extent) / 7) *
-                            settings.flhScale
+            if (drag.axis === -1) {
+                const delta = rotate(
+                    camera().screenDelta(pointWorld(drag.start), x - drag.x, y - drag.y),
+                    (-settings.turret * Math.PI) / 180
                 );
+                point.value = drag.start.map((value, axis) => Math.round(value + delta[axis] * settings.flhScale));
+            } else if (length > 0.01) {
+                const fraction = ((x - drag.x) * drag.dx + (y - drag.y) * drag.dy) / length;
+                const end = [...drag.start];
+                end[drag.axis] += drag.distance;
+                const view = camera(),
+                    startW = view.clipW(pointWorld(drag.start)),
+                    endW = view.clipW(pointWorld(end));
+                const denominator = endW - fraction * (endW - startW);
+                if (Math.abs(denominator) > 0.001) {
+                    point.value[drag.axis] = Math.round(
+                        drag.start[drag.axis] + (drag.distance * fraction * startW) / denominator
+                    );
+                }
             }
             update();
             changed();
         } else if (orbit) {
-            settings.yaw = orbit.yaw + (x - orbit.x) * 0.4;
-            settings.pitch = Math.max(-85, Math.min(85, orbit.pitch + (y - orbit.y) * 0.3));
+            if (orbit.panning) {
+                const delta = camera().screenDelta(center, x - orbit.x, y - orbit.y);
+                settings.pan = orbit.pan.map((value, axis) => value - delta[axis]);
+            } else {
+                settings.yaw = orbit.yaw - (x - orbit.x) * 0.4;
+                settings.pitch = Math.max(-85, Math.min(85, orbit.pitch + (y - orbit.y) * 0.3));
+            }
             update();
+        } else {
+            const point = settings.showPoints
+                ? media.points.find((point) => {
+                      const screen = project(pointWorld(point.value));
+                      return Math.hypot(screen[0] - x, screen[1] - y) <= 8;
+                  })
+                : undefined;
+            if ((point?.id ?? '') !== hoveredPoint) {
+                hoveredPoint = point?.id ?? '';
+                update();
+            }
         }
     };
     const up = () => {
@@ -622,12 +681,16 @@ export function voxelRenderer(
         if (drag) {
             media.points.find((point) => point.id === drag!.id)!.value = [...drag.start];
         }
+        if (lightDrag) {
+            settings.light = lightDrag.start;
+        }
         drag = undefined;
         orbit = undefined;
         lightDrag = undefined;
         update();
     });
     overlay.addEventListener('wheel', wheel, { passive: false });
+    overlay.addEventListener('contextmenu', (event) => event.preventDefault());
     const observer = new ResizeObserver(update);
     observer.observe(canvas.parentElement!);
     const tick = (time: number) => {

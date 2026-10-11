@@ -6,6 +6,15 @@ All notable changes to the "ra2-ini-intellisense" extension will be documented i
 
 Check [Keep a Changelog](http://keepachangelog.com/) for recommendations on how to structure this file.
 
+## [未发布]
+
+- 统一项目 VXL 光照，修正入射方向；游戏正交视图和真实透视视图共用 VPL 着色，增加相机平移和球面光照控制。
+- FLH 编辑移至视窗内，支持直接拖点、拖坐标轴、透视坐标换算与原生 INI 撤销；只显示选中或指向点的名称，减少遮挡。
+- 普通和升级 SHP/PCX 图标默认展开；统一媒体能力规则，音频只提供音频导出，不再出现调色板、PNG 导出和图片对比。
+- 分离 Palette 剧场前缀与 CustomPalette 完整文件名规则；建筑动画未指定色盘时跟随母建筑，并支持每层独立手动选择。
+- 合成 BibShape、生产/门/展开/升级动画及受损组合状态，修正建筑占地格的游戏锚点与半格偏移；支持拖拽受损烟火点、增删有效火点，按配置素材和颜色预览受损粒子，不逐项模拟游戏引擎的全部粒子行为。
+- 步兵按动作与方向播放，时间轴显示动作相对帧及素材绝对帧，提供八方向预览；VoxelAnimType 无需 art Voxel 标记即可识别为 VXL。
+
 ## [0.1.3] - 2026-10-10
 
 - 修复文件分类通配符跨目录误匹配：rules*.ini 不再把 Rules/artes.ini、Rules/soundes.ini 归入 rules，恢复打开 MOD 根目录时的 VXL 格式识别及 art/sound 查询；递归路径使用 **。

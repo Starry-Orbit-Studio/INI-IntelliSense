@@ -4,6 +4,24 @@ import { applyVisualEdit } from '../context/visual-edit';
 import { EditCapability } from '../context/inspection-service';
 
 suite('Native visual edits', () => {
+    test('damage fire points add, move and delete with native undo and comment preservation', async () => {
+        const document = await vscode.workspace.openTextDocument({
+            language: 'ra2-ini',
+            content: '[Owner]\nDamageFireOffset0=1,2 ; retain\n[Next]\nX=1',
+        });
+        await vscode.window.showTextDocument(document);
+        await applyVisualEdit(target(document, 'pixel', 'DamageFireOffset0', '1,2'), [10, -20]);
+        assert.strictEqual(document.lineAt(1).text, 'DamageFireOffset0=10,-20 ; retain');
+        await assert.rejects(() =>
+            applyVisualEdit(target(document, 'pixel', 'DamageFireOffset0', '10,-20'), [1, 2, 3])
+        );
+        await applyVisualEdit(target(document, 'pixel', 'DamageFireOffset0', '10,-20'), null);
+        assert.ok(!document.getText().includes('DamageFireOffset0'));
+        await vscode.commands.executeCommand('undo');
+        assert.strictEqual(document.lineAt(1).text, 'DamageFireOffset0=10,-20 ; retain');
+        await applyVisualEdit(target(document, 'pixel', 'DamageFireOffset7'), [30, 40]);
+        assert.ok(document.getText().includes('DamageFireOffset7=30,40\n[Next]'));
+    });
     test('light direction and fixed-light flag are one native undo operation', async () => {
         const document = await vscode.workspace.openTextDocument({
             language: 'ra2-ini',

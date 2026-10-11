@@ -16,6 +16,8 @@ export interface SpriteSceneRecipe {
     foundation: number[][];
     trace: string[];
     layers: { layer: Omit<SpriteLayer, 'media'>; candidate?: ResourceCandidate; options: MediaOptions }[];
+    points?: PointEdit[];
+    particles?: SpriteScene['particles'];
 }
 
 export interface MediaOptions {
@@ -59,11 +61,12 @@ export class MediaService {
     public async thumbnail(
         candidate: ResourceCandidate,
         token?: vscode.CancellationToken,
-        origin = candidate.uri
+        origin = candidate.uri,
+        options: MediaOptions = {}
     ): Promise<Uint8Array | undefined> {
         const extension = path.posix.extname(candidate.name).toLowerCase();
         if (['.vxl', '.hva'].includes(extension)) {
-            const media = await this.load(candidate, { origin }, token);
+            const media = await this.load(candidate, { ...options, origin }, token);
             if (media.kind !== 'voxel') {
                 return undefined;
             }
@@ -82,7 +85,7 @@ export class MediaService {
             bytes,
             token,
             undefined,
-            { palette: await this.palette(origin), frame: 0 }
+            { palette: await this.palette(origin, options), frame: 0 }
         );
     }
 
@@ -95,6 +98,9 @@ export class MediaService {
                       options.paletteName ?? (options.animation ? 'anim.pal' : 'unittem.pal')
                   )
               )[0]?.uri;
+        if (!preferred && options.paletteName && options.paletteName.toLowerCase() !== 'unittem.pal') {
+            throw new Error(localize('workbench.missingPalette', 'Palette not found: {0}', options.paletteName));
+        }
         const uri = preferred ?? vscode.Uri.joinPath(this.extension, 'assets', 'palettes', 'unittem.pal');
         const colors = readPalette(await this.resources.read(uri, 1024 * 1024));
         return colors.flatMap((color) => [color.r, color.g, color.b]);
@@ -121,7 +127,7 @@ export class MediaService {
             }>('audio', data, token, options.sample);
             return {
                 kind: 'audio',
-                name,
+                name: options.sample ? path.posix.basename(options.sample.name, '.wav') + '.wav' : name,
                 bytes: Buffer.from(audio.wav).toString('base64'),
                 duration: audio.duration,
                 rate: audio.rate,
@@ -183,6 +189,7 @@ export class MediaService {
                 bytes: Buffer.from(bytes).toString('base64'),
                 file,
                 palette: await this.palette(origin, options),
+                paletteName: options.paletteName ?? (options.animation ? 'anim.pal' : 'unittem.pal'),
                 actions: options.actions ?? [],
                 shadow: (options.shadow ?? false) && file.frames.length > 1 && file.frames.length % 2 === 0,
                 scene,
@@ -270,6 +277,7 @@ export class MediaService {
                 name,
                 model,
                 palette: await this.palette(origin, options),
+                paletteName: options.paletteName ?? 'unittem.pal',
                 vpl: [...vplBytes.subarray(784, 784 + sections * 256)],
                 normals: GAME_NORMALS.flatMap((normal) => [normal.x, normal.y, normal.z]),
                 light: options.light ?? [...DEFAULT_VOXEL_LIGHT],

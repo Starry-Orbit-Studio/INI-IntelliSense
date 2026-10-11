@@ -152,6 +152,9 @@ input[type='color'] {
     height: clamp(180px, calc(100vh - 120px), 440px);
     display: block;
 }
+.scene-viewport {
+    height: clamp(180px, calc(100vh - 120px), 440px);
+}
 .voxel-overlay {
     position: absolute;
     inset: 0;
@@ -159,6 +162,54 @@ input[type='color'] {
     height: 100%;
     touch-action: none;
     cursor: grab;
+}
+.firing-points {
+    position: absolute;
+    z-index: 2;
+    top: 8px;
+    left: 8px;
+    width: min(330px, calc(100% - 120px));
+    padding: 6px 8px;
+    border: 1px solid var(--vscode-panel-border);
+    border-radius: 8px;
+    background: var(--vscode-editor-background);
+    box-shadow: 0 3px 12px #0003;
+    max-height: 70%;
+    overflow: auto;
+}
+.firing-points summary {
+    margin: 0;
+    font-size: 11px;
+}
+.firing-points .controls {
+    gap: 3px;
+}
+.firing-points input[type='number'] {
+    width: 64px;
+}
+.cameo-card {
+    display: inline-block;
+    margin: 8px 12px 8px 0;
+}
+.cameo-strip {
+    display: flex;
+    gap: 8px;
+    align-items: flex-start;
+}
+.cameo-strip .cameo-card {
+    margin: 0;
+}
+.asset-actions {
+    padding: 6px 0;
+    border-top: 1px solid var(--vscode-panel-border);
+}
+.direction-grid {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 4px;
+}
+.direction-grid button[aria-pressed='true'] {
+    border-color: var(--vscode-focusBorder);
 }
 
 .asset-sources {

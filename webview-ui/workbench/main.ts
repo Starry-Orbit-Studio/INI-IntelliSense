@@ -4,6 +4,8 @@ import { Renderer, ViewSettings, imageRenderer, spriteRenderer, voxelRenderer, f
 import { sceneRenderer } from './scene-renderer';
 import { DEFAULT_VOXEL_LIGHT } from '../../src/media/voxel-light';
 import { DEFAULT_HOUSE_COLOR } from '../../src/media/render-defaults';
+import { spriteClip } from '../../src/media/sprite-playback';
+import { mediaCapabilities } from '../../src/media/media-capabilities';
 
 declare function acquireVsCodeApi(): {
     postMessage(message: unknown): void;
@@ -27,6 +29,7 @@ let lastSignature = '';
 let lastMediaKey = '';
 let lastMediaIdentity = '';
 let syncPointEditor: (() => void) | undefined;
+let syncTimeline: (() => void) | undefined;
 const transientWorkers = new Set<Worker>();
 const libraryThumbnails = new Map<string, string | undefined>();
 let thumbnailQueue: string[] = [],
@@ -64,6 +67,9 @@ const settings: ViewSettings = {
     layers: new Set(),
     showPoints: true,
     selectedPoint: '',
+    pan: [0, 0, 0],
+    damaged: false,
+    sceneFit: true,
 };
 const mediaSettings = new Map<string, ViewSettings>();
 let settingsKind = '';
@@ -214,6 +220,7 @@ function stop(): void {
 }
 function dispose(): void {
     syncPointEditor = undefined;
+    syncTimeline = undefined;
     renderer?.dispose();
     comparisonRenderer?.dispose();
     renderer = undefined;
@@ -241,7 +248,17 @@ function createRenderer(media: MediaPayload, host: HTMLElement, compare = false)
     }
     if (media.kind === 'sprite') {
         if (media.scene) {
-            return sceneRenderer(media, canvas, settings, workerUrl, message, compare);
+            viewport.classList.add('scene-viewport');
+            return sceneRenderer(
+                media,
+                canvas,
+                settings,
+                workerUrl,
+                message,
+                compare,
+                (id, values) => post('edit', { id, values }),
+                () => syncPointEditor?.()
+            );
         }
         return spriteRenderer(
             media,
@@ -252,10 +269,7 @@ function createRenderer(media: MediaPayload, host: HTMLElement, compare = false)
                 if (compare) {
                     return;
                 }
-                const indicator = document.getElementById('frame-indicator');
-                if (indicator) {
-                    indicator.textContent = labels.frame + ' ' + frame + ' / ' + (media.file.frames.length - 1);
-                }
+                syncTimeline?.();
                 comparisonRenderer?.update();
             },
             message,
@@ -414,8 +428,21 @@ function commonControls(host: HTMLElement, remap = true): void {
 function spriteControls(media: Extract<MediaPayload, { kind: 'sprite' }>, host: HTMLElement): void {
     if (media.scene) {
         const controls = element('div', 'controls');
-        const states = [...new Set(['normal', ...media.scene.layers.map((layer) => layer.state)])];
+        const states = [
+            ...new Set([
+                'normal',
+                ...media.scene.layers.map((layer) => layer.state).filter((value) => value !== 'damaged'),
+            ]),
+        ];
         controls.append(
+            checkbox(labels.damaged, settings.damaged ?? false, (value) => {
+                settings.damaged = value;
+                update();
+            }),
+            checkbox(labels.fit, settings.sceneFit !== false, (value) => {
+                settings.sceneFit = value;
+                update();
+            }),
             field(
                 labels.sceneState,
                 select(
@@ -471,12 +498,95 @@ function spriteControls(media: Extract<MediaPayload, { kind: 'sprite' }>, host: 
                 row.querySelector('input')!.disabled = true;
             }
             row.append(element('p', 'hint', layer.source));
+            row.append(
+                field(
+                    labels.palette,
+                    select(
+                        [
+                            { value: '', label: labels.automatic + ' · ' + (layer.paletteName ?? '') },
+                            ...(current?.paletteOptions ?? []).map((option) => ({
+                                value: option.id,
+                                label: option.name + ' · ' + option.source,
+                            })),
+                        ],
+                        (layer.tag === 'body' ? current?.selectedPalette : layer.selectedPalette) ?? '',
+                        (palette) =>
+                            post('select', {
+                                id: current!.selectedAsset,
+                                palette,
+                                ...(layer.tag === 'body' ? {} : { layer: layer.id }),
+                            })
+                    )
+                )
+            );
             layers.append(row);
         }
         const trace = element('details');
         trace.append(element('summary', '', labels.trace));
         media.scene.trace.forEach((step) => trace.append(element('p', 'hint', step)));
         host.append(layers, trace);
+        if (media.scene.points?.length) {
+            const editor = element('details', 'firing-points');
+            editor.append(element('summary', '', labels.damagePoints));
+            editor.append(
+                checkbox(labels.showPoints, settings.showPoints, (value) => {
+                    settings.showPoints = value;
+                    update();
+                })
+            );
+            const choices = select(
+                media.scene.points.map((point) => ({
+                    value: point.name,
+                    label: point.name + (point.absent ? ' +' : ''),
+                })),
+                settings.selectedPoint,
+                (value) => {
+                    settings.selectedPoint = value;
+                    renderEditor();
+                    update();
+                }
+            );
+            editor.append(choices);
+            const fields = element('div');
+            editor.append(fields);
+            const renderEditor = () => {
+                fields.replaceChildren();
+                const point = media.scene!.points!.find((item) => item.name === settings.selectedPoint);
+                if (!point) {
+                    return;
+                }
+                const row = element('div', 'controls');
+                point.value.forEach((value, index) =>
+                    row.append(
+                        field(
+                            ['X', 'Y', 'Z'][index],
+                            number(value, -1000000, 1000000, (next) => {
+                                point.value[index] = next;
+                                update();
+                            })
+                        )
+                    )
+                );
+                row.append(
+                    button(
+                        point.absent ? labels.addPoint : labels.apply,
+                        () => post('edit', { id: point.id, values: point.value }),
+                        'primary'
+                    )
+                );
+                if (!point.absent && point.space === 'pixel' && point.deletable !== false) {
+                    row.append(button(labels.deletePoint, () => post('edit', { id: point.id, values: null })));
+                }
+                fields.append(row);
+            };
+            syncPointEditor = () => {
+                choices.value = settings.selectedPoint;
+                editor.open = true;
+                renderEditor();
+            };
+            renderEditor();
+            host.querySelector('.viewport')?.append(editor);
+        }
         return;
     }
     const controls = element('div', 'controls');
@@ -484,12 +594,13 @@ function spriteControls(media: Extract<MediaPayload, { kind: 'sprite' }>, host: 
     frames.type = 'range';
     frames.min = '0';
     const bodyFrames = media.shadow ? media.file.frames.length / 2 : media.file.frames.length;
-    frames.max = String(bodyFrames - 1);
+    const clip = () =>
+        spriteClip(media.file.frames.length, media.shadow, media.actions[settings.action]?.action, settings.direction);
+    frames.max = String(clip().count - 1);
     frames.value = String(settings.frame);
     frames.oninput = () => {
         settings.playing = false;
         settings.frame = Number(frames.value);
-        settings.action = -1;
         update();
     };
     controls.append(
@@ -507,7 +618,7 @@ function spriteControls(media: Extract<MediaPayload, { kind: 'sprite' }>, host: 
         }),
         button('›', () => {
             settings.playing = false;
-            settings.frame = Math.min(bodyFrames - 1, settings.frame + 1);
+            settings.frame = Math.min(clip().count - 1, settings.frame + 1);
             update();
         }),
         field(
@@ -523,6 +634,8 @@ function spriteControls(media: Extract<MediaPayload, { kind: 'sprite' }>, host: 
                 String(settings.direction),
                 (value) => {
                     settings.direction = Number(value);
+                    settings.frame = 0;
+                    settings.playing = settings.action >= 0;
                     update();
                 }
             )
@@ -533,10 +646,33 @@ function spriteControls(media: Extract<MediaPayload, { kind: 'sprite' }>, host: 
         })
     );
     host.append(controls, frames, element('p', 'hint', labels.frame));
+    controls.querySelector('select')?.classList.add('direction-select');
     controls.hidden = bodyFrames <= 1;
     frames.hidden = bodyFrames <= 1;
     const indicator = host.lastElementChild as HTMLElement;
     indicator.id = 'frame-indicator';
+    syncTimeline = () => {
+        const selected = clip();
+        frames.max = String(selected.count - 1);
+        frames.value = String(settings.frame % selected.count);
+        indicator.textContent =
+            labels.frame +
+            ' ' +
+            ((settings.frame % selected.count) + 1) +
+            ' / ' +
+            selected.count +
+            ' · ' +
+            labels.sourceFrame +
+            ' ' +
+            selected.frame(settings.frame);
+        const directionInput = document.querySelector<HTMLSelectElement>('.direction-select');
+        if (directionInput) {
+            directionInput.value = String(settings.direction);
+        }
+        document
+            .querySelectorAll('.direction-grid button')
+            .forEach((item, index) => item.setAttribute('aria-pressed', String(index === settings.direction)));
+    };
     const actions = element('div', 'controls');
     actions.append(
         field(
@@ -553,8 +689,13 @@ function spriteControls(media: Extract<MediaPayload, { kind: 'sprite' }>, host: 
                 (value) => {
                     settings.action = Number(value);
                     settings.frame = 0;
+                    settings.playing = settings.action >= 0 && !!media.actions[settings.action]?.valid;
                     update();
                     actionEditor();
+                    syncTimeline?.();
+                    if (!contacts.hidden) {
+                        renderContact();
+                    }
                 }
             )
         )
@@ -592,6 +733,23 @@ function spriteControls(media: Extract<MediaPayload, { kind: 'sprite' }>, host: 
         }
     };
     actionEditor();
+    syncTimeline();
+    const directions = element('div', 'direction-grid');
+    for (let direction = 0; direction < 8; direction++) {
+        const choice = button(String(direction * 45) + '°', () => {
+            settings.direction = direction;
+            settings.frame = 0;
+            settings.playing = settings.action >= 0;
+            directions
+                .querySelectorAll('button')
+                .forEach((item, index) => item.setAttribute('aria-pressed', String(index === direction)));
+            update();
+        });
+        choice.setAttribute('aria-pressed', String(direction === settings.direction));
+        directions.append(choice);
+    }
+    directions.hidden = !media.actions.length;
+    host.append(directions);
     const contacts = element('div', 'contacts');
     let page = 0;
     let contactWorker: Worker | undefined;
@@ -627,8 +785,12 @@ function spriteControls(media: Extract<MediaPayload, { kind: 'sprite' }>, host: 
         );
         contacts.append(nav);
         const tiles = new Map<number, HTMLCanvasElement>();
-        const first = page * 32,
-            end = Math.min(first + 32, media.file.frames.length);
+        const action = media.actions[settings.action]?.action;
+        nav.hidden = !!action;
+        const first = action ? 0 : page * 32,
+            end = action ? 8 : Math.min(first + 32, bodyFrames);
+        const sourceFrame = (index: number) =>
+            action ? spriteClip(media.file.frames.length, media.shadow, action, index).frame(settings.frame) : index;
         contactWorker = new Worker(workerUrl);
         transientWorkers.add(contactWorker);
         contactWorker.postMessage({
@@ -661,7 +823,7 @@ function spriteControls(media: Extract<MediaPayload, { kind: 'sprite' }>, host: 
                 contactWorker?.postMessage({
                     type: 'frame',
                     id: next,
-                    frame: next,
+                    frame: sourceFrame(next),
                     shadow: false,
                     color: settings.color,
                 });
@@ -674,18 +836,30 @@ function spriteControls(media: Extract<MediaPayload, { kind: 'sprite' }>, host: 
         };
         for (let index = first; index < end; index++) {
             const tile = button('', () => {
-                settings.frame = index;
-                settings.action = -1;
-                settings.playing = false;
+                if (action) {
+                    settings.direction = index;
+                    settings.frame = 0;
+                    settings.playing = true;
+                } else {
+                    settings.frame = index;
+                    settings.action = -1;
+                    settings.playing = false;
+                }
                 update();
             });
             const canvas = element('canvas', 'contact-thumbnail');
             tiles.set(index, canvas);
-            tile.append(canvas, element('span', '', String(index)));
+            tile.append(canvas, element('span', '', action ? String(index * 45) + '°' : String(index)));
             tile.title = labels.frame + ' ' + index;
             contacts.append(tile);
         }
-        contactWorker.postMessage({ type: 'frame', id: first, frame: first, shadow: false, color: settings.color });
+        contactWorker.postMessage({
+            type: 'frame',
+            id: first,
+            frame: sourceFrame(first),
+            shadow: false,
+            color: settings.color,
+        });
     };
 }
 
@@ -704,6 +878,7 @@ function voxelControls(media: Extract<MediaPayload, { kind: 'voxel' }>, host: HT
                         settings.pitch = 35.264;
                         settings.zoom = 1;
                         settings.fit = false;
+                        settings.pan = [0, 0, 0];
                     }
                     update();
                 }
@@ -714,6 +889,7 @@ function voxelControls(media: Extract<MediaPayload, { kind: 'voxel' }>, host: HT
             settings.pitch = 35.264;
             settings.zoom = 1;
             settings.fit = false;
+            settings.pan = [0, 0, 0];
             update();
         }),
         button(labels.fit, () => {
@@ -773,12 +949,7 @@ function voxelControls(media: Extract<MediaPayload, { kind: 'voxel' }>, host: HT
     const light = element('div', 'controls');
     light.append(element('span', '', labels.light));
     light.append(
-        button(labels.defaultLight, () => {
-            settings.light = [...DEFAULT_VOXEL_LIGHT];
-            settings.fixed = false;
-            render(current!);
-        }),
-        button(labels.projectLight, () => {
+        button(labels.resetLight, () => {
             settings.light = [...media.light];
             settings.fixed = media.fixed;
             update();
@@ -824,21 +995,6 @@ function voxelControls(media: Extract<MediaPayload, { kind: 'voxel' }>, host: HT
         })
     );
     Array.from(light.querySelectorAll<HTMLInputElement>('input[type="checkbox"]')).at(-1)?.classList.add('light-fixed');
-    host.append(
-        field(
-            labels.flhScale,
-            number(
-                settings.flhScale,
-                0.01,
-                1024,
-                (value) => {
-                    settings.flhScale = value;
-                    update();
-                },
-                0.01
-            )
-        )
-    );
     host.append(light);
     const parts = element('details');
     parts.append(element('summary', '', labels.parts));
@@ -856,7 +1012,7 @@ function voxelControls(media: Extract<MediaPayload, { kind: 'voxel' }>, host: HT
     );
     host.append(parts);
     const points = element('details', 'firing-points');
-    points.open = media.points.length > 0;
+    points.open = !!settings.selectedPoint;
     points.hidden = !media.points.length;
     points.append(element('summary', '', labels.points));
     points.append(
@@ -878,6 +1034,21 @@ function voxelControls(media: Extract<MediaPayload, { kind: 'voxel' }>, host: HT
         }
     );
     points.append(field(labels.points, pointSelection));
+    points.append(
+        field(
+            labels.flhScale,
+            number(
+                settings.flhScale,
+                0.1,
+                256,
+                (value) => {
+                    settings.flhScale = value;
+                    update();
+                },
+                0.1
+            )
+        )
+    );
     const pointEditor = element('div');
     points.append(pointEditor);
     const renderPointEditor = () => {
@@ -904,10 +1075,13 @@ function voxelControls(media: Extract<MediaPayload, { kind: 'voxel' }>, host: HT
     };
     syncPointEditor = () => {
         pointSelection.value = settings.selectedPoint;
+        if (settings.selectedPoint) {
+            points.open = true;
+        }
         renderPointEditor();
     };
     renderPointEditor();
-    host.append(points);
+    host.querySelector('.viewport')?.append(points);
 }
 
 function render(inspection: Inspection): void {
@@ -941,6 +1115,7 @@ function render(inspection: Inspection): void {
     current = inspection;
     app.dataset.inspection = inspection.id;
     const media = inspection.media;
+    const capabilities = media && mediaCapabilities(media.kind);
     const mediaKey =
         media?.kind === 'voxel' ? media.name + ':' + JSON.stringify([media.light, media.fixed]) : (media?.name ?? '');
     if (media?.kind === 'voxel' && lastMediaKey !== mediaKey) {
@@ -957,6 +1132,9 @@ function render(inspection: Inspection): void {
         settings.layers.clear();
         settings.hidden.clear();
         settings.sceneState = 'normal';
+        settings.damaged = false;
+        settings.pan = [0, 0, 0];
+        settings.selectedPoint = '';
         settings.frame = 0;
     }
     lastMediaIdentity = inspection.owner + ':' + media?.name;
@@ -1031,13 +1209,16 @@ function render(inspection: Inspection): void {
         }
         visual.append(element('h2', '', labels.source), sources);
     }
-    if (inspection.paletteOptions.length) {
+    if (inspection.paletteOptions.length && media && capabilities?.palette) {
         visual.append(
             field(
                 labels.palette,
                 select(
                     [
-                        { value: '', label: labels.automatic },
+                        {
+                            value: '',
+                            label: labels.automatic + ' · ' + ('paletteName' in media ? (media.paletteName ?? '') : ''),
+                        },
                         ...inspection.paletteOptions.map((asset) => ({
                             value: asset.id,
                             label: asset.name + ' · ' + asset.source,
@@ -1057,8 +1238,8 @@ function render(inspection: Inspection): void {
     if (media) {
         try {
             renderer = createRenderer(media, visual);
-            if (media.kind === 'sprite' || media.kind === 'voxel' || media.kind === 'image') {
-                commonControls(visual, media.kind !== 'image');
+            if (capabilities?.zoom) {
+                commonControls(visual, capabilities.remap);
             }
             if (media.kind === 'sprite') {
                 spriteControls(media, visual);
@@ -1069,9 +1250,9 @@ function render(inspection: Inspection): void {
         } catch (error) {
             message(error instanceof Error ? error.message : String(error));
         }
-        const actions = element('div', 'controls');
+        const actions = element('div', 'controls asset-actions');
         actions.append(
-            button(labels.export, () => {
+            button(capabilities?.export === 'audio' ? labels.exportAudio : labels.exportPng, () => {
                 if (media.kind === 'audio') {
                     post('export');
                     return;
@@ -1085,26 +1266,30 @@ function render(inspection: Inspection): void {
                     binary += String.fromCharCode(byte);
                 }
                 post('export', { width: image.width, height: image.height, pixels: btoa(binary) });
-            }),
-            button(labels.compare, () => {
-                comparison = structuredClone(media);
-                renderComparison(visual);
             })
         );
+        if (capabilities?.compare) {
+            actions.append(
+                button(labels.compare, () => {
+                    comparison = structuredClone(media);
+                    renderComparison(visual);
+                })
+            );
+        }
         if (inspection.canReplace) {
             actions.append(button(labels.replacement, () => post('replace')));
         }
         visual.append(actions);
-        if (comparison) {
+        if (comparison && capabilities?.compare) {
             renderComparison(visual);
         }
     } else {
         visual.append(element('p', 'empty', labels.missing));
     }
-    if (inspection.cameo) {
-        const cameo = element('details');
-        cameo.append(element('summary', '', labels.cameo));
-        const image = inspection.cameo;
+    for (const entry of inspection.cameos ?? (inspection.cameo ? [{ tag: 'Cameo', media: inspection.cameo }] : [])) {
+        const cameo = element('div', 'cameo-card');
+        cameo.append(element('p', 'hint', entry.tag === 'AltCameo' ? labels.altCameo : labels.cameo));
+        const image = entry.media;
         if (image.kind === 'sprite') {
             const canvas = element('canvas', 'cameo');
             cameo.append(canvas);
@@ -1177,10 +1362,6 @@ function render(inspection: Inspection): void {
         for (const child of Array.from(visual.children)) {
             (child === surface ? stage : controls).append(child);
         }
-        const points = controls.querySelector('.firing-points');
-        if (points) {
-            controls.prepend(points);
-        }
         const sources = controls.querySelector('.asset-sources');
         if (sources) {
             const heading = sources.previousElementSibling;
@@ -1188,6 +1369,11 @@ function render(inspection: Inspection): void {
                 controls.append(heading);
             }
             controls.append(sources);
+        }
+        const icons = element('div', 'cameo-strip');
+        controls.querySelectorAll('.cameo-card').forEach((card) => icons.append(card));
+        if (icons.children.length) {
+            controls.prepend(icons);
         }
         visual.append(stage, controls);
     }

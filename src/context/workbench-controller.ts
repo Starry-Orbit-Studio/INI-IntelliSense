@@ -10,6 +10,7 @@ import { workbenchLabels } from './workbench-labels';
 import { applyVisualEdit } from './visual-edit';
 import { localize } from '../i18n';
 import { encodePng } from '../media/png';
+import { mediaCapabilities } from '../media/media-capabilities';
 
 class WorkbenchSession implements vscode.Disposable {
     public pinned = false;
@@ -126,20 +127,24 @@ class WorkbenchSession implements vscode.Disposable {
                         priority: 0,
                     });
                     current.inspection.focus = candidate.name;
+                } else {
+                    current.assets.get(id)!.options = await this.service.projectMediaOptions(uri);
                 }
                 await this.service.select(current, id, token);
-                current.inspection.paletteOptions = (await this.service.resources.list(uri, ['.pal'])).map(
-                    (candidate) => {
-                        const paletteId = randomUUID();
-                        current!.assets.set(paletteId, { candidate, options: { origin: uri } });
-                        return {
-                            id: paletteId,
-                            name: candidate.name,
-                            source: this.service.resources.label(uri, candidate.uri),
-                            priority: candidate.priority,
-                        };
-                    }
-                );
+                current.inspection.paletteOptions = (
+                    current.inspection.media && mediaCapabilities(current.inspection.media.kind).palette
+                        ? await this.service.resources.list(uri, ['.pal'])
+                        : []
+                ).map((candidate) => {
+                    const paletteId = randomUUID();
+                    current!.assets.set(paletteId, { candidate, options: { origin: uri } });
+                    return {
+                        id: paletteId,
+                        name: candidate.name,
+                        source: this.service.resources.label(uri, candidate.uri),
+                        priority: candidate.priority,
+                    };
+                });
             } else {
                 const document = await vscode.workspace.openTextDocument(uri);
                 current = await this.service.inspect(document, position, token);
@@ -260,6 +265,7 @@ class WorkbenchSession implements vscode.Disposable {
             inspection?: string;
             values?: unknown;
             palette?: string;
+            layer?: string;
             pixels?: string;
             width?: number;
             height?: number;
@@ -302,7 +308,10 @@ class WorkbenchSession implements vscode.Disposable {
             }
             this.thumbnails++;
             try {
-                const bytes = await this.media.thumbnail(asset.candidate, this.cancellation.token, current.origin);
+                const bytes = await this.media.thumbnail(asset.candidate, this.cancellation.token, current.origin, {
+                    ...(await this.service.projectMediaOptions(current.origin)),
+                    ...asset.options,
+                });
                 if (this.current === current) {
                     void this.webview.postMessage({
                         type: 'thumbnail',
@@ -324,7 +333,7 @@ class WorkbenchSession implements vscode.Disposable {
             this.loading = true;
             this.send();
             try {
-                await this.service.select(current, data.id, this.cancellation.token, data.palette);
+                await this.service.select(current, data.id, this.cancellation.token, data.palette, data.layer);
             } finally {
                 if (revision === this.revision) {
                     this.loading = false;

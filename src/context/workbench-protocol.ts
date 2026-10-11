@@ -28,17 +28,36 @@ export interface PointEdit {
     id: string;
     name: string;
     value: number[];
+    space?: 'pixel' | 'lepton';
+    absent?: boolean;
+    deletable?: boolean;
 }
 export interface SpriteLayer {
     id: string;
     name: string;
     tag: string;
     source: string;
-    state: 'normal' | 'damaged' | 'construction' | 'production' | 'idle' | 'next';
+    state:
+        | 'normal'
+        | 'damaged'
+        | 'construction'
+        | 'production'
+        | 'idle'
+        | 'next'
+        | 'special'
+        | 'super'
+        | 'deploying'
+        | 'powerup';
     offset: number[];
     z: number;
     start: number;
     end: number;
+    damaged?: boolean;
+    rate?: number;
+    paletteName?: string;
+    paletteInherited?: boolean;
+    selectedPalette?: string;
+    pointName?: string;
     media?: Omit<Extract<MediaPayload, { kind: 'sprite' }>, 'scene'>;
 }
 export interface SpriteScene {
@@ -46,6 +65,8 @@ export interface SpriteScene {
     layers: SpriteLayer[];
     foundation: number[][];
     trace: string[];
+    points?: PointEdit[];
+    particles?: { name: string; colors: number[][]; velocity: number[]; cap: number; lifetime: number }[];
 }
 export type MediaPayload =
     | {
@@ -53,6 +74,7 @@ export type MediaPayload =
           bytes: string;
           file: ShpFile;
           palette: number[];
+          paletteName?: string;
           actions: ActionEdit[];
           shadow: boolean;
           name: string;
@@ -63,6 +85,7 @@ export type MediaPayload =
           kind: 'voxel';
           model: VoxelFile;
           palette: number[];
+          paletteName?: string;
           vpl: number[];
           normals: number[];
           light: number[];
@@ -99,6 +122,7 @@ export interface Inspection {
     library?: AssetOption[];
     media?: MediaPayload;
     cameo?: MediaPayload;
+    cameos?: { tag: string; media: MediaPayload }[];
     lightEdit?: string;
     canReplace?: boolean;
 }

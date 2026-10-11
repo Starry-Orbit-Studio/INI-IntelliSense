@@ -6,12 +6,21 @@ import { localize } from '../i18n';
 
 /** Commit a visual gesture as one native text edit, after validating its snapshot. */
 export async function applyVisualEdit(target: EditCapability, values: unknown): Promise<void> {
+    const deleting =
+        values === null &&
+        target.kind === 'pixel' &&
+        /^DamageFireOffset[0-7]$/i.test(target.key) &&
+        target.original !== undefined;
+    if (deleting) {
+        values = [0, 0];
+    }
     if (!Array.isArray(values) || !values.every((value) => typeof value === 'number' && Number.isFinite(value))) {
         throw new Error(localize('workbench.invalidEdit', 'Invalid visual edit.'));
     }
-    const numbers = (values as number[]).slice(0, 3);
+    const dimensions = target.kind === 'pixel' ? 2 : 3;
+    const numbers = (values as number[]).slice(0, dimensions);
     if (
-        values.length !== 3 &&
+        values.length !== dimensions &&
         !(target.kind === 'light' && target.linked && values.length === 4 && [0, 1].includes(values[3]))
     ) {
         throw new Error(localize('workbench.invalidEdit', 'Invalid visual edit.'));
@@ -25,9 +34,9 @@ export async function applyVisualEdit(target: EditCapability, values: unknown): 
             throw new Error(localize('workbench.invalidEdit', 'Invalid visual edit.'));
         }
     } else if (
-        numbers.length !== 3 ||
+        numbers.length !== dimensions ||
         numbers.some((value) => Math.abs(value) > 1000000) ||
-        (target.kind === 'point' && numbers.some((value) => !Number.isInteger(value))) ||
+        (['point', 'pixel'].includes(target.kind) && numbers.some((value) => !Number.isInteger(value))) ||
         (target.kind === 'light' && Math.hypot(...numbers) < 0.000001)
     ) {
         throw new Error(localize('workbench.invalidEdit', 'Invalid visual edit.'));
@@ -78,6 +87,10 @@ export async function applyVisualEdit(target: EditCapability, values: unknown): 
                 );
             }
             const line = document.lineAt(matching.line).text;
+            if (deleting) {
+                edit.delete(document.uri, document.lineAt(matching.line).rangeIncludingLineBreak);
+                continue;
+            }
             const raw = line.slice(matching.property.valueStart, matching.property.valueEnd);
             const leading = raw.length - raw.trimStart().length;
             const trailing = raw.trim().length ? raw.length - raw.trimEnd().length : 0;

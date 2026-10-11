@@ -45,10 +45,32 @@ suite('Project-scoped media integration', () => {
         const source =
             '[VehicleTypes]\n0=Tank\n[InfantryTypes]\n0=Soldier\n[Animations]\n0=ExpOne\n1=ExpTwo\n[Tank]\nImage=TankArt\nTurret=yes\nVoiceMove=GuardianGIMove\nAnimList=ExpOne,ExpTwo,ExpOne\n[Soldier]\nImage=SoldierArt\nPreviewArt=preview.pcx\n[AudioVisual]\nVoxelLightSource=0.2,-0.9,-0.3\nUseFixedVoxelLighting=yes\n';
         await Promise.all([
-            writeFile(path.join(directory, 'rules.ini'), source),
+            ...['anim', 'cameo'].map((name) =>
+                writeFile(path.join(directory, name + '.pal'), new Uint8Array(768).fill(32))
+            ),
+            writeFile(
+                path.join(directory, 'rules.ini'),
+                source +
+                    '[VoxelAnims]\n0=Fragment\n[Fragment]\nImage=body\n[BuildingTypes]\n9=SceneBuilding\n[SceneBuilding]\nDamageSmokeOffset=100,100,275\nDamageParticleSystems=TestSmokeSys\n[TestSmokeSys]\nHoldsWhat=TestSmoke\n[TestSmoke]\nImage=exp1\n'
+            ),
             writeFile(
                 path.join(directory, 'art.ini'),
-                '[TankArt]\nVoxel=yes\nImage=body\nPrimaryFireFLH=100,0,80\nCameo=icon\n[SoldierArt]\nImage=infantry\nSequence=SoldierSequence\n[SoldierSequence]\nReady=0,1,0,2 ; preserved\n[ExpOne]\nImage=exp1\n[ExpTwo]\nImage=exp2\n'
+                '[TankArt]\nVoxel=yes\nImage=body\nPrimaryFireFLH=100,0,80\nCameo=icon\n[SoldierArt]\nImage=infantry\nSequence=SoldierSequence\n[SoldierSequence]\nReady=0,1,0,2 ; preserved\n[ExpOne]\nImage=exp1\n[ExpTwo]\nImage=exp2\n' +
+                    '[TankArt]\nAltCameoPCX=preview.pcx\n[SceneBuilding]\nImage=buildingbody\nNewTheater=no\nFoundation=2x2\nBibShape=bib\nProductionAnim=Production\nProductionAnimDamaged=DamagedProduction\nActiveAnim=InheritedAnim\nDamageFireOffset0=10,20\n[Production]\nImage=exp1\nCustomPalette=red.pal\n[DamagedProduction]\nImage=exp2\nCustomPalette=blue.pal\n[InheritedAnim]\nImage=exp1\n'
+            ),
+            writeFile(path.join(directory, 'bib.shp'), shpFixture()),
+            writeFile(path.join(directory, 'buildingbody.shp'), shpFixture()),
+            writeFile(
+                path.join(directory, 'red.pal'),
+                new Uint8Array(768).map((_, index) => (index % 3 === 0 ? 63 : 0))
+            ),
+            writeFile(
+                path.join(directory, 'blue.pal'),
+                new Uint8Array(768).map((_, index) => (index % 3 === 2 ? 63 : 0))
+            ),
+            writeFile(
+                path.join(directory, 'override.pal'),
+                new Uint8Array(768).map((_, index) => (index % 3 === 1 ? 63 : 0))
             ),
             writeFile(path.join(directory, 'sound.ini'), '[GuardianGIMove]\nSounds=$sample loose\nVolume=0.6\n'),
             writeFile(path.join(directory, 'body.vxl'), voxelFixture()),
@@ -132,9 +154,85 @@ suite('Project-scoped media integration', () => {
             assert.ok(session.inspection.media.fixed);
         }
         assert.ok(session.inspection.cameo);
+        assert.deepStrictEqual(
+            session.inspection.cameos?.map((item) => item.media.kind),
+            ['sprite', 'image']
+        );
         assert.ok(session.inspection.lightEdit);
         assert.ok(session.inspection.sources.some((item) => item.label === 'TankArt · Voxel'));
         assert.ok(!session.inspection.properties.some((item) => item.value === 'WrongProject'));
+    });
+    test('voxel animation format follows its registry without requiring art Voxel=yes', async () => {
+        const line = rules
+            .getText()
+            .split('\n')
+            .findIndex((text) => text === '[Fragment]');
+        const session = (await service.inspect(rules, new vscode.Position(line, 0), token.token))!;
+        assert.strictEqual(session.inspection.type, 'VoxelAnimType');
+        assert.strictEqual(session.inspection.media?.kind, 'voxel');
+    });
+    test('building layers preserve damage conditions, BibShape and independent palette overrides', async () => {
+        const line = rules
+            .getText()
+            .split('\n')
+            .findIndex((text) => text === '[SceneBuilding]');
+        const session = (await service.inspect(rules, new vscode.Position(line, 0), token.token))!;
+        const scene = () => (session.inspection.media?.kind === 'sprite' ? session.inspection.media.scene : undefined);
+        assert.ok(scene()?.layers.find((layer) => layer.tag === 'BibShape')?.media);
+        const production = scene()!.layers.find((layer) => layer.tag === 'ProductionAnim')!;
+        const damaged = scene()!.layers.find((layer) => layer.tag === 'ProductionAnimDamaged')!;
+        assert.strictEqual(production.state, 'production');
+        assert.strictEqual(damaged.state, 'production');
+        assert.ok(damaged.damaged);
+        assert.deepStrictEqual(production.media?.palette.slice(0, 3), [252, 0, 0]);
+        assert.deepStrictEqual(damaged.media?.palette.slice(0, 3), [0, 0, 252]);
+        assert.ok(scene()?.layers.find((layer) => layer.tag.startsWith('DamageParticleSystems:'))?.media);
+        assert.strictEqual(scene()?.points?.filter((point) => /^DamageFireOffset/.test(point.name)).length, 8);
+        const override = session.inspection.paletteOptions.find((option) => option.name === 'override.pal')!;
+        await service.select(session, session.inspection.selectedAsset!, token.token, override.id, production.id);
+        assert.deepStrictEqual(
+            scene()!
+                .layers.find((layer) => layer.id === production.id)!
+                .media?.palette.slice(0, 3),
+            [0, 252, 0]
+        );
+        assert.deepStrictEqual(
+            scene()!
+                .layers.find((layer) => layer.id === damaged.id)!
+                .media?.palette.slice(0, 3),
+            [0, 0, 252]
+        );
+        await service.select(session, session.inspection.selectedAsset!, token.token, override.id);
+        assert.deepStrictEqual(
+            scene()!
+                .layers.find((layer) => layer.tag === 'ActiveAnim')!
+                .media?.palette.slice(0, 3),
+            [0, 252, 0]
+        );
+        await service.select(session, session.inspection.selectedAsset!, token.token, '', production.id);
+        assert.deepStrictEqual(
+            scene()!
+                .layers.find((layer) => layer.id === production.id)!
+                .media?.palette.slice(0, 3),
+            [252, 0, 0]
+        );
+        const artLine = art
+            .getText()
+            .split('\n')
+            .findIndex((text) => text === '[SceneBuilding]');
+        const artSession = (await service.inspect(art, new vscode.Position(artLine, 0), token.token))!;
+        assert.strictEqual(artSession.inspection.media?.kind, 'sprite');
+        if (artSession.inspection.media?.kind === 'sprite') {
+            assert.deepStrictEqual(
+                artSession.inspection.media.scene?.points?.find((point) => point.name === 'DamageSmokeOffset')?.value,
+                [100, 100, 275]
+            );
+            assert.ok(
+                artSession.inspection.media.scene?.layers.some(
+                    (layer) => layer.tag.startsWith('DamageParticleSystems:') && layer.media
+                )
+            );
+        }
     });
     test('background include classification replaces queries cached before art indexing finishes', async () => {
         const root = vscode.Uri.file(path.join(directory, 'CachedArt'));
@@ -516,7 +614,7 @@ suite('Voxel transforms and encrypted MIX', () => {
         assert.strictEqual(header.bodyOffset, 348);
     });
     test('lighting uses the reference world axes consistently with authored normals', () => {
-        assert.deepStrictEqual(nativeLight([1, 2, 3]), [3, 1, 2]);
+        assert.deepStrictEqual(nativeLight([1, 2, 3]), [-3, -1, -2]);
         assert.deepStrictEqual(authoredLight(nativeLight([1, 2, 3])), [1, 2, 3]);
         assert.deepStrictEqual(nativeNormal([1, 2, 3]), [2, 1, 3]);
     });

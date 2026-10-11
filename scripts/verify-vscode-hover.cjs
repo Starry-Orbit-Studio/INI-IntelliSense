@@ -3,7 +3,7 @@ const { mkdir } = require('node:fs/promises');
 const path = require('node:path');
 const { chromium } = require('playwright');
 
-module.exports = async function verifyHover(port, output, showHover, owner = 'ALIFV') {
+module.exports = async function verifyHover(port, output, showHover, owner = 'ALIFV', kind = 'voxel') {
     const browser = await chromium.connectOverCDP('http://127.0.0.1:' + port);
     try {
         const page = browser
@@ -14,19 +14,32 @@ module.exports = async function verifyHover(port, output, showHover, owner = 'AL
         // Automatic panel reveal changes editor geometry and dismisses an already
         // open hover. Wait for the first reveal before asking VS Code to show it.
         if (process.env.RA2_WORKBENCH_VERIFY_PANEL) {
-            await page.waitForFunction(() => {
-                const panel = document.querySelector('.part.panel');
-                return panel && panel.getBoundingClientRect().height > 20;
-            }, undefined, { timeout: 20000 });
+            await page.waitForFunction(
+                () => {
+                    const panel = document.querySelector('.part.panel');
+                    return panel && panel.getBoundingClientRect().height > 20;
+                },
+                undefined,
+                { timeout: 20000 }
+            );
             let ready = false;
             for (let attempt = 0; attempt < 120 && !ready; attempt++) {
-                for (const frame of browser.contexts().flatMap(context => context.pages()).flatMap(page => page.frames())) {
-                    if (await frame.locator('#app[data-inspection] .voxel-canvas').count()) {
+                for (const frame of browser
+                    .contexts()
+                    .flatMap((context) => context.pages())
+                    .flatMap((page) => page.frames())) {
+                    if (
+                        (await frame.locator('#app[data-inspection] .identity h1').count()) &&
+                        (await frame.locator('#app[data-inspection] .identity h1').textContent()) === owner &&
+                        (await frame.locator(kind === 'voxel' ? '.voxel-canvas' : '.sprite-canvas').count())
+                    ) {
                         ready = true;
                         break;
                     }
                 }
-                if (!ready) { await new Promise(resolve => setTimeout(resolve, 100)); }
+                if (!ready) {
+                    await new Promise((resolve) => setTimeout(resolve, 100));
+                }
             }
             assert.ok(ready, 'automatic panel has finished rendering before hover');
         }
@@ -53,7 +66,10 @@ module.exports = async function verifyHover(port, output, showHover, owner = 'AL
                     .contexts()
                     .flatMap((context) => context.pages())
                     .flatMap((page) => page.frames())) {
-                    if (await frame.locator('#app[data-inspection] .identity h1').count()) {
+                    if (
+                        (await frame.locator('#app[data-inspection] .identity h1').count()) &&
+                        (await frame.locator('#app[data-inspection] .identity h1').textContent()) === owner
+                    ) {
                         preview = frame;
                         break;
                     }
@@ -64,9 +80,13 @@ module.exports = async function verifyHover(port, output, showHover, owner = 'AL
             }
             assert.ok(preview, 'the automatically revealed panel must render the inspector');
             assert.equal(await preview.locator('#app .identity h1').textContent(), owner);
-            await preview.locator('.voxel-canvas').waitFor();
-            await preview.waitForFunction(() => {
-                const canvas = document.querySelector('.voxel-canvas');
+            await preview.locator(kind === 'voxel' ? '.voxel-canvas' : '.sprite-canvas').waitFor();
+            await preview.waitForFunction((kind) => {
+                const canvas = document.querySelector(kind === 'voxel' ? '.voxel-canvas' : '.sprite-canvas');
+                if (kind !== 'voxel') {
+                    const pixels = canvas?.getContext('2d').getImageData(0, 0, canvas.width, canvas.height).data;
+                    return pixels?.some((value, index) => index % 4 === 3 && value > 0);
+                }
                 const gl = canvas?.getContext('webgl2');
                 if (!gl) {
                     return false;
@@ -74,12 +94,35 @@ module.exports = async function verifyHover(port, output, showHover, owner = 'AL
                 const pixels = new Uint8Array(canvas.width * canvas.height * 4);
                 gl.readPixels(0, 0, canvas.width, canvas.height, gl.RGBA, gl.UNSIGNED_BYTE, pixels);
                 return pixels.some((value, index) => index % 4 === 3 && value > 0);
-            });
+            }, kind);
             assert.ok(
                 await page.evaluate(() => !!document.activeElement?.closest('.monaco-editor')),
                 'automatic reveal must retain text editor focus'
             );
+            if (owner === 'ALIFV' || owner === 'ALTNK') {
+                assert.equal(
+                    await preview.locator('.cameo-strip .cameo-card canvas').count(),
+                    2,
+                    'both icons are expanded'
+                );
+                assert.equal(await preview.getByRole('button', { name: '导出音频', exact: true }).count(), 0);
+            }
+            if (owner === 'GAWEAP') {
+                const state = preview.locator('select').filter({ has: preview.locator('option[value="production"]') });
+                await state.selectOption('production');
+                await preview.getByLabel('受损', { exact: true }).check();
+                assert.ok(
+                    (await preview.locator('.scene-layer').count()) > 3,
+                    'factory scene includes attached animations'
+                );
+                assert.equal(
+                    await preview.locator('.viewport .firing-points').count(),
+                    1,
+                    'damage point editor is in the viewport'
+                );
+            }
             await page.screenshot({ path: path.join(path.dirname(output), 'vscode-panel.png') });
+            await page.locator('.monaco-editor textarea').first().focus();
             await page.keyboard.press('Control+j');
             await page.waitForFunction(
                 () => document.querySelector('.part.panel')?.getBoundingClientRect().height < 20

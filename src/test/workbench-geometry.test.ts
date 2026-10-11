@@ -1,0 +1,106 @@
+import * as assert from 'assert';
+import { voxelCamera } from '../media/voxel-camera';
+import { nativeLight, authoredLight, DEFAULT_VOXEL_LIGHT } from '../media/voxel-light';
+import { foundationPoints, buildingPoint, moveBuildingPoint } from '../media/building-coordinates';
+import { paletteName, artPaletteName } from '../media/palette-policy';
+import { spriteClip } from '../media/sprite-playback';
+import { projectLighting } from '../media/project-lighting';
+import { mediaCapabilities } from '../media/media-capabilities';
+
+suite('Workbench projection and policy', () => {
+    test('project lighting rejects invalid vectors and shares media capability rules', () => {
+        assert.deepStrictEqual(projectLighting('0.2,-0.9,-0.3', 'yes'), { light: [0.2, -0.9, -0.3], fixed: true });
+        for (const value of ['0,0,0', '1,,2', 'NaN,1,2', '1,2']) {
+            assert.strictEqual(projectLighting(value, 'no').light, undefined);
+        }
+        assert.strictEqual(mediaCapabilities('audio').palette, false);
+        assert.strictEqual(mediaCapabilities('audio').export, 'audio');
+        assert.strictEqual(mediaCapabilities('voxel').export, 'png');
+        assert.strictEqual(mediaCapabilities('image').palette, false);
+    });
+    test('default source is above the model and INI direction round trips', () => {
+        assert.ok(nativeLight(DEFAULT_VOXEL_LIGHT)[2] > 0.9);
+        assert.deepStrictEqual(authoredLight(nativeLight([1, 2, 3])), [1, 2, 3]);
+    });
+    for (const mode of ['game', 'perspective']) {
+        test(mode + ' point dragging preserves screen movement and GPU projection', () => {
+            const camera = voxelCamera(
+                { mode, yaw: -45, pitch: 35.264, zoom: 1, fit: false },
+                [3, 4, 5],
+                [20, 10, 8],
+                600,
+                300
+            );
+            const point = [8, -2, 9],
+                before = camera.project(point);
+            const delta = camera.screenDelta(point, 32, -14),
+                moved = camera.project(point.map((value, axis) => value + delta[axis]));
+            assert.ok(Math.abs(moved[0] - before[0] - 32) < 0.00001);
+            assert.ok(Math.abs(moved[1] - before[1] + 14) < 0.00001);
+            const matrix = camera.matrix;
+            const component = (row: number) =>
+                matrix[row] * point[0] + matrix[row + 4] * point[1] + matrix[row + 8] * point[2] + matrix[row + 12];
+            assert.ok(Math.abs((component(0) / component(3) + 1) * 300 - before[0]) < 0.001);
+            assert.ok(Math.abs((1 - component(1) / component(3)) * 150 - before[1]) < 0.001);
+        });
+    }
+    test('perspective foreshortens distant geometry; game view keeps native pixel scale', () => {
+        const camera = voxelCamera(
+            { mode: 'perspective', yaw: 0, pitch: 0, zoom: 1, fit: false },
+            [0, 0, 0],
+            [20, 10, 8],
+            600,
+            300
+        );
+        assert.ok(camera.project([5, 8, 0])[0] - 300 > camera.project([5, -8, 0])[0] - 300);
+        const game = voxelCamera(
+            { mode: 'game', yaw: 0, pitch: 0, zoom: 1, fit: false },
+            [0, 0, 0],
+            [20, 10, 8],
+            600,
+            300
+        );
+        assert.strictEqual(game.project([5, 8, 0])[0] - game.project([0, 8, 0])[0], 5);
+    });
+    test('foundation cell centers preserve the shared game origin and half-cell offset', () => {
+        const points = foundationPoints([
+            [0, 0],
+            [1, 0],
+            [0, 1],
+            [1, 1],
+        ]);
+        assert.deepStrictEqual(points, [
+            [0, 15],
+            [30, 30],
+            [-30, 30],
+            [0, 45],
+        ]);
+        assert.deepStrictEqual(foundationPoints([[4, 2]]), [[60, 105]]);
+        const value = [100, -40, 275],
+            moved = moveBuildingPoint(value, 'lepton', 30, -15);
+        const start = buildingPoint(value, 'lepton'),
+            end = buildingPoint(moved, 'lepton');
+        assert.deepStrictEqual(
+            end.map((v, axis) => v - start[axis]),
+            [30, -15]
+        );
+        assert.strictEqual(moved[2], value[2]);
+    });
+    test('explicit palette wins, building children inherit, roles and theater resolve independently', () => {
+        assert.strictEqual(paletteName('custom~~~', 'sno', 'animation', 'unittem.pal'), 'customsno.pal');
+        assert.strictEqual(paletteName(undefined, 'tem', 'animation', 'parent.pal'), 'parent.pal');
+        assert.strictEqual(paletteName(undefined, 'tem', 'animation'), 'anim.pal');
+        assert.strictEqual(paletteName(undefined, 'tem', 'cameo'), 'cameo.pal');
+        assert.strictEqual(paletteName(undefined, 'sno'), 'unitsno.pal');
+        assert.strictEqual(artPaletteName(undefined, 'GACSPH', 'tem', 'unit'), 'GACSPHtem.pal');
+        assert.strictEqual(artPaletteName('my~~~.pal', 'GACSPH', 'sno', 'unit'), 'mysno.pal');
+    });
+    test('action and direction define the same bounded clip for playback and timeline', () => {
+        const action = { name: 'Walk', start: 10, count: 6, stride: 6, extra: [], raw: '' };
+        const clip = spriteClip(120, true, action, 7);
+        assert.strictEqual(clip.start, 52);
+        assert.strictEqual(clip.count, 6);
+        assert.strictEqual(clip.frame(7), 53);
+        assert.strictEqual(spriteClip(120, true).count, 60);
+    });
+});
