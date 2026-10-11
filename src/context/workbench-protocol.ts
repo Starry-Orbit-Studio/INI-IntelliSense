@@ -58,6 +58,8 @@ export interface SpriteLayer {
     paletteInherited?: boolean;
     selectedPalette?: string;
     pointName?: string;
+    remap?: boolean;
+    voxel?: Extract<MediaPayload, { kind: 'voxel' }>;
     media?: Omit<Extract<MediaPayload, { kind: 'sprite' }>, 'scene'>;
 }
 export interface SpriteScene {
@@ -66,7 +68,6 @@ export interface SpriteScene {
     foundation: number[][];
     trace: string[];
     points?: PointEdit[];
-    particles?: { name: string; colors: number[][]; velocity: number[]; cap: number; lifetime: number }[];
 }
 export type MediaPayload =
     | {
@@ -119,6 +120,7 @@ export interface Inspection {
     selectedAsset?: string;
     selectedPalette?: string;
     mediaRevision?: number;
+    theater?: string;
     library?: AssetOption[];
     media?: MediaPayload;
     cameo?: MediaPayload;

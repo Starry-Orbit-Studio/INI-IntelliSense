@@ -47,9 +47,12 @@ export interface InspectionSession {
 }
 
 /** Resolve references once; hover, inspector and resource editors share the result. */
-export class InspectionService {
+export class InspectionService implements vscode.Disposable {
     public readonly ini: ProjectIni;
     private readonly semantics: SemanticReferences;
+    private readonly previewTheaters = new Map<string, string>();
+    private readonly previewChanged = new vscode.EventEmitter<vscode.Uri>();
+    public readonly onDidChangePreview = this.previewChanged.event;
     constructor(
         public readonly resources: ProjectResources,
         private readonly media: MediaService,
@@ -59,6 +62,24 @@ export class InspectionService {
     ) {
         this.ini = new ProjectIni(resources, manager, schema, fileTypes);
         this.semantics = new SemanticReferences(schema);
+    }
+
+    /** A project-scoped preview preference shared by hover, decorations and all workbench views. */
+    public setPreviewTheater(origin: vscode.Uri, theater: string): void {
+        if (!['tem', 'sno', 'urb', 'ubn', 'lun', 'des'].includes(theater)) {
+            return;
+        }
+        const key = this.resources.projectRoot(origin).toString();
+        if (this.previewTheaters.get(key) === theater) {
+            return;
+        }
+        this.previewTheaters.set(key, theater);
+        this.previewChanged.fire(origin);
+    }
+
+    public dispose(): void {
+        this.previewChanged.dispose();
+        this.previewTheaters.clear();
     }
 
     public async projectMediaOptions(origin: vscode.Uri): Promise<MediaOptions> {
@@ -76,7 +97,8 @@ export class InspectionService {
     /** Cheap classification for audits; binary work begins only for recognized references. */
     public async inspectResource(
         candidate: ResourceCandidate,
-        token: vscode.CancellationToken
+        token: vscode.CancellationToken,
+        selectedTheater?: string
     ): Promise<InspectionSession | undefined> {
         await this.ini.load(candidate.uri);
         const base = path.posix.basename(candidate.name, path.posix.extname(candidate.name)).toLowerCase();
@@ -108,14 +130,16 @@ export class InspectionService {
                 ? this.inspect(
                       await vscode.workspace.openTextDocument(document.uri),
                       new vscode.Position(art.startLine, 0),
-                      token
+                      token,
+                      selectedTheater
                   )
                 : undefined;
         }
         return this.inspect(
             await vscode.workspace.openTextDocument(owner.doc.uri),
             new vscode.Position(owner.section.startLine, 0),
-            token
+            token,
+            selectedTheater
         );
     }
 
@@ -148,8 +172,10 @@ export class InspectionService {
     public async inspect(
         document: vscode.TextDocument,
         position: vscode.Position,
-        token: vscode.CancellationToken
+        token: vscode.CancellationToken,
+        selectedTheater?: string
     ): Promise<InspectionSession | undefined> {
+        selectedTheater ??= this.previewTheaters.get(this.resources.projectRoot(document.uri).toString());
         await this.ini.load(document.uri);
         if (token.isCancellationRequested) {
             return undefined;
@@ -430,9 +456,11 @@ export class InspectionService {
             category === 'art'
                 ? this.ini.effective(document.uri, this.ownerNameForArt(document.uri, artName) ?? artName, 'rules')
                 : targetProperties;
-        const theater = vscode.workspace
-            .getConfiguration('ra2-ini-intellisense', document.uri)
-            .get<string>('media.theater', 'tem');
+        const theater =
+            selectedTheater ??
+            vscode.workspace.getConfiguration('ra2-ini-intellisense', document.uri).get<string>('media.theater', 'tem');
+        options.theater = selectedTheater;
+        inspection.theater = theater;
         const isCameo = property && /^(cameo|altcameo)(pcx)?$/i.test(property.key);
         options.paletteName = artPaletteName(
             isCameo ? undefined : value(art, 'CustomPalette'),
@@ -582,7 +610,8 @@ export class InspectionService {
                           document.uri,
                           base,
                           art,
-                          this.semantics.inherits(targetType, 'BuildingType')
+                          this.semantics.inherits(targetType, 'BuildingType'),
+                          options.theater
                       )
                     : { names: [filename], candidates: await this.resources.find(document.uri, filename, token) };
             const found = resolved.candidates;
@@ -613,35 +642,6 @@ export class InspectionService {
                                 deletable: !!entry && !entry.inherited,
                             });
                         }
-                    }
-                    const smoke = contextRules.get('damagesmokeoffset');
-                    const rulesOwner =
-                        category === 'art'
-                            ? (this.ownerNameForArt(document.uri, artName) ?? artName)
-                            : reference?.kind === 'object' && property?.key.toLowerCase() !== 'image'
-                              ? reference.value
-                              : section.name;
-                    const own = this.ini.sources(document.uri, rulesOwner, 'rules')[0];
-                    if (own) {
-                        const doc = await vscode.workspace.openTextDocument(own.document.uri);
-                        const id = randomUUID();
-                        const original = [
-                            ...(new IniDocument(doc.uri, doc.getText()).getSection(own.section.name)?.properties ?? []),
-                        ].find(([key]) => key.toLowerCase() === 'damagesmokeoffset')?.[1];
-                        session.edits.set(id, {
-                            uri: doc.uri,
-                            section: own.section.name,
-                            key: 'DamageSmokeOffset',
-                            original,
-                            version: doc.version,
-                            kind: 'point',
-                        });
-                        scenePoints.push({
-                            id,
-                            name: 'DamageSmokeOffset',
-                            value: numbers(smoke?.value).length === 3 ? numbers(smoke?.value) : [0, 0, 0],
-                            space: 'lepton',
-                        });
                     }
                     options.scene.points = scenePoints;
                 }

@@ -31,6 +31,7 @@ export class MediaHoverProvider implements vscode.HoverProvider, vscode.Disposab
         };
         this.disposables.push(
             service.resources.onDidChange(invalidate),
+            service.onDidChangePreview(invalidate),
             vscode.workspace.onDidChangeTextDocument((event) => {
                 if (event.document.languageId === 'ra2-ini') {
                     invalidate();

@@ -8,11 +8,14 @@ Check [Keep a Changelog](http://keepachangelog.com/) for recommendations on how 
 
 ## [Unreleased]
 
+- Share static first-frame building composition and default house color between hover and details, including Bib and voxel turrets. Trim SHP using one union of all authored frame rectangles, preserving frame alignment without decoding every frame.
+- Add searchable, width-limited palette controls, viewport wheel zoom and drag/middle-drag pan with a floating zoom input. Hide building animation palette controls and bound the compact layer list.
+
 - Unify project voxel lighting, correct incoming-light direction and keep VPL shading in both game orthographic and true perspective views. Add camera pan and a spherical light control.
 - Move FLH editing into the viewport; support direct point and axis dragging with perspective-aware coordinates, readable selected-point labels and native INI undo.
 - Show normal and promoted SHP/PCX icons expanded. Share media capabilities so audio has audio export and no palette, PNG or image-comparison controls.
-- Resolve theater palette prefixes separately from exact CustomPalette filenames. Building animation palettes inherit the body only when unspecified, with independent per-layer manual overrides.
-- Render BibShape, production/door/deployment/upgrade animation layers and combined damaged states with a shared game ground anchor. Add draggable damage smoke/fire points and bounded fire-point addition/removal; damage particle previews use configured images and spark colors, without simulating every game-engine particle behavior.
+- Resolve theater palette prefixes separately from exact CustomPalette filenames. Building animation palettes inherit the body only when unspecified, while keeping explicit animation palettes independent. Add project-scoped theater selection shared by hover, inline previews and workbench, with synchronized body/Bib/buildup/animation filenames and palette prefixes; it does not change INIs or settings.
+- Render BibShape, production/door/deployment/upgrade animation layers and combined damaged states with a shared game ground anchor. Keep body/Bib normal and damaged frames static, hide Bib during buildup, and compose SHP buildings with VXL turrets using project VPL lighting. Replace inaccurate particle/smoke simulation and building Next explosions with DamageFireTypes from the building or General, using animation palettes and editable fire points.
 - Play infantry actions by selected direction with clip-relative timelines, source frame numbers and an eight-direction contact sheet. Resolve VoxelAnimType resources as VXL without requiring an art Voxel flag.
 
 ## [0.1.3] - 2026-10-10

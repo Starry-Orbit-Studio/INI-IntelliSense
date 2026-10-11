@@ -3,6 +3,20 @@ import { WorkbenchLabels } from './workbench-protocol';
 
 export function workbenchLabels(): WorkbenchLabels {
     return {
+        searchPalette: localize('workbench.searchPalette', 'Search palettes and sources'),
+        zoom: localize('workbench.zoom', 'Zoom ×'),
+        theater: localize('workbench.theater', 'Theater'),
+        theater_tem: localize('workbench.theater_tem', 'Temperate'),
+        theater_sno: localize('workbench.theater_sno', 'Snow'),
+        theater_urb: localize('workbench.theater_urb', 'Urban'),
+        theater_ubn: localize('workbench.theater_ubn', 'New urban'),
+        theater_lun: localize('workbench.theater_lun', 'Lunar'),
+        theater_des: localize('workbench.theater_des', 'Desert'),
+        spriteGestures: localize(
+            'workbench.spriteGestures',
+            'Wheel to zoom; drag or middle-drag to pan; reset to center.'
+        ),
+        voxelGestures: localize('workbench.voxelGestures', 'Wheel to zoom; drag to orbit; middle-drag to pan.'),
         title: localize('workbench.title', 'Object Inspector'),
         library: localize('workbench.library', 'Asset library'),
         body: localize('workbench.body', 'Body'),

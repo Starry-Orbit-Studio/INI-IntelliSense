@@ -1,9 +1,11 @@
 import { parentPort } from 'worker_threads';
-import { readShp, decodeShpFrame } from './shp';
+import { readShp } from './shp';
 import { encodePng } from './png';
 import { readVoxel, readHva } from './voxel';
 import { decodeWav, decodeBagSample, encodeWav, BagSample } from './audio';
 import { createPcxPreview } from '../preview/pcx-preview';
+import { sceneThumbnail } from './scene-thumbnail';
+import { spriteRaster, thumbnailRaster } from './sprite-raster';
 import { voxelThumbnail } from './voxel-thumbnail';
 import type { DecodeOptions } from './decoder-service';
 
@@ -14,6 +16,13 @@ parentPort?.on(
             const bytes = new Uint8Array(message.bytes);
             let result: unknown;
             switch (message.kind) {
+                case 'scene-thumbnail': {
+                    if (!message.options?.sprite?.scene) {
+                        throw new Error('Missing sprite scene.');
+                    }
+                    result = sceneThumbnail(message.options.sprite);
+                    break;
+                }
                 case 'voxel-thumbnail': {
                     if (!message.options?.voxel) {
                         throw new Error('Missing voxel thumbnail model.');
@@ -68,30 +77,17 @@ parentPort?.on(
                     break;
                 }
                 case 'thumbnail': {
-                    const file = readShp(bytes),
-                        indexed = decodeShpFrame(bytes, file, message.options?.frame ?? 0);
-                    const palette = message.options?.palette ?? [];
-                    const ratio = Math.min(1, 96 / Math.max(file.width, file.height));
-                    const width = Math.max(1, Math.round(file.width * ratio)),
-                        height = Math.max(1, Math.round(file.height * ratio));
-                    const rgba = new Uint8Array(width * height * 4);
-                    for (let y = 0; y < height; y++) {
-                        for (let x = 0; x < width; x++) {
-                            const color =
-                                indexed[
-                                    Math.min(file.height - 1, Math.floor(y / ratio)) * file.width +
-                                        Math.min(file.width - 1, Math.floor(x / ratio))
-                                ];
-                            const at = (y * width + x) * 4;
-                            if (color) {
-                                rgba[at] = palette[color * 3];
-                                rgba[at + 1] = palette[color * 3 + 1];
-                                rgba[at + 2] = palette[color * 3 + 2];
-                                rgba[at + 3] = 255;
-                            }
-                        }
-                    }
-                    result = encodePng(width, height, rgba);
+                    const file = readShp(bytes);
+                    const raster = thumbnailRaster(
+                        spriteRaster(
+                            bytes,
+                            file,
+                            message.options?.palette ?? [],
+                            message.options?.frame ?? 0,
+                            message.options?.shadow
+                        )
+                    );
+                    result = encodePng(raster.width, raster.height, raster.pixels);
                     break;
                 }
                 case 'audio': {

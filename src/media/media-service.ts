@@ -17,11 +17,11 @@ export interface SpriteSceneRecipe {
     trace: string[];
     layers: { layer: Omit<SpriteLayer, 'media'>; candidate?: ResourceCandidate; options: MediaOptions }[];
     points?: PointEdit[];
-    particles?: SpriteScene['particles'];
 }
 
 export interface MediaOptions {
     origin?: vscode.Uri;
+    theater?: string;
     palette?: vscode.Uri;
     paletteName?: string;
     animation?: boolean;
@@ -165,6 +165,15 @@ export class MediaService {
                         try {
                             const selected = layer.tag === 'body' ? candidate : entry.candidate;
                             const media = await this.load(selected, { ...entry.options, scene: undefined }, token);
+                            if (media.kind === 'voxel') {
+                                sceneBytes += media.model.parts.reduce((sum, part) => sum + part.voxels.length * 8, 0);
+                                if (sceneBytes > 64 * 1024 * 1024) {
+                                    throw new Error(
+                                        localize('workbench.sceneBudget', 'Scene exceeds the decoded asset budget.')
+                                    );
+                                }
+                                layer.voxel = media;
+                            }
                             if (media.kind === 'sprite') {
                                 sceneBytes += media.bytes.length;
                                 scenePixels += media.file.width * media.file.height;

@@ -3,7 +3,7 @@ const { mkdir } = require('node:fs/promises');
 const path = require('node:path');
 const { chromium } = require('playwright');
 
-module.exports = async function verifyHover(port, output, showHover, owner = 'ALIFV', kind = 'voxel') {
+module.exports = async function verifyHover(port, output, showHover, owner = 'ALIFV', kind = 'voxel', expectedSnow) {
     const browser = await chromium.connectOverCDP('http://127.0.0.1:' + port);
     try {
         const page = browser
@@ -106,6 +106,37 @@ module.exports = async function verifyHover(port, output, showHover, owner = 'AL
                     'both icons are expanded'
                 );
                 assert.equal(await preview.getByRole('button', { name: '导出音频', exact: true }).count(), 0);
+            }
+            if (owner === 'NASAM' && expectedSnow) {
+                const before = await preview.locator('#app').getAttribute('data-inspection');
+                const climate = preview.locator('select').filter({ has: preview.locator('option[value="sno"]') });
+                await climate.selectOption('sno');
+                await preview.waitForFunction((id) => document.getElementById('app').dataset.inspection !== id, before);
+                assert.ok(
+                    (await preview.locator('.palette-picker summary').first().textContent()).includes('unitsno.pal'),
+                    'snow palette follows climate'
+                );
+                const png = await expectedSnow();
+                await page.locator('.monaco-editor textarea').first().focus();
+                for (let attempt = 0; attempt < 20; attempt++) {
+                    await showHover();
+                    const src = await page
+                        .locator('.monaco-hover img[src^="data:image/png;base64,"]')
+                        .first()
+                        .getAttribute('src')
+                        .catch(() => '');
+                    if (src === 'data:image/png;base64,' + png) {
+                        break;
+                    }
+                    await new Promise((resolve) => setTimeout(resolve, 100));
+                }
+                assert.equal(
+                    await page.locator('.monaco-hover img[src^="data:image/png;base64,"]').first().getAttribute('src'),
+                    'data:image/png;base64,' + png,
+                    'hover and inspector share snow scene and palette'
+                );
+                await page.screenshot({ path: path.join(path.dirname(output), 'vscode-snow-hover.png') });
+                await page.keyboard.press('Escape');
             }
             if (owner === 'GAWEAP') {
                 const state = preview.locator('select').filter({ has: preview.locator('option[value="production"]') });

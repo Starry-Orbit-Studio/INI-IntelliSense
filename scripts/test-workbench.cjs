@@ -481,6 +481,18 @@ async function main() {
                     end: -1,
                     media: { ...sprite, palette: palette.map((_, i) => (i % 3 === 2 ? 224 : 0)) },
                 },
+                {
+                    id: 'turret',
+                    name: 'SAM',
+                    tag: 'TurretAnim',
+                    source: 'generic.mix',
+                    state: 'normal',
+                    offset: [0, -60],
+                    z: -1,
+                    start: 0,
+                    end: -1,
+                    voxel,
+                },
             ],
             points: [
                 { id: 'damage-0', name: 'DamageFireOffset0', space: 'pixel', value: [45, -40] },
@@ -500,16 +512,15 @@ async function main() {
             const canvas = document.querySelector('.sprite-canvas');
             return canvas?.getContext('2d').getImageData(161, 119, 1, 1).data[2] === 224;
         });
-        const layerPalette = page.locator('.scene-layer').filter({ hasText: 'ProdDamage' }).getByRole('combobox');
-        await layerPalette.selectOption('pal');
-        assert.ok(
-            await page.evaluate(() =>
-                window.messages.some(
-                    (m) => m.type === 'select' && m.layer === 'production-damaged' && m.palette === 'pal'
-                )
-            ),
-            'layer palette changes target only that layer'
+        assert.strictEqual(
+            await page.locator('.scene-layer select').count(),
+            0,
+            'building layers hide palette controls'
         );
+        await page.locator('.palette-picker summary').first().click();
+        await page.locator('.palette-picker input[type="search"]').first().fill('pal');
+        assert.ok((await page.locator('.palette-picker option').count()) > 0, 'palette sources can be searched');
+        await page.locator('.palette-picker summary').first().click();
         const damage = await page
             .locator('.sprite-canvas')
             .first()
@@ -555,6 +566,50 @@ async function main() {
             const canvas = document.querySelector('.sprite-canvas');
             return canvas?.getContext('2d').getImageData(150, 120, 1, 1).data[3] > 0;
         });
+        assert.ok(
+            await page
+                .locator('.sprite-canvas')
+                .first()
+                .evaluate((canvas) => {
+                    const pixels = canvas.getContext('2d').getImageData(0, 0, canvas.width, canvas.height).data;
+                    for (let at = 0; at < pixels.length; at += 4) {
+                        if (pixels[at + 1] === 224 && pixels[at] === 0 && pixels[at + 2] === 0) {
+                            return false;
+                        }
+                    }
+                    return true;
+                }),
+            'construction does not include BibShape'
+        );
+        await sceneState.selectOption('normal');
+        const turretHeading = page.getByLabel(labels.turret, { exact: true });
+        await turretHeading.fill('90');
+        await turretHeading.dispatchEvent('input');
+        await page.waitForFunction(() => {
+            const canvas = document.querySelector('.sprite-canvas'),
+                ctx = canvas.getContext('2d');
+            const pixels = ctx.getImageData(110, 45, 80, 45).data;
+            return pixels.some((value, index) => index % 4 === 3 && value === 255);
+        });
+        const zoomBefore = await page.locator('.viewport-zoom').first().inputValue();
+        await page.locator('.sprite-canvas').first().hover();
+        await page.mouse.wheel(0, -100);
+        assert.ok(
+            Number(await page.locator('.viewport-zoom').first().inputValue()) > Number(zoomBefore),
+            'sprite wheel zoom syncs the viewport control'
+        );
+        const panRect = await page.locator('.viewport').first().boundingBox();
+        await page.mouse.move(panRect.x + 25, panRect.y + 100);
+        await page.mouse.down({ button: 'middle' });
+        await page.mouse.move(panRect.x + 55, panRect.y + 105);
+        await page.mouse.up({ button: 'middle' });
+        assert.ok(
+            await page
+                .locator('.sprite-canvas')
+                .first()
+                .evaluate((canvas) => canvas.style.transform.includes('translate(')),
+            'middle drag pans sprite canvas'
+        );
         await page.screenshot({ path: path.join(root, 'out', 'webview-qa', 'bottom-panel.png'), fullPage: true });
         assert.ok(
             await page

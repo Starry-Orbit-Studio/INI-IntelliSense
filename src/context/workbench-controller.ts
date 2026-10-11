@@ -266,6 +266,7 @@ class WorkbenchSession implements vscode.Disposable {
             values?: unknown;
             palette?: string;
             layer?: string;
+            theater?: string;
             pixels?: string;
             width?: number;
             height?: number;
@@ -296,7 +297,13 @@ class WorkbenchSession implements vscode.Disposable {
             return;
         }
         const current = this.current;
-        if (data.type === 'source' && data.id) {
+        if (
+            data.type === 'theater' &&
+            data.theater &&
+            ['tem', 'sno', 'urb', 'ubn', 'lun', 'des'].includes(data.theater)
+        ) {
+            this.service.setPreviewTheater(current.origin, data.theater);
+        } else if (data.type === 'source' && data.id) {
             const location = current.links.get(data.id);
             if (location) {
                 await vscode.window.showTextDocument(location.uri, { selection: location.range, preserveFocus: false });
@@ -544,6 +551,14 @@ export class WorkbenchController
                             session.refresh();
                         }
                     });
+                }
+            }),
+            service.onDidChangePreview((origin) => {
+                const root = service.resources.projectRoot(origin).toString();
+                for (const session of this.sessions) {
+                    if (session.current && service.resources.projectRoot(session.current.origin).toString() === root) {
+                        session.refresh();
+                    }
                 }
             }),
             service.resources.onDidChange((uri) => {

@@ -24,7 +24,8 @@ export class MediaDecorations implements vscode.Disposable {
             vscode.window.onDidChangeActiveTextEditor(schedule),
             vscode.window.onDidChangeTextEditorVisibleRanges(schedule),
             vscode.workspace.onDidChangeTextDocument(schedule),
-            service.resources.onDidChange(schedule)
+            service.resources.onDidChange(schedule),
+            service.onDidChangePreview(schedule)
         );
         this.schedule();
     }

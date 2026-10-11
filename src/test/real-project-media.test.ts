@@ -1,3 +1,4 @@
+import { sceneThumbnail } from '../media/scene-thumbnail';
 import * as assert from 'assert';
 import * as vscode from 'vscode';
 import * as path from 'path';
@@ -62,6 +63,8 @@ suite('Optional real mod acceptance', () => {
                 ['ruleses_AL.ini', 'ALTNK', 'voxel'],
                 ['ruleses_AL.ini', 'ALMINDebris', 'voxel'],
                 ['ruleses.ini', 'GAWEAP', 'sprite'],
+                ['ruleses.ini', 'NASAM', 'sprite'],
+                ['ruleses.ini', 'GTGCAN', 'sprite'],
                 ['ruleses_AL.ini', 'ALMARV', 'voxel'],
                 ['ruleses_SO.ini', 'SOMRBST1', 'voxel'],
                 ['ruleses_AL.ini', 'AACSPH', 'sprite'],
@@ -121,8 +124,15 @@ suite('Optional real mod acceptance', () => {
                         session.inspection.media.scene?.layers.some((layer) => layer.tag === 'DoorAnim' && layer.media)
                     );
                     assert.ok(
-                        session.inspection.media.scene?.points?.some((point) => point.name === 'DamageSmokeOffset')
+                        !session.inspection.media.scene?.layers.some((layer) =>
+                            layer.tag.startsWith('DamageParticleSystems:')
+                        )
                     );
+                }
+                if ((name === 'NASAM' || name === 'GTGCAN') && session.inspection.media?.kind === 'sprite') {
+                    const turret = session.inspection.media.scene?.layers.find((layer) => layer.tag === 'TurretAnim');
+                    assert.strictEqual(turret?.voxel?.kind, 'voxel', session.inspection.media.scene?.trace.join('; '));
+                    assert.ok(turret.voxel.model.parts.some((part) => part.voxels.length > 0));
                 }
                 if (name === 'P_EXPA_120B') {
                     assert.strictEqual(session.inspection.type, 'AnimType');
@@ -177,7 +187,8 @@ suite('Optional real mod acceptance', () => {
                         output: string,
                         showHover: () => Promise<void>,
                         owner: string,
-                        kind: string
+                        kind: string,
+                        expectedSnow?: () => Promise<string>
                     ) => Promise<void> = require('../../scripts/verify-vscode-hover.cjs');
                     await verifyHover(
                         Number(process.env.RA2_WORKBENCH_UI_PORT),
@@ -186,7 +197,22 @@ suite('Optional real mod acceptance', () => {
                             await vscode.commands.executeCommand('editor.action.showHover');
                         },
                         name,
-                        kind
+                        kind,
+                        name === 'NASAM'
+                            ? async () => {
+                                  const snow = (await service.inspect(
+                                      document,
+                                      new vscode.Position(line, 0),
+                                      token.token,
+                                      'sno'
+                                  ))!;
+                                  assert.strictEqual(snow.inspection.media?.kind, 'sprite');
+                                  if (snow.inspection.media?.kind !== 'sprite') {
+                                      throw new Error('Expected snow building.');
+                                  }
+                                  return Buffer.from(sceneThumbnail(snow.inspection.media)).toString('base64');
+                              }
+                            : undefined
                     );
                     report.push({ actualHoverImage: true });
                 }
@@ -231,6 +257,7 @@ suite('Optional real mod acceptance', () => {
             );
             subscriptions.forEach((item) => item.dispose());
             token.dispose();
+            service.dispose();
             decoder.dispose();
             resources.dispose();
             if (process.env.RA2_WORKBENCH_VERIFY_PANEL) {

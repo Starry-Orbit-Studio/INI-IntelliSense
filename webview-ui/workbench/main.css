@@ -102,8 +102,75 @@ h1 {
 }
 .field select {
     min-width: 70px;
+    width: auto;
+    max-width: min(260px, 100%);
+    flex: 1;
+}
+.field > span {
+    flex-shrink: 0;
+}
+.palette-picker {
+    width: min(260px, 100%);
+    min-width: 0;
+    padding: 0;
+    border: 0;
+}
+.palette-picker summary {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    border: 1px solid var(--vscode-input-border, transparent);
+    border-radius: 5px;
+    background: var(--vscode-input-background);
+    padding: 5px 8px;
+    margin: 0;
+    font-weight: normal;
+}
+.palette-picker input,
+.palette-picker select {
     width: 100%;
     max-width: 100%;
+    margin-top: 5px;
+}
+.palette-picker select {
+    font-size: 11px;
+}
+.scene-layer-list {
+    max-height: 190px;
+    overflow: auto;
+}
+.scene-layer .check {
+    font-size: 11px;
+    margin: 1px 0;
+}
+.scene-layer {
+    padding: 3px 0;
+}
+.viewport-tools {
+    position: absolute;
+    right: 8px;
+    bottom: 8px;
+    z-index: 3;
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    padding: 3px 6px;
+    border: 1px solid var(--vscode-panel-border);
+    border-radius: 6px;
+    background: var(--vscode-editor-background);
+    box-shadow: 0 2px 8px #0002;
+}
+.viewport-tools .field {
+    margin: 0;
+}
+.viewport-tools input[type='number'] {
+    width: 66px;
+}
+.viewport-tools button {
+    font-size: 11px;
+}
+.viewport.panning {
+    cursor: grabbing;
 }
 input[type='number'] {
     width: 80px;
@@ -117,7 +184,8 @@ input[type='color'] {
 }
 .viewport {
     position: relative;
-    overflow: auto;
+    overflow: hidden;
+    touch-action: none;
     border: 1px solid var(--vscode-panel-border);
     border-radius: 8px;
     min-height: 160px;
@@ -146,6 +214,7 @@ input[type='color'] {
     image-rendering: pixelated;
     max-width: none;
     flex-shrink: 0;
+    cursor: grab;
 }
 .voxel-canvas {
     width: 100%;

@@ -2,6 +2,7 @@ import { voxelTransform, normalTransform, transformPoint } from '../../src/media
 import type { MediaPayload } from '../../src/context/workbench-protocol';
 import { nativeLight, authoredLight } from '../../src/media/voxel-light';
 import { voxelCamera } from '../../src/media/voxel-camera';
+import { spriteBounds } from '../../src/media/sprite-raster';
 import { spriteClip } from '../../src/media/sprite-playback';
 
 export interface ViewSettings {
@@ -77,8 +78,9 @@ export function spriteRenderer(
     failed: (error: string) => void,
     comparison = false
 ): Renderer {
-    canvas.width = media.file.width;
-    canvas.height = media.file.height;
+    const bounds = spriteBounds(media.file);
+    canvas.width = bounds.width;
+    canvas.height = bounds.height;
     const context = canvas.getContext('2d')!;
     const worker = new Worker(workerUrl);
     let id = 0,
@@ -110,8 +112,15 @@ export function spriteRenderer(
             return;
         }
         const frame = index;
-        worker.postMessage({ type: 'frame', id: ++id, frame, shadow: settings.shadow, color: settings.color });
-        canvas.style.width = media.file.width * settings.zoom + 'px';
+        worker.postMessage({
+            type: 'frame',
+            id: ++id,
+            frame,
+            shadow: settings.shadow,
+            color: settings.color,
+            trim: true,
+        });
+        canvas.style.width = canvas.width * settings.zoom + 'px';
     };
     const tick = (time: number) => {
         if (disposed) {

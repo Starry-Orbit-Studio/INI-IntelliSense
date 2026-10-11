@@ -17,6 +17,8 @@ suite('Native visual edits', () => {
         );
         await applyVisualEdit(target(document, 'pixel', 'DamageFireOffset0', '10,-20'), null);
         assert.ok(!document.getText().includes('DamageFireOffset0'));
+        await vscode.window.showTextDocument(document, { preserveFocus: false });
+        await vscode.commands.executeCommand('workbench.action.focusActiveEditorGroup');
         await vscode.commands.executeCommand('undo');
         assert.strictEqual(document.lineAt(1).text, 'DamageFireOffset0=10,-20 ; retain');
         await applyVisualEdit(target(document, 'pixel', 'DamageFireOffset7'), [30, 40]);
@@ -32,6 +34,8 @@ suite('Native visual edits', () => {
         capability.linked = { key: 'UseFixedVoxelLighting', original: 'no' };
         await applyVisualEdit(capability, [0.5, 0.5, 1, 1]);
         assert.strictEqual(document.lineAt(2).text, 'UseFixedVoxelLighting=yes ; old');
+        await vscode.window.showTextDocument(document, { preserveFocus: false });
+        await vscode.commands.executeCommand('workbench.action.focusActiveEditorGroup');
         await vscode.commands.executeCommand('undo');
         assert.strictEqual(document.lineAt(1).text, 'VoxelLightSource=0.2,-0.9,-0.3');
         assert.strictEqual(document.lineAt(2).text, 'UseFixedVoxelLighting=no ; old');
@@ -50,6 +54,8 @@ suite('Native visual edits', () => {
         await vscode.window.showTextDocument(document);
         await applyVisualEdit(target(document, 'sequence', 'Walk', '0,6,6,2'), [1, 5, 8]);
         assert.strictEqual(document.lineAt(1).text, '  Walk= 1,5,8,2  ; note');
+        await vscode.window.showTextDocument(document, { preserveFocus: false });
+        await vscode.commands.executeCommand('workbench.action.focusActiveEditorGroup');
         await vscode.commands.executeCommand('undo');
         assert.strictEqual(document.lineAt(1).text, '  Walk= 0,6,6,2  ; note');
     });

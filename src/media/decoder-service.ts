@@ -10,6 +10,8 @@ export interface DecodeOptions {
     palette: number[];
     frame: number;
     voxel?: Extract<MediaPayload, { kind: 'voxel' }>;
+    sprite?: Extract<MediaPayload, { kind: 'sprite' }>;
+    shadow?: boolean;
     image?: { width: number; height: number };
 }
 

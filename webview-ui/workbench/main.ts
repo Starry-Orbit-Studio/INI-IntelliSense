@@ -182,6 +182,163 @@ function select(
     input.onchange = () => handler(input.value);
     return input;
 }
+function palettePicker(
+    values: { value: string; label: string }[],
+    selected: string,
+    handler: (value: string) => void
+): HTMLElement {
+    const picker = element('details', 'palette-picker');
+    const chosen = values.find((option) => option.value === selected) ?? values[0];
+    const summary = element('summary', '', chosen?.label ?? labels.automatic);
+    summary.title = chosen?.label ?? '';
+    const search = element('input');
+    search.type = 'search';
+    search.placeholder = labels.searchPalette;
+    search.setAttribute('aria-label', labels.searchPalette);
+    const list = select(values, selected, (value) => {
+        picker.open = false;
+        handler(value);
+    });
+    list.size = 6;
+    list.setAttribute('aria-label', labels.palette);
+    search.oninput = () => {
+        const query = search.value.trim().toLowerCase();
+        list.replaceChildren(
+            ...values
+                .filter((option) => !query || option.label.toLowerCase().includes(query))
+                .map((item) => {
+                    const option = element('option', '', item.label);
+                    option.value = item.value;
+                    option.title = item.label;
+                    return option;
+                })
+        );
+        list.value = selected;
+    };
+    search.onkeydown = (event) => {
+        if (event.key === 'ArrowDown') {
+            event.preventDefault();
+            list.focus();
+        }
+        if (event.key === 'Escape') {
+            picker.open = false;
+            summary.focus();
+        }
+    };
+    picker.append(summary, search, list);
+    return picker;
+}
+
+/** Viewport-owned gestures are disposed with the renderer, including pointer capture. */
+function viewportControls(base: Renderer, viewport: HTMLElement, canvas: HTMLCanvasElement, voxel = false): Renderer {
+    const hud = element('div', 'viewport-tools');
+    const zoom = number(
+        settings.zoom,
+        0.2,
+        12,
+        (value) => {
+            settings.zoom = value;
+            update();
+        },
+        0.1
+    );
+    zoom.className = 'viewport-zoom';
+    zoom.setAttribute('aria-label', labels.zoom);
+    hud.title = voxel ? labels.voxelGestures : labels.spriteGestures;
+    const reset = button(labels.reset, () => {
+        settings.zoom = 1;
+        settings.pan = [0, 0, 0];
+        update();
+    });
+    hud.append(field(labels.zoom, zoom), reset);
+    viewport.append(hud);
+    let drag: { x: number; y: number; pan: number[]; pointer: number } | undefined;
+    const sync = () => {
+        if (document.activeElement !== zoom) {
+            zoom.value = String(Math.round(settings.zoom * 100) / 100);
+        }
+        if (!voxel) {
+            canvas.style.transform = 'translate(' + (settings.pan?.[0] ?? 0) + 'px,' + (settings.pan?.[1] ?? 0) + 'px)';
+        }
+    };
+    const wheel = (event: WheelEvent) => {
+        if ((event.target as HTMLElement).closest('input, button, select, details')) {
+            return;
+        }
+        if (!voxel) {
+            event.preventDefault();
+            const before = settings.zoom;
+            settings.zoom = Math.max(
+                0.2,
+                Math.min(12, before * Math.exp(Math.max(-0.6, Math.min(0.6, -event.deltaY * 0.002))))
+            );
+            const rect = viewport.getBoundingClientRect(),
+                scale = settings.zoom / before;
+            const x = event.clientX - rect.left - rect.width / 2,
+                y = event.clientY - rect.top - rect.height / 2;
+            settings.pan = [x - (x - (settings.pan?.[0] ?? 0)) * scale, y - (y - (settings.pan?.[1] ?? 0)) * scale, 0];
+            base.update();
+            persist();
+        }
+        sync();
+    };
+    const down = (event: PointerEvent) => {
+        if (
+            voxel ||
+            (event.button !== 0 && event.button !== 1) ||
+            (event.target as HTMLElement).closest('input, button, select, details, .viewport-tools')
+        ) {
+            return;
+        }
+        event.preventDefault();
+        drag = { x: event.clientX, y: event.clientY, pan: [...(settings.pan ?? [0, 0, 0])], pointer: event.pointerId };
+        viewport.setPointerCapture(event.pointerId);
+        viewport.classList.add('panning');
+    };
+    const move = (event: PointerEvent) => {
+        if (drag) {
+            settings.pan = [drag.pan[0] + event.clientX - drag.x, drag.pan[1] + event.clientY - drag.y, 0];
+            sync();
+        }
+    };
+    const up = () => {
+        if (drag && viewport.hasPointerCapture(drag.pointer)) {
+            viewport.releasePointerCapture(drag.pointer);
+        }
+        drag = undefined;
+        viewport.classList.remove('panning');
+    };
+    const cancel = () => {
+        if (drag) {
+            settings.pan = drag.pan;
+            sync();
+        }
+        up();
+    };
+    viewport.addEventListener('wheel', wheel, { passive: false });
+    viewport.addEventListener('pointerdown', down);
+    viewport.addEventListener('pointermove', move);
+    viewport.addEventListener('pointerup', up);
+    viewport.addEventListener('pointercancel', cancel);
+    sync();
+    return {
+        update: () => {
+            base.update();
+            sync();
+        },
+        capture: base.capture,
+        dispose: () => {
+            cancel();
+            base.dispose();
+            viewport.removeEventListener('wheel', wheel);
+            viewport.removeEventListener('pointerdown', down);
+            viewport.removeEventListener('pointermove', move);
+            viewport.removeEventListener('pointerup', up);
+            viewport.removeEventListener('pointercancel', cancel);
+        },
+    };
+}
+
 function checkbox(text: string, checked: boolean, handler: (value: boolean) => void): HTMLLabelElement {
     const input = element('input');
     input.type = 'checkbox';
@@ -244,36 +401,48 @@ function createRenderer(media: MediaPayload, host: HTMLElement, compare = false)
     viewport.append(canvas);
     host.append(viewport);
     if (media.kind === 'image') {
-        return imageRenderer(canvas, media.width, media.height, fromBase64(media.pixels), settings);
+        return viewportControls(
+            imageRenderer(canvas, media.width, media.height, fromBase64(media.pixels), settings),
+            viewport,
+            canvas
+        );
     }
     if (media.kind === 'sprite') {
         if (media.scene) {
             viewport.classList.add('scene-viewport');
-            return sceneRenderer(
+            return viewportControls(
+                sceneRenderer(
+                    media,
+                    canvas,
+                    settings,
+                    workerUrl,
+                    message,
+                    compare,
+                    (id, values) => post('edit', { id, values }),
+                    () => syncPointEditor?.()
+                ),
+                viewport,
+                canvas
+            );
+        }
+        return viewportControls(
+            spriteRenderer(
                 media,
                 canvas,
                 settings,
                 workerUrl,
+                (frame) => {
+                    if (compare) {
+                        return;
+                    }
+                    syncTimeline?.();
+                    comparisonRenderer?.update();
+                },
                 message,
-                compare,
-                (id, values) => post('edit', { id, values }),
-                () => syncPointEditor?.()
-            );
-        }
-        return spriteRenderer(
-            media,
-            canvas,
-            settings,
-            workerUrl,
-            (frame) => {
-                if (compare) {
-                    return;
-                }
-                syncTimeline?.();
-                comparisonRenderer?.update();
-            },
-            message,
-            compare
+                compare
+            ),
+            viewport,
+            canvas
         );
     }
     if (media.kind === 'voxel') {
@@ -299,7 +468,7 @@ function createRenderer(media: MediaPayload, host: HTMLElement, compare = false)
             compare
         );
         host.append(element('p', 'hint', labels.uncalibrated));
-        return result;
+        return viewportControls(result, viewport, canvas, true);
     }
     if (media.kind === 'palette') {
         canvas.width = 320;
@@ -388,22 +557,7 @@ function commonControls(host: HTMLElement, remap = true): void {
         settings.color = [1, 3, 5].map((index) => parseInt(color.value.slice(index, index + 2), 16));
         update();
     };
-    controls.append(
-        ...(remap ? [field(labels.remap, color)] : []),
-        field(
-            '×',
-            number(
-                settings.zoom,
-                0.2,
-                8,
-                (value) => {
-                    settings.zoom = value;
-                    update();
-                },
-                0.1
-            )
-        )
-    );
+    controls.append(...(remap ? [field(labels.remap, color)] : []));
     controls.append(
         field(
             labels.background,
@@ -416,7 +570,10 @@ function commonControls(host: HTMLElement, remap = true): void {
                 'checker',
                 (value) => {
                     document.querySelectorAll('.viewport').forEach((view) => {
-                        view.className = 'viewport ' + value;
+                        view.classList.remove('dark', 'light');
+                        if (value !== 'checker') {
+                            view.classList.add(value);
+                        }
                     });
                 }
             )
@@ -428,6 +585,21 @@ function commonControls(host: HTMLElement, remap = true): void {
 function spriteControls(media: Extract<MediaPayload, { kind: 'sprite' }>, host: HTMLElement): void {
     if (media.scene) {
         const controls = element('div', 'controls');
+        if (media.scene.kind === 'building') {
+            controls.append(
+                field(
+                    labels.theater,
+                    select(
+                        ['tem', 'sno', 'urb', 'ubn', 'lun', 'des'].map((value) => ({
+                            value,
+                            label: labels['theater_' + value],
+                        })),
+                        current?.theater ?? 'tem',
+                        (theater) => post('theater', { theater })
+                    )
+                )
+            );
+        }
         const states = [
             ...new Set([
                 'normal',
@@ -483,25 +655,40 @@ function spriteControls(media: Extract<MediaPayload, { kind: 'sprite' }>, host: 
             })
         );
         host.append(controls);
-        const layers = element('details');
+        if (media.scene.layers.some((layer) => layer.voxel || layer.tag === 'TurretAnim')) {
+            host.append(
+                field(
+                    labels.turret,
+                    number(settings.turret, -360, 360, (value) => {
+                        settings.turret = value;
+                        update();
+                    })
+                )
+            );
+        }
+        const layers = element('details', 'scene-layers');
         layers.open = true;
-        layers.append(element('summary', '', labels.layers));
+        layers.append(element('summary', '', labels.layers + ' · ' + media.scene.layers.length));
+        const list = element('div', 'scene-layer-list');
         for (const layer of media.scene.layers) {
             const row = element('div', 'scene-layer');
+            row.title = layer.source + (layer.paletteName ? '\n' + labels.palette + ': ' + layer.paletteName : '');
             row.append(
-                checkbox(layer.tag + ' · ' + layer.name, !!layer.media && !settings.layers.has(layer.id), (value) => {
-                    value ? settings.layers.delete(layer.id) : settings.layers.add(layer.id);
-                    update();
-                })
+                checkbox(
+                    layer.tag + ' · ' + layer.name,
+                    !!(layer.media || layer.voxel) && !settings.layers.has(layer.id),
+                    (value) => {
+                        value ? settings.layers.delete(layer.id) : settings.layers.add(layer.id);
+                        update();
+                    }
+                )
             );
-            if (!layer.media) {
+            if (!layer.media && !layer.voxel) {
                 row.querySelector('input')!.disabled = true;
             }
-            row.append(element('p', 'hint', layer.source));
-            row.append(
-                field(
-                    labels.palette,
-                    select(
+            if (media.scene.kind !== 'building' && layer.media) {
+                row.append(
+                    palettePicker(
                         [
                             { value: '', label: labels.automatic + ' · ' + (layer.paletteName ?? '') },
                             ...(current?.paletteOptions ?? []).map((option) => ({
@@ -509,18 +696,14 @@ function spriteControls(media: Extract<MediaPayload, { kind: 'sprite' }>, host: 
                                 label: option.name + ' · ' + option.source,
                             })),
                         ],
-                        (layer.tag === 'body' ? current?.selectedPalette : layer.selectedPalette) ?? '',
-                        (palette) =>
-                            post('select', {
-                                id: current!.selectedAsset,
-                                palette,
-                                ...(layer.tag === 'body' ? {} : { layer: layer.id }),
-                            })
+                        layer.selectedPalette ?? '',
+                        (palette) => post('select', { id: current!.selectedAsset, palette, layer: layer.id })
                     )
-                )
-            );
-            layers.append(row);
+                );
+            }
+            list.append(row);
         }
+        layers.append(list);
         const trace = element('details');
         trace.append(element('summary', '', labels.trace));
         media.scene.trace.forEach((step) => trace.append(element('p', 'hint', step)));
@@ -1213,7 +1396,7 @@ function render(inspection: Inspection): void {
         visual.append(
             field(
                 labels.palette,
-                select(
+                palettePicker(
                     [
                         {
                             value: '',

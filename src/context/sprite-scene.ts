@@ -16,12 +16,13 @@ export async function spriteCandidates(
     origin: vscode.Uri,
     base: string,
     art: Map<string, EffectiveProperty>,
-    building = false
+    building = false,
+    selectedTheater?: string
 ): Promise<{ names: string[]; candidates: ResourceCandidate[] }> {
-    const theater = vscode.workspace
-        .getConfiguration('ra2-ini-intellisense', origin)
-        .get<string>('media.theater', 'tem')
-        .toLowerCase();
+    const theater = (
+        selectedTheater ??
+        vscode.workspace.getConfiguration('ra2-ini-intellisense', origin).get<string>('media.theater', 'tem')
+    ).toLowerCase();
     const theaterCode: Record<string, string> = { tem: 'T', sno: 'A', urb: 'U', ubn: 'N', lun: 'L', des: 'D' };
     const extension = path.posix.extname(base),
         stem = extension ? base.slice(0, -extension.length) : base;
@@ -30,7 +31,7 @@ export async function spriteCandidates(
     const inferredTheater = building && value(art, 'NewTheater') === undefined;
     // Keep an explicit Image filename first when only the building context supplies
     // theater naming. Explicit NewTheater=no disables this fallback.
-    if (inferredTheater) {
+    if (inferredTheater && !selectedTheater) {
         names.push(stem + suffix);
     }
     if ((yes(value(art, 'NewTheater')) || inferredTheater) && stem.length > 1) {
@@ -106,7 +107,8 @@ export async function resolveSpriteScene(
             origin,
             base,
             properties.size ? properties : owner,
-            kind === 'building' && !pointName
+            kind === 'building' && !pointName,
+            options.theater
         );
         const candidate = resolved.candidates[0];
         const number = (key: string, fallback = 0) => {
@@ -135,9 +137,9 @@ export async function resolveSpriteScene(
             rate: Math.max(1, Number(value(properties, 'Rate')) || 150),
             pointName,
         };
-        const theater = vscode.workspace
-            .getConfiguration('ra2-ini-intellisense', origin)
-            .get<string>('media.theater', 'tem');
+        const theater =
+            options.theater ??
+            vscode.workspace.getConfiguration('ra2-ini-intellisense', origin).get<string>('media.theater', 'tem');
         const resolvedPalette = artPaletteName(
             value(properties, 'CustomPalette'),
             value(properties, 'Palette'),
@@ -146,11 +148,18 @@ export async function resolveSpriteScene(
                 !yes(value(properties, 'Remapable') ?? value(properties, 'AltPalette'))
                 ? 'animation'
                 : 'unit',
-            kind === 'building' ? options.paletteName : undefined
+            kind === 'building' && !pointName ? options.paletteName : undefined
         );
         layer.paletteName = resolvedPalette;
         layer.paletteInherited =
-            kind === 'building' && !(value(properties, 'CustomPalette') ?? value(properties, 'Palette'));
+            kind === 'building' &&
+            !pointName &&
+            (/^(buildup|bibshape)$/i.test(tag) ||
+                !(value(properties, 'CustomPalette') ?? value(properties, 'Palette')));
+        layer.remap =
+            /^(body|buildup|bibshape)$/i.test(tag) ||
+            yes(value(properties, 'Remapable')) ||
+            (!pointName && !yes(value(properties, 'AltPalette')));
         recipe.layers.push({
             layer,
             candidate,
@@ -160,7 +169,7 @@ export async function resolveSpriteScene(
                 scene: undefined,
                 actions: [],
                 animation: tag !== 'body' || kind === 'animation',
-                shadow: yes(value(properties, 'Shadow') ?? (kind === 'building' ? 'yes' : 'no')),
+                shadow: yes(value(properties, 'Shadow') ?? (kind === 'building' && !pointName ? 'yes' : 'no')),
                 paletteName: resolvedPalette,
             },
         });
@@ -174,7 +183,7 @@ export async function resolveSpriteScene(
             )
         );
         if (kind === 'animation' || (tag !== 'body' && !/^(buildup|bibshape)$/i.test(tag))) {
-            for (const key of ['ConcurrentAnim', 'Next']) {
+            for (const key of kind === 'building' ? ['ConcurrentAnim'] : ['ConcurrentAnim', 'Next']) {
                 const next = value(properties, key);
                 for (const member of next
                     ?.split(',')
@@ -231,63 +240,8 @@ export async function resolveSpriteScene(
         if (bib) {
             await add(bib, 'BibShape', 'normal', art);
         }
-        for (const systemName of (value(rules, 'DamageParticleSystems') ?? '')
-            .split(',')
-            .map((item) => item.trim())
-            .filter(Boolean)) {
-            const system = ini.effective(origin, systemName, 'rules');
-            let particleName = value(system, 'HoldsWhat');
-            const particles = new Set<string>();
-            while (particleName && particles.size < 8 && !particles.has(particleName.toLowerCase())) {
-                particles.add(particleName.toLowerCase());
-                const particle = ini.effective(origin, particleName, 'rules');
-                const image = value(particle, 'Image');
-                if (image) {
-                    const properties = new Map([...particle, ...ini.effective(origin, image, 'art')]);
-                    await add(
-                        image,
-                        'DamageParticleSystems:' + systemName + ':' + particleName,
-                        'damaged',
-                        art,
-                        0,
-                        properties,
-                        'DamageSmokeOffset'
-                    );
-                } else {
-                    const colors = [
-                        ...(value(particle, 'ColorList') ?? '').matchAll(/\((\d+)\s*,\s*(\d+)\s*,\s*(\d+)\)/g),
-                    ].map((match) => match.slice(1).map(Number));
-                    if (
-                        /^spark$/i.test(value(particle, 'BehavesLike') ?? value(system, 'BehavesLike') ?? '') &&
-                        colors.length
-                    ) {
-                        (recipe.particles ??= []).push({
-                            name: systemName + ':' + particleName,
-                            colors,
-                            velocity: [
-                                Number(value(particle, 'XVelocity')) || 0,
-                                Number(value(particle, 'YVelocity')) || 0,
-                                Number(value(particle, 'MinZVelocity')) || 0,
-                            ],
-                            cap: Math.max(1, Math.min(64, Number(value(system, 'ParticleCap')) || 10)),
-                            lifetime: Math.max(1, Math.min(600, Number(value(particle, 'MaxEC')) || 60)),
-                        });
-                    } else {
-                        recipe.trace.push(
-                            localize(
-                                'workbench.particleNoSprite',
-                                '{0} → {1}: particle has no sprite image.',
-                                systemName,
-                                particleName
-                            )
-                        );
-                    }
-                }
-                particleName = value(particle, 'NextParticle');
-            }
-        }
-        const audioVisual = ini.effective(origin, 'AudioVisual', 'rules');
-        const fires = (value(audioVisual, 'OnFire') ?? '')
+        const general = ini.effective(origin, 'General', 'rules');
+        const fires = (value(rules, 'DamageFireTypes') ?? value(general, 'DamageFireTypes') ?? '')
             .split(',')
             .map((item) => item.trim())
             .filter(Boolean);
@@ -305,8 +259,41 @@ export async function resolveSpriteScene(
             }
         }
     }
+    if (kind === 'building') {
+        const turret = new Map([...art, ...rules]);
+        const number = (key: string) => {
+            const parsed = Number(value(turret, key));
+            return Number.isFinite(parsed) ? parsed : 0;
+        };
+        const name = value(turret, 'TurretAnim');
+        if (name) {
+            if (yes(value(turret, 'TurretAnimIsVoxel'))) {
+                const filename = /\.vxl$/i.test(name) ? name : name + '.vxl';
+                const candidate = (await resources.find(origin, filename))[0];
+                recipe.layers.push({
+                    layer: {
+                        id: 'TurretAnim:' + name,
+                        name,
+                        tag: 'TurretAnim',
+                        state: 'normal',
+                        source: candidate ? resources.label(origin, candidate.uri) : filename,
+                        offset: [number('TurretAnimX'), number('TurretAnimY')],
+                        z: number('TurretAnimZAdjust'),
+                        start: 0,
+                        end: -1,
+                        paletteName: options.paletteName,
+                        paletteInherited: true,
+                    },
+                    candidate,
+                    options: { ...options, scene: undefined, voxel: true, turret: false, points: [] },
+                });
+            } else {
+                await add(name, 'TurretAnim', 'normal', turret);
+            }
+        }
+    }
     for (const entry of art.values()) {
-        if (/^(TurretAnim|AlphaImage)$/i.test(entry.key)) {
+        if (/^AlphaImage$/i.test(entry.key)) {
             recipe.trace.push(
                 localize(
                     'workbench.layerUnsupported',

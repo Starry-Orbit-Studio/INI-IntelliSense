@@ -450,5 +450,16 @@
     "workbench.special": "Special animation",
     "workbench.super": "Superweapon animation",
     "workbench.deploying": "Deploying animation",
-    "workbench.powerup": "Upgrade animation"
+    "workbench.powerup": "Upgrade animation",
+    "workbench.searchPalette": "Search palettes and sources",
+    "workbench.zoom": "Zoom ×",
+    "workbench.theater": "Theater",
+    "workbench.theater_tem": "Temperate",
+    "workbench.theater_sno": "Snow",
+    "workbench.theater_urb": "Urban",
+    "workbench.theater_ubn": "New urban",
+    "workbench.theater_lun": "Lunar",
+    "workbench.theater_des": "Desert",
+    "workbench.spriteGestures": "Wheel to zoom; drag or middle-drag to pan; reset to center.",
+    "workbench.voxelGestures": "Wheel to zoom; drag to orbit; middle-drag to pan."
 }

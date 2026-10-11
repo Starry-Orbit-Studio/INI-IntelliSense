@@ -51,12 +51,18 @@ suite('Project-scoped media integration', () => {
             writeFile(
                 path.join(directory, 'rules.ini'),
                 source +
-                    '[VoxelAnims]\n0=Fragment\n[Fragment]\nImage=body\n[BuildingTypes]\n9=SceneBuilding\n[SceneBuilding]\nDamageSmokeOffset=100,100,275\nDamageParticleSystems=TestSmokeSys\n[TestSmokeSys]\nHoldsWhat=TestSmoke\n[TestSmoke]\nImage=exp1\n'
+                    '[VoxelAnims]\n0=Fragment\n[Fragment]\nImage=body\n[BuildingTypes]\n9=SceneBuilding\n[General]\nDamageFireTypes=ExpOne\n[SceneBuilding]\nTurretAnim=body\nTurretAnimIsVoxel=yes\nTurretAnimX=8\nDamageSmokeOffset=100,100,275\nDamageParticleSystems=TestSmokeSys\n[TestSmokeSys]\nHoldsWhat=TestSmoke\n[TestSmoke]\nImage=exp1\n[BuildingTypes]\n10=TheaterBuilding\n11=FireOverride\n[TheaterBuilding]\n[FireOverride]\nImage=SceneBuilding\nDamageFireTypes=ExpTwo\n'
             ),
             writeFile(
                 path.join(directory, 'art.ini'),
-                '[TankArt]\nVoxel=yes\nImage=body\nPrimaryFireFLH=100,0,80\nCameo=icon\n[SoldierArt]\nImage=infantry\nSequence=SoldierSequence\n[SoldierSequence]\nReady=0,1,0,2 ; preserved\n[ExpOne]\nImage=exp1\n[ExpTwo]\nImage=exp2\n' +
-                    '[TankArt]\nAltCameoPCX=preview.pcx\n[SceneBuilding]\nImage=buildingbody\nNewTheater=no\nFoundation=2x2\nBibShape=bib\nProductionAnim=Production\nProductionAnimDamaged=DamagedProduction\nActiveAnim=InheritedAnim\nDamageFireOffset0=10,20\n[Production]\nImage=exp1\nCustomPalette=red.pal\n[DamagedProduction]\nImage=exp2\nCustomPalette=blue.pal\n[InheritedAnim]\nImage=exp1\n'
+                '[TankArt]\nVoxel=yes\nImage=body\nPrimaryFireFLH=100,0,80\nCameo=icon\n[SoldierArt]\nImage=infantry\nSequence=SoldierSequence\n[SoldierSequence]\nReady=0,1,0,2 ; preserved\n[ExpOne]\nImage=exp1\nNext=ExpTwo\n[ExpTwo]\nImage=exp2\n' +
+                    '[TankArt]\nAltCameoPCX=preview.pcx\n[SceneBuilding]\nImage=buildingbody\nCustomPalette=red.pal\nNewTheater=no\nFoundation=2x2\nBibShape=bib\nProductionAnim=Production\nProductionAnimDamaged=DamagedProduction\nActiveAnim=InheritedAnim\nDamageFireOffset0=10,20\n[Production]\nImage=exp1\nCustomPalette=red.pal\n[DamagedProduction]\nImage=exp2\nCustomPalette=blue.pal\n[InheritedAnim]\nImage=exp1\n[TheaterBuilding]\nImage=XGTEST\nNewTheater=yes\nActiveAnim=TheaterAnim\nBibShape=XGTESTBB\nBuildup=XGTESTMK\n[TheaterAnim]\nImage=XGTEST_A\nPalette=effect\n'
+            ),
+            ...['xgtest', 'xatest', 'xgtest_a', 'xatest_a', 'xgtestbb', 'xatestbb', 'xgtestmk', 'xatestmk'].map(
+                (name) => writeFile(path.join(directory, name + '.shp'), shpFixture())
+            ),
+            ...['unitsno', 'effecttem', 'effectsno'].map((name) =>
+                writeFile(path.join(directory, name + '.pal'), new Uint8Array(768).fill(32))
             ),
             writeFile(path.join(directory, 'bib.shp'), shpFixture()),
             writeFile(path.join(directory, 'buildingbody.shp'), shpFixture()),
@@ -131,6 +137,7 @@ suite('Project-scoped media integration', () => {
     });
     suiteTeardown(async () => {
         token?.dispose();
+        service?.dispose();
         resources?.dispose();
         decoder?.dispose();
         // Each path was created by mkdtemp above and is removed individually.
@@ -186,7 +193,14 @@ suite('Project-scoped media integration', () => {
         assert.ok(damaged.damaged);
         assert.deepStrictEqual(production.media?.palette.slice(0, 3), [252, 0, 0]);
         assert.deepStrictEqual(damaged.media?.palette.slice(0, 3), [0, 0, 252]);
-        assert.ok(scene()?.layers.find((layer) => layer.tag.startsWith('DamageParticleSystems:'))?.media);
+        assert.ok(!scene()?.layers.some((layer) => layer.tag.startsWith('DamageParticleSystems:')));
+        assert.ok(!scene()?.layers.some((layer) => layer.state === 'next'));
+        const fire = scene()?.layers.find((layer) => layer.pointName === 'DamageFireOffset0');
+        assert.ok(fire?.media);
+        assert.strictEqual(fire?.paletteName, 'anim.pal');
+        assert.strictEqual(fire?.paletteInherited, false);
+        assert.ok(scene()?.layers.find((layer) => layer.tag === 'TurretAnim')?.voxel);
+        assert.deepStrictEqual(scene()?.layers.find((layer) => layer.tag === 'TurretAnim')?.offset, [8, 0]);
         assert.strictEqual(scene()?.points?.filter((point) => /^DamageFireOffset/.test(point.name)).length, 8);
         const override = session.inspection.paletteOptions.find((option) => option.name === 'override.pal')!;
         await service.select(session, session.inspection.selectedAsset!, token.token, override.id, production.id);
@@ -203,6 +217,30 @@ suite('Project-scoped media integration', () => {
             [0, 0, 252]
         );
         await service.select(session, session.inspection.selectedAsset!, token.token, override.id);
+        assert.deepStrictEqual(
+            scene()
+                ?.layers.find((layer) => layer.tag === 'body')
+                ?.media?.palette.slice(0, 3),
+            [0, 252, 0]
+        );
+        assert.deepStrictEqual(
+            scene()
+                ?.layers.find((layer) => layer.tag === 'BibShape')
+                ?.media?.palette.slice(0, 3),
+            [0, 252, 0]
+        );
+        assert.deepStrictEqual(
+            scene()
+                ?.layers.find((layer) => layer.tag === 'TurretAnim')
+                ?.voxel?.palette.slice(0, 3),
+            [0, 252, 0]
+        );
+        assert.deepStrictEqual(
+            scene()
+                ?.layers.find((layer) => layer.pointName === 'DamageFireOffset0')
+                ?.media?.palette.slice(0, 3),
+            [128, 128, 128]
+        );
         assert.deepStrictEqual(
             scene()!
                 .layers.find((layer) => layer.tag === 'ActiveAnim')!
@@ -223,15 +261,82 @@ suite('Project-scoped media integration', () => {
         const artSession = (await service.inspect(art, new vscode.Position(artLine, 0), token.token))!;
         assert.strictEqual(artSession.inspection.media?.kind, 'sprite');
         if (artSession.inspection.media?.kind === 'sprite') {
-            assert.deepStrictEqual(
-                artSession.inspection.media.scene?.points?.find((point) => point.name === 'DamageSmokeOffset')?.value,
-                [100, 100, 275]
-            );
+            assert.ok(!artSession.inspection.media.scene?.points?.some((point) => point.name === 'DamageSmokeOffset'));
             assert.ok(
                 artSession.inspection.media.scene?.layers.some(
-                    (layer) => layer.tag.startsWith('DamageParticleSystems:') && layer.media
+                    (layer) => layer.pointName === 'DamageFireOffset0' && layer.media
                 )
             );
+            assert.ok(
+                artSession.inspection.media.scene?.layers.some((layer) => layer.tag === 'TurretAnim' && layer.voxel)
+            );
+        }
+    });
+    test('building fire override supersedes General and retains its own animation palette', async () => {
+        const line = rules
+            .getText()
+            .split('\n')
+            .findIndex((text) => text === '[FireOverride]');
+        const session = (await service.inspect(rules, new vscode.Position(line, 0), token.token))!;
+        assert.strictEqual(session.inspection.media?.kind, 'sprite');
+        if (session.inspection.media?.kind === 'sprite') {
+            const fire = session.inspection.media.scene?.layers.find(
+                (layer) => layer.pointName === 'DamageFireOffset0'
+            );
+            assert.strictEqual(fire?.name, 'ExpTwo');
+            assert.strictEqual(fire?.paletteName, 'anim.pal');
+            assert.strictEqual(fire?.media?.shadow, false);
+            assert.ok(!session.inspection.media.scene?.layers.some((layer) => layer.state === 'next'));
+        }
+    });
+    test('theater switches body, Bib, buildup and attached animation together, including custom palette prefixes', async () => {
+        const line = rules
+            .getText()
+            .split('\n')
+            .findIndex((text) => text === '[TheaterBuilding]');
+        for (const theater of ['tem', 'sno']) {
+            const session = (await service.inspect(rules, new vscode.Position(line, 0), token.token, theater))!;
+            assert.strictEqual(session.inspection.media?.kind, 'sprite', session.inspection.warnings.join('; '));
+            if (session.inspection.media?.kind === 'sprite') {
+                const scene = session.inspection.media.scene!;
+                const prefix = theater === 'sno' ? 'xa' : 'xg';
+                assert.deepStrictEqual(
+                    scene.layers.map((layer) => layer.media?.name),
+                    [prefix + 'test.shp', prefix + 'test_a.shp', prefix + 'testmk.shp', prefix + 'testbb.shp']
+                );
+                assert.strictEqual(
+                    scene.layers.find((layer) => layer.tag === 'ActiveAnim')?.paletteName,
+                    'effect' + theater + '.pal'
+                );
+                assert.strictEqual(session.inspection.theater, theater);
+            }
+        }
+    });
+    test('preview theater is shared within one project and does not mutate global configuration', async () => {
+        const line = rules
+            .getText()
+            .split('\n')
+            .findIndex((text) => text === '[TheaterBuilding]');
+        const before = vscode.workspace.getConfiguration('ra2-ini-intellisense', rules.uri).get('media.theater');
+        let changed = 0;
+        const subscription = service.onDidChangePreview(() => changed++);
+        try {
+            service.setPreviewTheater(rules.uri, 'sno');
+            service.setPreviewTheater(rules.uri, 'sno');
+            const session = (await service.inspect(rules, new vscode.Position(line, 0), token.token))!;
+            assert.strictEqual(session.inspection.theater, 'sno');
+            assert.strictEqual(session.inspection.media?.name, 'xatest.shp');
+            assert.strictEqual(changed, 1);
+            assert.strictEqual(
+                vscode.workspace.getConfiguration('ra2-ini-intellisense', rules.uri).get('media.theater'),
+                before
+            );
+            const otherDoc = await vscode.workspace.openTextDocument(vscode.Uri.file(path.join(other, 'rules.ini')));
+            const otherSession = (await service.inspect(otherDoc, new vscode.Position(2, 0), token.token))!;
+            assert.strictEqual(otherSession.inspection.theater, 'tem');
+        } finally {
+            service.setPreviewTheater(rules.uri, 'tem');
+            subscription.dispose();
         }
     });
     test('background include classification replaces queries cached before art indexing finishes', async () => {

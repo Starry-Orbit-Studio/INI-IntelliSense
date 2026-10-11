@@ -20,7 +20,23 @@ export class ThumbnailStore {
         const hash = createHash('sha256')
             .update(
                 media.kind === 'sprite'
-                    ? media.bytes + media.palette.join(',')
+                    ? media.bytes +
+                          media.palette.join(',') +
+                          String(media.shadow) +
+                          JSON.stringify(
+                              media.scene?.layers.map((layer) => ({
+                                  tag: layer.tag,
+                                  state: layer.state,
+                                  damaged: layer.damaged,
+                                  offset: layer.offset,
+                                  z: layer.z,
+                                  start: layer.start,
+                                  end: layer.end,
+                                  remap: layer.remap,
+                                  media: layer.media,
+                                  voxel: layer.voxel ? { ...layer.voxel, points: [] } : undefined,
+                              }))
+                          )
                     : media.kind === 'image'
                       ? media.width + 'x' + media.height + ':' + media.pixels
                       : JSON.stringify({ ...media, points: [] })
@@ -33,11 +49,16 @@ export class ThumbnailStore {
         const png =
             media.kind === 'sprite'
                 ? await this.decoder.decode<Uint8Array>(
-                      'thumbnail',
+                      media.scene ? 'scene-thumbnail' : 'thumbnail',
                       Buffer.from(media.bytes, 'base64'),
                       token,
                       undefined,
-                      { palette: media.palette, frame: 0 }
+                      {
+                          palette: media.palette,
+                          frame: 0,
+                          shadow: media.shadow,
+                          sprite: media.scene ? media : undefined,
+                      }
                   )
                 : media.kind === 'image'
                   ? await this.decoder.decode<Uint8Array>(

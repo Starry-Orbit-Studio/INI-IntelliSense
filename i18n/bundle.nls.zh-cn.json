@@ -426,5 +426,16 @@
     "workbench.special": "特殊动画",
     "workbench.super": "超级武器动画",
     "workbench.deploying": "展开动画",
-    "workbench.powerup": "升级动画"
+    "workbench.powerup": "升级动画",
+    "workbench.searchPalette": "搜索调色盘及来源",
+    "workbench.zoom": "缩放 ×",
+    "workbench.theater": "气候",
+    "workbench.theater_tem": "温带",
+    "workbench.theater_sno": "雪地",
+    "workbench.theater_urb": "城市",
+    "workbench.theater_ubn": "新城市",
+    "workbench.theater_lun": "月球",
+    "workbench.theater_des": "沙漠",
+    "workbench.spriteGestures": "滚轮缩放；拖动画面或中键拖动平移；重置恢复居中。",
+    "workbench.voxelGestures": "滚轮缩放；拖动旋转；中键拖动平移。"
 }
