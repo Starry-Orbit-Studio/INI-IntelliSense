@@ -159,19 +159,27 @@
       ],
       "ini-intellisense-explorer": [
         {
+          "id": "ra2-project-workbench",
+          "name": "%view.projectWorkbench.name%",
+          "icon": "assets/icon.svg"
+        },
+        {
           "id": "ini-files",
           "name": "%view.iniFiles.name%",
-          "icon": "$(files)"
+          "icon": "$(files)",
+          "visibility": "collapsed"
         },
         {
           "id": "mix-files",
           "name": "%view.mixFiles.name%",
-          "icon": "$(archive)"
+          "icon": "$(archive)",
+          "visibility": "collapsed"
         },
         {
           "id": "csf-outline",
           "name": "%view.csfOutline.name%",
-          "icon": "$(list-flat)"
+          "icon": "$(list-flat)",
+          "visibility": "collapsed"
         }
       ]
     },
@@ -190,6 +198,21 @@
         {
           "command": "ra2-ini-intellisense.refreshCsfOutline",
           "when": "view == csf-outline",
+          "group": "navigation"
+        },
+        {
+          "command": "ra2-ini-intellisense.searchObjects",
+          "when": "view == ra2-project-workbench",
+          "group": "navigation"
+        },
+        {
+          "command": "ra2-ini-intellisense.projectOverview",
+          "when": "view == ra2-project-workbench",
+          "group": "navigation"
+        },
+        {
+          "command": "ra2-ini-intellisense.refreshProject",
+          "when": "view == ra2-project-workbench",
           "group": "navigation"
         }
       ],
@@ -250,6 +273,11 @@
           "when": "view == mix-files && viewItem =~ /mixEntryFile|mixEntryMixFile|mixDirectory/",
           "command": "ra2-ini-intellisense.mix.delete",
           "group": "2_mix"
+        },
+        {
+          "command": "ra2-ini-intellisense.openObjectDefinition",
+          "when": "view == ra2-project-workbench && viewItem == ra2-project-object",
+          "group": "inline"
         }
       ],
       "editor/context": [
@@ -444,6 +472,26 @@
         "title": "%command.previewMap.title%",
         "category": "%command.category%",
         "icon": "$(preview)"
+      },
+      {
+        "command": "ra2-ini-intellisense.searchObjects",
+        "title": "%command.searchObjects.title%",
+        "icon": "$(search)"
+      },
+      {
+        "command": "ra2-ini-intellisense.projectOverview",
+        "title": "%command.projectOverview.title%",
+        "icon": "$(settings-gear)"
+      },
+      {
+        "command": "ra2-ini-intellisense.refreshProject",
+        "title": "%command.refreshProject.title%",
+        "icon": "$(refresh)"
+      },
+      {
+        "command": "ra2-ini-intellisense.openObjectDefinition",
+        "title": "%command.openObjectDefinition.title%",
+        "icon": "$(go-to-file)"
       }
     ],
     "configuration": {
@@ -847,7 +895,14 @@
           }
         ]
       }
-    }
+    },
+    "viewsWelcome": [
+      {
+        "view": "ra2-project-workbench",
+        "contents": "%view.projectWorkbench.welcome%",
+        "when": "workbenchState == empty"
+      }
+    ]
   },
   "scripts": {
     "vscode:prepublish": "npm run package",

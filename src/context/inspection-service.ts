@@ -19,6 +19,7 @@ import { spriteRemap, SpriteRole } from '../media/sprite-remap';
 import { projectLighting } from '../media/project-lighting';
 import { PropertyEditTarget } from './property-edit';
 import { CatalogObject, objectCatalog } from './object-catalog';
+import { catalogGroup } from './catalog-groups';
 import { inspectMap } from './map-inspection';
 
 export interface EditCapability {
@@ -159,6 +160,7 @@ export class InspectionService implements vscode.Disposable {
             session.inspection.objects!.push({
                 id,
                 name: object.name,
+                group: catalogGroup(object),
                 label: object.label,
                 category: object.category,
                 type: object.type,

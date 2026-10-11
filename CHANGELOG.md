@@ -4,6 +4,11 @@
 
 ## [Unreleased]
 
+- Use INI terminology `VehicleType` for vehicle type labels and searches while retaining compatibility with existing dictionaries.
+- Upgrade the extension sidebar into a project workbench with semantic object categories, cross-category search, recent items, maps and project overview/settings; keep file and archive tools available in collapsed views.
+- Keep object previews in the bottom panel, preserve catalogue navigation, and separate sound events and auxiliary definitions from registered game objects.
+- Fix map thumbnail LZO decoding, RGB channel order and preview dimensions; reject corrupt streams instead of displaying zero-filled images.
+
 - Add a searchable, filterable project object catalogue with favorites, configurable property columns, object comparison and reviewed batch numeric changes.
 - Add effective-property provenance and local override editing with comment preservation, native undo, dictionary constraints and stale-edit protection.
 - Resolve configured project entry INIs and their include graphs, with explicit context and missing-file reporting.

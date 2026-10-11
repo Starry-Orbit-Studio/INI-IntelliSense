@@ -1,7 +1,7 @@
 {
     "extension.displayName": "RA2 Mod IntelliSense",
     "extension.description": "IntelliSense, resource exploration, and previews for Red Alert 2 and Yuri's Revenge modding across INI, MIX, CSF, SHP, VXL, and more.",
-    "view.container.title": "RA2 Mod",
+    "view.container.title": "RA2 Project Workbench",
     "view.iniFiles.name": "INI Explorer",
     "view.mixFiles.name": "MIX Explorer",
     "command.category": "RA2 Mod IntelliSense",
@@ -71,5 +71,11 @@
     "configuration.project.entryPoints": "Root INI paths relative to the mod root, grouped by file category (rules, art, sound). Only these roots and their includes participate in resolution. Empty uses editor context.",
     "configuration.project.objectColumns": "INI properties displayed as columns in the project object browser (up to 12).",
     "command.previewMap.title": "Preview current map",
-    "configuration.maps.renderer": "Optional CNCMaps --worker JSON backend compatible with ra2rmg-rs. executable and mixDirectory require absolute paths. Supply modDirectories, rulesFiles, artFiles and extraMixes to match your project. Runs only on request in trusted workspaces."
+    "configuration.maps.renderer": "Optional CNCMaps --worker JSON backend compatible with ra2rmg-rs. executable and mixDirectory require absolute paths. Supply modDirectories, rulesFiles, artFiles and extraMixes to match your project. Runs only on request in trusted workspaces.",
+    "view.projectWorkbench.name": "Project",
+    "view.projectWorkbench.welcome": "Open a mod folder to browse game objects, maps and project settings.\n[Open Folder](command:vscode.openFolder)",
+    "command.searchObjects.title": "Search game content",
+    "command.projectOverview.title": "Project overview and settings",
+    "command.refreshProject.title": "Refresh project",
+    "command.openObjectDefinition.title": "Open definition"
 }

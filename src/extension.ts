@@ -9,6 +9,7 @@ import { OverrideDecorator } from './override-decorator';
 import { ValuePreviewDecorator } from './value-preview-decorator';
 import { WelcomePanel } from './welcome-panel';
 import { localize, initializeNls } from './i18n';
+import { displayType } from './type-display';
 import { IniRenameProvider } from './refactoring/rename-provider';
 import { IniCodeActionProvider } from './refactoring/code-actions';
 import { registerRegisterIdCommand } from './refactoring/register-id';
@@ -41,6 +42,7 @@ import { ResourceAudit } from './context/resource-audit';
 import { DecoderService } from './media/decoder-service';
 import { MediaService } from './media/media-service';
 import { InspectionService } from './context/inspection-service';
+import { ProjectWorkbench } from './views/project-workbench';
 import { WorkbenchController } from './context/workbench-controller';
 import { MediaHoverProvider } from './context/media-hover';
 import { MediaDecorations } from './context/media-decorations';
@@ -130,7 +132,7 @@ export async function activate(context: vscode.ExtensionContext) {
     const media = new MediaService(projectResources, decoder, context.extensionUri);
     const inspection = new InspectionService(projectResources, media, iniManager, schemaManager, fileTypeManager, (key) => csfManager.getLabel(key)?.value);
     const workbench = new WorkbenchController(context, inspection, media);
-    context.subscriptions.push(projectResources, decoder, inspection, workbench, new ResourceAudit(inspection),
+    context.subscriptions.push(new ProjectWorkbench(inspection), projectResources, decoder, inspection, workbench, new ResourceAudit(inspection),
         vscode.window.registerWebviewViewProvider(WorkbenchController.viewId, workbench, { webviewOptions: { retainContextWhenHidden: true } }),
         vscode.languages.registerHoverProvider(selector, new MediaHoverProvider(inspection, context, decoder)),
         new MediaDecorations(inspection, context, decoder));
@@ -420,7 +422,7 @@ export async function activate(context: vscode.ExtensionContext) {
 			mainStatusBar.backgroundColor = new vscode.ThemeColor('statusBarItem.errorBackground');
 		} else {
 			mainStatusBar.text = `$(check) INI: ${localize('statusbar.ready', 'Ready')}`;
-			const dictPath = config.get<string>('schemaFilePath')!;
+			const dictPath = config.get<string | null>('schemaFilePath') ?? '';
 			
 			let tooltip = localize('statusbar.ready.tooltip.base', 'RA2 Mod IntelliSense is ready') +
 				`\n- ${localize('statusbar.ready.tooltip.project', 'Project')}: ${path.basename(projectRoot)}` +
@@ -900,7 +902,7 @@ export async function activate(context: vscode.ExtensionContext) {
                         }
 
 						markdown.appendMarkdown('\n\n---\n\n');
-						markdown.appendMarkdown(localize('hover.type.belongsTo', `\n\nBelongs to type **{0}**.`, typeName));
+						markdown.appendMarkdown(localize('hover.type.belongsTo', `\n\nBelongs to type **{0}**.`, displayType(typeName)));
 						
 						let foundDescription: string | undefined; // 改个名避免混淆
 						let currentLookupType: string | null = typeName; 

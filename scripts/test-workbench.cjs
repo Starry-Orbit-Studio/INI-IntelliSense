@@ -153,7 +153,7 @@ async function main() {
             await page.waitForFunction(
                 (id) =>
                     document.getElementById('app')?.dataset.inspection === id &&
-                    document.querySelector('.sprite-canvas,.voxel-canvas,audio,.catalog-table,.map-sections'),
+                    document.querySelector('.sprite-canvas,.voxel-canvas,audio,.catalog-table,.project-layout,.map-sections'),
                 value.id
             );
         };
@@ -212,6 +212,7 @@ async function main() {
             assert.deepEqual([...Buffer.from(exported.pixels, 'base64').subarray(0, 3)], expected);
         }
         await send(inspection('sprite', sprite));
+        assert.equal(await page.locator('.identity .eyebrow').textContent(), 'VehicleType');
         await page.waitForFunction(() => {
             const c = document.querySelector('.sprite-canvas');
             return c?.getContext('2d').getImageData(0, 0, 2, 2).data[3] === 255;
@@ -842,9 +843,16 @@ async function main() {
             definitions: 1,
             values: { Cost: String(i) },
         }));
+        catalog.objects.push({ id: 'ambient', name: '_Amb_Ocean', label: 'Ocean ambience', category: 'sound', type: 'Sound', group: 'sounds', source: 'sound.ini:10', definitions: 1, values: {} });
         catalog.objectColumns = ['Cost'];
         await send(catalog);
         assert.equal(await page.locator('.catalog-table tbody tr').count(), 100);
+        assert.ok(!(await page.locator('.catalog-table tbody').textContent()).includes('_Amb_Ocean'));
+        await page.locator('.catalog-toolbar select').selectOption('sounds');
+        assert.equal(await page.locator('.catalog-table tbody tr').count(), 1);
+        assert.ok((await page.locator('.catalog-table tbody').textContent()).includes('_Amb_Ocean'));
+        assert.equal(await page.getByRole('button', { name: 'Cost', exact: true }).isVisible(), false);
+        await page.locator('.catalog-toolbar select').selectOption('game');
         await page.getByLabel(labels.searchObjects).fill('Guardian UNIT249');
         await page.waitForFunction(() => document.querySelectorAll('.catalog-table tbody tr').length === 1);
         await page.getByLabel(labels.searchObjects).fill('');
@@ -886,6 +894,21 @@ async function main() {
             'changing the input invalidates the old plan'
         );
         await page.screenshot({ path: path.join(root, 'out', 'webview-qa', 'object-browser.png'), fullPage: true });
+        const project = inspection('project', undefined);
+        project.owner = labels.projectSettings; project.type = '';
+        project.project = { root: 'E:/Extreme Starry', files: 37483, archives: [{ source: 'expandmd01.mix', entries: 10 }], counts: { vehicles: 512, sounds: 1485 }, settings: [{ key: 'media.resourceRoots', value: '["Resources"]' }], documents: [{ id: 'rules', label: 'Rules/ruleses.ini' }], errors: [] };
+        await send(project);
+        await page.locator('.project-layout').waitFor();
+        await page.getByRole('button', { name: labels.group_vehicles + ' · 512', exact: true }).click();
+        assert.ok(await page.evaluate(() => window.messages.some(message => message.type === 'catalog-scope' && message.value === 'vehicles')));
+        await page.getByText(labels['setting_media.resourceRoots'], { exact: true }).click();
+        await page.getByRole('button', { name: labels.editProperty, exact: true }).click();
+        assert.ok(await page.evaluate(() => window.messages.some(message => message.type === 'project-setting' && message.key === 'media.resourceRoots')));
+        await page.setViewportSize({ width: 350, height: 800 });
+        assert.ok(await page.evaluate(() => document.body.scrollWidth <= window.innerWidth), 'project settings fit a narrow editor');
+        await page.evaluate(() => window.scrollTo(0, 0));
+        await page.screenshot({ path: path.join(root, 'out', 'webview-qa', 'project-narrow.png'), fullPage: true });
+        await page.setViewportSize({ width: 720, height: 1000 });
         const map = inspection('map', undefined);
         map.map = {
             version: 1,

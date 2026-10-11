@@ -161,3 +161,14 @@ The ES catalog survey writes `out/real-project-catalog.json` with every register
 `test:webview` runs bundled UI assets under a restrictive CSP in a browser and verifies sprite worker pixels, duplicate-name source IDs, sequence edit messages, comparison, PNG export, WebGL pixels, lighting messages, narrow layouts, audio visibility pause and library selection. Screenshots are saved under `out/webview-qa`. Browser tests complement extension-host integration; screenshots and a live game remain necessary to assess visual fidelity.
 
 Release bundles contain `dist/extension.js`, `dist/media-worker.js`, `dist/workbench/{main.js,main.css,worker.js}`, localized strings, palettes and third-party license notices. Node dependencies are bundled; `--no-dependencies` avoids shipping development dependencies in the VSIX.
+
+
+## Project navigation
+
+The activity-bar project workbench is the top-level entry for game content, maps and settings. Its native tree loads catalog snapshots on demand, separates registered Rules technos from Art counterparts and unregistered templates, pages groups in batches of 100, and searches all definitions with exact IDs first. Sound events remain searchable in their own category. Existing INI, MIX and CSF trees remain available and default to collapsed.
+
+Selecting an object previews it in the bottom inspector. The inline Open definition action opens its source. List, compare and batch editing use one editor-area project tab per root; previewing an object does not replace that list. The overview reports effective settings, source files, archives and actual index issues. Configuration edits use the native workspace settings editor or the existing entry-INI picker; preview preferences remain local to the viewer.
+
+Embedded map thumbnails use bounded LZO1X decoding with input/output and back-reference validation. Preview.Size stores x,y,width,height; PreviewPack stores RGB triples. Decoding failure never returns a partially zero-filled image. Full CNCMaps rendering remains a separate optional action.
+
+Acceptance includes native development-host tests, browser interaction checks, and read-only ES catalog/map checks. Map pixel validation can additionally compare the decoded RGB bytes against an independent LZO implementation. No map writes are necessary.

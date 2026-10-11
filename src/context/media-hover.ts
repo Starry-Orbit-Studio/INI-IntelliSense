@@ -6,6 +6,7 @@ import { DecoderService } from '../media/decoder-service';
 import { localize } from '../i18n';
 import { Inspection, MediaPayload } from './workbench-protocol';
 import { ByteCache } from '../media/byte-cache';
+import { displayType } from '../type-display';
 interface HoverPreview {
     inspection: Pick<Inspection, 'focus' | 'type' | 'focusType' | 'assets'>;
     kind?: MediaPayload['kind'];
@@ -157,7 +158,7 @@ export class MediaHoverProvider implements vscode.HoverProvider, vscode.Disposab
             }
             const markdown = new vscode.MarkdownString('', true);
             markdown.isTrusted = { enabledCommands: ['ra2-ini-intellisense.inspect'] };
-            markdown.appendText(inspection.focus + ' · ' + (inspection.focusType ?? inspection.type));
+            markdown.appendText(inspection.focus + ' · ' + displayType(inspection.focusType ?? inspection.type));
             if (preview?.image) {
                 markdown.appendMarkdown('\n\n![](' + preview.image + ')');
             } else if (!preview) {

@@ -27,6 +27,7 @@ export interface AssetOption {
     role?: string;
 }
 export interface ObjectRow {
+    group?: string;
     id: string;
     name: string;
     label: string;
@@ -151,6 +152,17 @@ export interface Inspection {
     resolution?: { configured: boolean; complete: boolean; documents: number; entries: string[]; issues: string[] };
     objects?: ObjectRow[];
     objectColumns?: string[];
+    catalogScope?: string;
+    favoriteObjects?: string[];
+    project?: {
+        root: string;
+        files: number;
+        archives: { source: string; entries: number }[];
+        counts: Record<string, number>;
+        settings: { key: string; value: string }[];
+        documents: SourceLink[];
+        errors: string[];
+    };
     map?: {
         version: number;
         sections: { id: string; name: string; count: number }[];

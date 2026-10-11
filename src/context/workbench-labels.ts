@@ -3,6 +3,85 @@ import { WorkbenchLabels } from './workbench-protocol';
 
 export function workbenchLabels(): WorkbenchLabels {
     return {
+        group_game: localize('workbench.group_game', 'Units, buildings and superweapons'),
+        group_all: localize('workbench.group_all', 'All definitions'),
+        group_infantry: localize('workbench.group_infantry', 'Infantry'),
+        group_vehicles: localize('workbench.group_vehicles', 'Vehicles'),
+        group_aircraft: localize('workbench.group_aircraft', 'Aircraft'),
+        group_buildings: localize('workbench.group_buildings', 'Buildings'),
+        group_superweapons: localize('workbench.group_superweapons', 'Superweapons'),
+        group_weapons: localize('workbench.group_weapons', 'Weapons'),
+        group_warheads: localize('workbench.group_warheads', 'Warheads'),
+        group_projectiles: localize('workbench.group_projectiles', 'Projectiles'),
+        group_animations: localize('workbench.group_animations', 'Animations'),
+        group_particles: localize('workbench.group_particles', 'Particles and systems'),
+        group_sounds: localize('workbench.group_sounds', 'Sound events'),
+        group_other: localize('workbench.group_other', 'Other definitions'),
+        effects: localize('workbench.effects', 'Weapons and effects'),
+        projectMaps: localize('workbench.projectMaps', 'Maps'),
+        recentObjects: localize('workbench.recentObjects', 'Recently viewed'),
+        openCatalog: localize('workbench.openCatalog', 'Open list / compare / batch edit'),
+        openDefinition: localize('workbench.openDefinition', 'Open definition'),
+        refineSearch: localize('workbench.refineSearch', 'Refine your search to see more results'),
+        noObjects: localize(
+            'workbench.noObjects',
+            'No matching objects. Adjust the search or choose another category.'
+        ),
+        projectSettings: localize('workbench.projectSettings', 'Project overview and settings'),
+        projectSources: localize('workbench.projectSources', 'Sources and index status'),
+        looseResources: localize('workbench.looseResources', 'Indexed loose resource names'),
+        archives: localize('workbench.archives', 'MIX archives'),
+        projectIssues: localize('workbench.projectIssues', 'Index issues'),
+        searchSources: localize('workbench.searchSources', 'Search INI source paths'),
+        projectOverviewHelp: localize(
+            'workbench.projectOverviewHelp',
+            'Browse game content from the sidebar. Selecting an object opens its bottom-panel preview; source links open the INI definition.'
+        ),
+        projectSettingsHelp: localize(
+            'workbench.projectSettingsHelp',
+            'Values below are the effective configuration for this project. Edit opens workspace settings; preview colors and backgrounds remain personal preferences.'
+        ),
+        resourcePriorityHelp: localize(
+            'workbench.resourcePriorityHelp',
+            'The project root is searched first, followed by additional roots in order. Loose project assets precede archives; backup directories are fallback sources. Equal-priority candidates remain selectable in the object inspector.'
+        ),
+        'setting_project.entryPoints': localize('workbench.setting_project.entryPoints', 'Entry INIs and includes'),
+        'help_project.entryPoints': localize(
+            'workbench.help_project.entryPoints',
+            'Select Rules, Art and Sound entry files. An empty configuration uses editor context; included files are followed automatically.'
+        ),
+        'setting_media.resourceRoots': localize(
+            'workbench.setting_media.resourceRoots',
+            'Additional resource directories'
+        ),
+        'help_media.resourceRoots': localize(
+            'workbench.help_media.resourceRoots',
+            'The project root is always included. Add directories in priority order; relative paths resolve against the project root.'
+        ),
+        'setting_media.archiveOrder': localize('workbench.setting_media.archiveOrder', 'Archive priority'),
+        'help_media.archiveOrder': localize(
+            'workbench.help_media.archiveOrder',
+            'Set the archive search order when several MIX files contain the same asset.'
+        ),
+        'setting_media.excludedDirectories': localize(
+            'workbench.setting_media.excludedDirectories',
+            'Excluded directories'
+        ),
+        'help_media.excludedDirectories': localize(
+            'workbench.help_media.excludedDirectories',
+            'Exclude tool and cache directories from resource scanning.'
+        ),
+        setting_schemaFilePath: localize('workbench.setting_schemaFilePath', 'INI dictionary'),
+        help_schemaFilePath: localize(
+            'workbench.help_schemaFilePath',
+            'Dictionary used for completion, types and reference resolution.'
+        ),
+        'setting_maps.renderer': localize('workbench.setting_maps.renderer', 'Full map renderer'),
+        'help_maps.renderer': localize(
+            'workbench.help_maps.renderer',
+            'Optional CNCMaps worker and game resource configuration. Embedded map thumbnails work without it.'
+        ),
+
         renderMap: localize('workbench.renderMap', 'Render current map'),
         configureMapRenderer: localize('workbench.configureMapRenderer', 'Configure map renderer'),
         mapSections: localize('workbench.mapSections', 'Map sections — open in editor'),

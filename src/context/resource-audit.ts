@@ -10,11 +10,11 @@ export class ResourceAudit implements vscode.Disposable {
     private revision = 0;
 
     constructor(private readonly service: InspectionService) {
-        this.registration = vscode.commands.registerCommand('ra2-ini-intellisense.auditResources', () => this.run());
+        this.registration = vscode.commands.registerCommand('ra2-ini-intellisense.auditResources', (uri?: vscode.Uri) => this.run(uri));
     }
 
-    public async run(): Promise<number> {
-        const origin = vscode.window.activeTextEditor?.document.uri ?? vscode.workspace.workspaceFolders?.[0]?.uri;
+    public async run(uri?: vscode.Uri): Promise<number> {
+        const origin = uri ?? vscode.window.activeTextEditor?.document.uri ?? vscode.workspace.workspaceFolders?.[0]?.uri;
         if (!origin) {
             return 0;
         }

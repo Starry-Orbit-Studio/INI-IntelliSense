@@ -3,6 +3,7 @@ import { SchemaManager } from '../schema-manager';
 import { ProjectIni, SectionSource } from './project-ini';
 import { resolveProperties, PropertyResolution } from './property-resolution';
 import { parsePropertyLine } from './ini-position';
+import { catalogLabel } from './catalog-groups';
 
 export interface CatalogObject {
     name: string;
@@ -11,6 +12,7 @@ export interface CatalogObject {
     type: string;
     source: SectionSource;
     definitions: number;
+    registered: boolean;
     properties: Map<string, PropertyResolution>;
 }
 
@@ -30,6 +32,9 @@ export async function objectCatalog(
         InfantryTypes: 'InfantryType',
         AircraftTypes: 'AircraftType',
         BuildingTypes: 'BuildingType',
+        SuperWeaponTypes: 'SuperWeaponType',
+        Warheads: 'WarheadType',
+        SoundList: 'Sound',
         Animations: 'AnimType',
         VoxelAnims: 'VoxelAnimType',
         Particles: 'ParticleType',
@@ -70,7 +75,7 @@ export async function objectCatalog(
             objects.push({
                 name: sources[0].section.name,
                 category,
-                label: (uiName && translate(uiName)) || value('name') || '',
+                label: catalogLabel((uiName && translate(uiName)) || value('name') || ''),
                 type:
                     category === 'sound'
                         ? 'Sound'
@@ -78,6 +83,7 @@ export async function objectCatalog(
                           (schema.isSchemaType(sources[0].section.name) ? sources[0].section.name : 'Unknown')),
                 source: owner,
                 definitions: sources.length,
+                registered: category === 'rules' && types.has(name),
                 properties,
             });
         }

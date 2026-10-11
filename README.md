@@ -2,6 +2,8 @@
 
 # RA2 Mod IntelliSense for Red Alert 2
 
+The RA2 sidebar is your project workbench: browse game objects, search across definitions, open maps, and inspect project settings. Selecting an object shows its media in the bottom panel; comparison and batch editing stay in the project tab.
+
 **RA2 Mod IntelliSense** is a powerful, feature-rich Visual Studio Code extension tailor-made for *Command & Conquer: Red Alert 2* mod development. It aims to revolutionize your workflow on `.ini` configuration files by providing a modern coding experience, including dynamic syntax highlighting, deep language intelligence, advanced diagnostics, and intuitive inheritance visualization.
 
 ---

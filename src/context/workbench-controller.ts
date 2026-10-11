@@ -13,6 +13,7 @@ import { encodePng } from '../media/png';
 import { mediaCapabilities } from '../media/media-capabilities';
 import { openContributedView } from './view-reveal';
 import { applyPropertyChanges, preparePropertyChanges, PropertyChange } from './property-edit';
+import { CATALOG_GROUPS, catalogGroup } from './catalog-groups';
 import { renderMap, MapRendererOptions } from './map-renderer';
 
 class WorkbenchSession implements vscode.Disposable {
@@ -24,6 +25,7 @@ class WorkbenchSession implements vscode.Disposable {
     private loading = false;
     private editing = false;
     private catalogOrigin?: vscode.Uri;
+    private catalogScope = 'game';
     private changePlan?: { id: string; changes: PropertyChange[] };
     private planRevision = 0;
     private error?: string;
@@ -37,7 +39,8 @@ class WorkbenchSession implements vscode.Disposable {
         private readonly extension: vscode.Uri,
         private readonly service: InspectionService,
         private readonly media: MediaService,
-        private readonly visible: () => boolean
+        private readonly visible: () => boolean,
+        private readonly preferences?: vscode.Memento
     ) {
         webview.options = {
             enableScripts: true,
@@ -197,15 +200,15 @@ class WorkbenchSession implements vscode.Disposable {
 
     public refresh(): void {
         if (this.catalogOrigin && this.visible() && !this.editing) {
-            void this.browseObjects(this.catalogOrigin);
+            void this.browseObjects(this.catalogOrigin, this.catalogScope);
             return;
         }
         if (this.target && this.visible() && !this.editing) {
             void this.inspect(this.target.uri, this.target.position, this.target.resource, false);
         }
     }
-
-    public async browseObjects(origin: vscode.Uri): Promise<void> {
+    public async browseObjects(origin: vscode.Uri, scope = 'game'): Promise<void> {
+        this.catalogScope = scope;
         this.planRevision++;
         this.editing = false;
         this.cancellation.cancel();
@@ -220,6 +223,45 @@ class WorkbenchSession implements vscode.Disposable {
         this.send();
         try {
             const session = await this.service.catalog(origin, this.cancellation.token);
+            session.inspection.catalogScope = scope;
+            session.inspection.favoriteObjects = this.preferences?.get<string[]>(
+                'catalogFavorites:' + this.service.resources.projectRoot(origin).toString()
+            );
+            if (scope === 'overview') {
+                const index = await this.service.resources.describeIndex(origin);
+                const configuration = vscode.workspace.getConfiguration('ra2-ini-intellisense', origin);
+                const counts: Record<string, number> = {};
+                for (const object of session.objects!.values()) {
+                    const group = catalogGroup(object);
+                    counts[group] = (counts[group] ?? 0) + 1;
+                }
+                const documents = this.service.ini.documents(origin).map((document) => {
+                    const id = randomUUID();
+                    session.links.set(id, new vscode.Location(document.uri, new vscode.Position(0, 0)));
+                    return { id, label: this.service.resources.label(origin, document.uri) };
+                });
+                session.inspection.project = {
+                    root: this.service.resources.projectRoot(origin).fsPath,
+                    files: index.files,
+                    archives: index.archives,
+                    errors: index.errors,
+                    counts,
+                    documents,
+                    settings: [
+                        'project.entryPoints',
+                        'media.resourceRoots',
+                        'media.archiveOrder',
+                        'media.excludedDirectories',
+                        'schemaFilePath',
+                        'maps.renderer',
+                    ].map((key) => ({
+                        key,
+                        value: JSON.stringify(configuration.get(key) ?? null, null, 2),
+                    })),
+                };
+                session.inspection.owner = localize('workbench.projectSettings', 'Project overview and settings');
+                session.inspection.objects = undefined;
+            }
             if (revision === this.revision) {
                 this.current = session;
             }
@@ -366,7 +408,44 @@ class WorkbenchSession implements vscode.Disposable {
             return;
         }
         const current = this.current;
-        if (data.type === 'configure-map-renderer') {
+        if (
+            data.type === 'save-favorites' &&
+            this.preferences &&
+            current.objects &&
+            Array.isArray(data.ids) &&
+            data.ids.length <= 10000 &&
+            data.ids.every((id) => typeof id === 'string' && id.length <= 512)
+        ) {
+            const key = 'catalogFavorites:' + this.service.resources.projectRoot(current.origin).toString();
+            const favorites = [...new Set(data.ids)];
+            if (JSON.stringify(this.preferences.get(key)) !== JSON.stringify(favorites)) {
+                await this.preferences.update(key, favorites);
+            }
+            return;
+        }
+        if (
+            data.type === 'remember-catalog-scope' &&
+            typeof data.value === 'string' &&
+            ['game', 'all', ...CATALOG_GROUPS].includes(data.value)
+        ) {
+            this.catalogScope = data.value;
+            current.inspection.catalogScope = data.value;
+        } else if (
+            data.type === 'catalog-scope' &&
+            typeof data.value === 'string' &&
+            ['game', 'all', 'favorites', 'overview', ...CATALOG_GROUPS].includes(data.value)
+        ) {
+            await this.browseObjects(current.origin, data.value);
+        } else if (
+            data.type === 'project-setting' &&
+            typeof data.key === 'string' &&
+            current.inspection.project?.settings.some((setting) => setting.key === data.key)
+        ) {
+            await vscode.commands.executeCommand(
+                'workbench.action.openWorkspaceSettings',
+                '@id:ra2-ini-intellisense.' + data.key
+            );
+        } else if (data.type === 'configure-map-renderer') {
             await vscode.commands.executeCommand('workbench.action.openSettings', 'ra2-ini-intellisense.maps');
         } else if (data.type === 'render-map' && current.inspection.map) {
             if (this.loading) {
@@ -936,34 +1015,15 @@ export class WorkbenchController
                 inspector.pinned = true;
                 await inspector.inspect(origin, new vscode.Position(0, 0));
             }),
-            vscode.commands.registerCommand('ra2-ini-intellisense.browseObjects', async (uri?: vscode.Uri) => {
+            vscode.commands.registerCommand('ra2-ini-intellisense.browseObjects', (uri?: vscode.Uri, scope?: string) =>
+                this.openProject(uri, scope)
+            ),
+            vscode.commands.registerCommand('ra2-ini-intellisense.projectOverview', (uri?: vscode.Uri) =>
+                this.openProject(uri, 'overview')
+            ),
+            vscode.commands.registerCommand('ra2-ini-intellisense.configureProject', async (uri?: vscode.Uri) => {
                 const origin =
                     uri ?? vscode.window.activeTextEditor?.document.uri ?? vscode.workspace.workspaceFolders?.[0]?.uri;
-                if (!origin) {
-                    return;
-                }
-                const panel = vscode.window.createWebviewPanel(
-                    'ra2-object-browser',
-                    localize('workbench.objects', 'Project objects'),
-                    vscode.ViewColumn.Active,
-                    { retainContextWhenHidden: true }
-                );
-                const session = new WorkbenchSession(
-                    panel.webview,
-                    context.extensionUri,
-                    service,
-                    media,
-                    () => panel.visible
-                );
-                this.sessions.add(session);
-                panel.onDidDispose(() => {
-                    session.dispose();
-                    this.sessions.delete(session);
-                });
-                await session.browseObjects(origin);
-            }),
-            vscode.commands.registerCommand('ra2-ini-intellisense.configureProject', async (uri?: vscode.Uri) => {
-                const origin = uri ?? vscode.window.activeTextEditor?.document.uri;
                 if (!origin || !vscode.workspace.workspaceFolders?.length) {
                     return;
                 }
@@ -1071,9 +1131,9 @@ export class WorkbenchController
                     }
                 }
             ),
-            vscode.commands.registerCommand('ra2-ini-intellisense.browseAssets', async () => {
+            vscode.commands.registerCommand('ra2-ini-intellisense.browseAssets', async (uri?: vscode.Uri) => {
                 const origin =
-                    vscode.window.activeTextEditor?.document.uri ?? vscode.workspace.workspaceFolders?.[0]?.uri;
+                    uri ?? vscode.window.activeTextEditor?.document.uri ?? vscode.workspace.workspaceFolders?.[0]?.uri;
                 if (!origin) {
                     return;
                 }
@@ -1156,6 +1216,43 @@ export class WorkbenchController
         if (selected === reload) {
             await vscode.commands.executeCommand('workbench.action.reloadWindow');
         }
+    }
+    private projectPanels = new Map<string, { panel: vscode.WebviewPanel; session: WorkbenchSession }>();
+    private async openProject(uri?: vscode.Uri, scope = 'game'): Promise<void> {
+        const origin =
+            uri ?? vscode.window.activeTextEditor?.document.uri ?? vscode.workspace.workspaceFolders?.[0]?.uri;
+        if (!origin) {
+            return;
+        }
+        const root = this.service.resources.projectRoot(origin),
+            key = root.toString();
+        let entry = this.projectPanels.get(key);
+        if (!entry) {
+            const panel = vscode.window.createWebviewPanel(
+                'ra2-object-browser',
+                localize('project.title', 'Project workbench') + ' · ' + path.posix.basename(root.path),
+                vscode.ViewColumn.Active,
+                { retainContextWhenHidden: true }
+            );
+            const session = new WorkbenchSession(
+                panel.webview,
+                this.context.extensionUri,
+                this.service,
+                this.media,
+                () => panel.visible,
+                this.context.workspaceState
+            );
+            entry = { panel, session };
+            this.projectPanels.set(key, entry);
+            this.sessions.add(session);
+            panel.onDidDispose(() => {
+                this.projectPanels.delete(key);
+                this.sessions.delete(session);
+                session.dispose();
+            });
+        }
+        entry.panel.reveal(undefined, true);
+        await entry.session.browseObjects(origin, scope);
     }
 
     public resolveWebviewView(view: vscode.WebviewView): void {

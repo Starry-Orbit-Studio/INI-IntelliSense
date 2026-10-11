@@ -768,3 +768,98 @@ main.map-page {
         width: 65px;
     }
 }
+
+.project-root {
+    color: var(--vscode-descriptionForeground);
+    overflow-wrap: anywhere;
+}
+.project-counts {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(145px, 1fr));
+    gap: 8px;
+    margin: 18px 0;
+}
+.project-counts button {
+    text-align: left;
+    padding: 12px;
+    background: var(--vscode-button-secondaryBackground);
+    color: var(--vscode-button-secondaryForeground);
+}
+.project-layout {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(min(100%, 340px), 1fr));
+    gap: 16px;
+    align-items: start;
+}
+.project-card {
+    min-width: 0;
+    padding: 16px;
+    border: 1px solid var(--vscode-panel-border);
+    border-radius: 8px;
+}
+.project-card h2 {
+    margin-top: 0;
+    font-size: 16px;
+}
+.project-card p {
+    line-height: 1.65;
+    overflow-wrap: anywhere;
+    color: var(--vscode-descriptionForeground);
+}
+.project-card details {
+    border-top: 1px solid var(--vscode-panel-border);
+    padding: 10px 0;
+}
+.project-card pre {
+    max-height: 220px;
+    overflow: auto;
+    white-space: pre-wrap;
+    overflow-wrap: anywhere;
+    font-family: var(--vscode-editor-font-family);
+}
+.project-source-list {
+    max-height: 300px;
+    overflow: auto;
+    margin-top: 8px;
+}
+.project-source-list button {
+    display: block;
+    background: transparent;
+    color: var(--vscode-textLink-foreground);
+    text-align: left;
+    white-space: normal;
+    overflow-wrap: anywhere;
+}
+.catalog-table tbody td:nth-child(3) {
+    min-width: 150px;
+}
+.catalog-toolbar select[hidden] {
+    display: none;
+}
+
+@media (min-width: 650px) and (max-height: 480px) {
+    main.map-page {
+        display: grid;
+        grid-template-columns: max-content minmax(0, 1fr);
+        gap: 4px 12px;
+    }
+    .map-page > .controls {
+        grid-column: 1;
+        margin: 0;
+    }
+    .map-page > .map-note {
+        grid-column: 2;
+        margin: 0;
+        font-size: 11px;
+        color: var(--vscode-descriptionForeground);
+    }
+    .map-page > .map-viewport {
+        grid-column: 1 / -1;
+        height: max(100px, calc(100vh - 100px));
+    }
+    .map-page > details,
+    .map-page > h3,
+    .map-page > .map-sections {
+        grid-column: 1 / -1;
+    }
+}

@@ -1,10 +1,15 @@
+import { CATALOG_GROUPS, catalogGroup, matchesCatalogScope } from '../../src/context/catalog-groups';
+import { displayType } from '../../src/type-display';
 import type { Inspection, ObjectRow, WorkbenchLabels } from '../../src/context/workbench-protocol';
 
 export interface CatalogPreferences {
     query?: string;
+    scope?: string;
+    page?: number;
     category?: string;
     type?: string;
     favorites?: string[];
+    selected?: string[];
     onlyFavorites?: boolean;
 }
 
@@ -42,11 +47,16 @@ export function objectBrowser(
         columns = inspection.objectColumns ?? [];
     const selected = new Set<string>(),
         favorites = new Set(
-            (Array.isArray(preferences.favorites) ? preferences.favorites : []).filter(
+            (inspection.favoriteObjects ?? (Array.isArray(preferences.favorites) ? preferences.favorites : [])).filter(
                 (value) => typeof value === 'string'
             )
         );
     const identity = (row: ObjectRow) => row.category + ':' + row.name.toLowerCase();
+    objects.forEach((row) => {
+        if (preferences.selected?.includes(identity(row))) {
+            selected.add(row.id);
+        }
+    });
     const bar = make('div');
     bar.className = 'catalog-toolbar';
     const query = make('input');
@@ -54,13 +64,19 @@ export function objectBrowser(
     query.placeholder = labels.searchObjects;
     query.setAttribute('aria-label', labels.searchObjects);
     query.value = typeof preferences.query === 'string' ? preferences.query : '';
-    const category = select(['', ...new Set(objects.map((row) => row.category))].sort(), labels.allCategories);
-    const type = select(['', ...new Set(objects.map((row) => row.type))].sort(), labels.allTypes);
-    category.value = preferences.category ?? '';
-    type.value = preferences.type ?? '';
+    const scope = select(['game', 'all', ...CATALOG_GROUPS], labels.group_game);
+    Array.from(scope.options).forEach((option) => {
+        option.textContent = labels['group_' + option.value];
+    });
+    const requested = inspection.catalogScope;
+    scope.value = requested === 'favorites' ? 'all' : (requested ?? preferences.scope ?? 'game');
+    const sameScope = !requested || requested === preferences.scope;
+    if (!sameScope) {
+        query.value = '';
+    }
     const star = make('input');
     star.type = 'checkbox';
-    star.checked = preferences.onlyFavorites === true;
+    star.checked = requested === 'favorites' || (sameScope && preferences.onlyFavorites === true);
     const starLabel = make('label', labels.favorites);
     starLabel.prepend(star);
     const count = make('span');
@@ -71,7 +87,7 @@ export function objectBrowser(
         invalidatePlan();
     });
     const refresh = button(labels.refresh, () => post('refresh'));
-    bar.append(query, category, type, starLabel, count, compare, batch, refresh);
+    bar.append(query, scope, starLabel, count, compare, batch, refresh);
     host.append(bar);
     const form = make('form');
     form.className = 'batch-form';
@@ -129,10 +145,11 @@ export function objectBrowser(
     all.setAttribute('aria-label', labels.selectPage);
     allCell.append(all);
     headings.append(allCell, make('th', '★'));
-    const sortFields = ['name', 'type', 'category', ...columns];
+    const sortFields = ['name', 'type', ...columns];
     let sorting = 'name',
         descending = false,
-        page = 0;
+        page = sameScope && Number.isInteger(preferences.page) ? preferences.page! : 0;
+    const attributeHeaders: HTMLElement[] = [];
     for (const field of sortFields) {
         const cell = make('th');
         cell.append(
@@ -142,6 +159,9 @@ export function objectBrowser(
                 draw();
             })
         );
+        if (columns.includes(field)) {
+            attributeHeaders.push(cell);
+        }
         headings.append(cell);
     }
     headings.append(make('th', labels.source));
@@ -174,10 +194,11 @@ export function objectBrowser(
     );
     host.append(pagination);
     let visible: ObjectRow[] = [];
+    let filteredCount = 0;
     const changed = () => {
         compare.disabled = selected.size < 2 || selected.size > 8;
         batch.disabled = !selected.size || selected.size > 1000;
-        count.textContent = objects.length + ' · ' + labels.selected + ' ' + selected.size;
+        count.textContent = filteredCount + ' · ' + labels.selected + ' ' + selected.size;
         all.checked = visible.length > 0 && visible.every((row) => selected.has(row.id));
         all.indeterminate = !all.checked && visible.some((row) => selected.has(row.id));
     };
@@ -185,22 +206,32 @@ export function objectBrowser(
         const terms = query.value.toLowerCase().trim().split(/\s+/).filter(Boolean);
         const rows = objects.filter(
             (row) =>
-                (!category.value || row.category === category.value) &&
-                (!type.value || row.type === type.value) &&
+                matchesCatalogScope(row.group ?? catalogGroup(row), scope.value) &&
                 (!star.checked || favorites.has(identity(row))) &&
                 terms.every((term) =>
-                    [row.name, row.label, row.source, row.type].join(' ').toLowerCase().includes(term)
+                    [row.name, row.label, row.source, row.type, displayType(row.type), labels['group_' + (row.group ?? catalogGroup(row))]]
+                        .join(' ')
+                        .toLowerCase()
+                        .includes(term)
                 )
         );
         const get = (row: ObjectRow) =>
             sorting === 'name'
                 ? row.name
                 : sorting === 'type'
-                  ? row.type
+                  ? displayType(row.type)
                   : sorting === 'category'
                     ? row.category
                     : (row.values[sorting] ?? '');
         rows.sort((a, b) => {
+            if (terms.length) {
+                const exact =
+                    Number(b.name.toLowerCase() === query.value.trim().toLowerCase()) -
+                    Number(a.name.toLowerCase() === query.value.trim().toLowerCase());
+                if (exact) {
+                    return exact;
+                }
+            }
             const left = get(a),
                 right = get(b);
             const numeric =
@@ -209,6 +240,13 @@ export function objectBrowser(
                 ? Number(left) - Number(right)
                 : left.localeCompare(right, undefined, { numeric: true });
             return (descending ? -result : result) || a.name.localeCompare(b.name);
+        });
+        filteredCount = rows.length;
+        const showAttributes =
+            scope.value === 'game' ||
+            ['infantry', 'vehicles', 'aircraft', 'buildings', 'superweapons'].includes(scope.value);
+        attributeHeaders.forEach((header) => {
+            header.hidden = !showAttributes;
         });
         const pages = Math.max(1, Math.ceil(rows.length / 100));
         page = Math.max(0, Math.min(pages - 1, page));
@@ -225,7 +263,7 @@ export function objectBrowser(
             selection.onchange = () => {
                 selection.checked ? selected.add(row.id) : selected.delete(row.id);
                 invalidatePlan();
-                changed();
+                draw();
             };
             selectionCell.append(selection);
             const favorite = button(favorites.has(identity(row)) ? '★' : '☆', () => {
@@ -236,28 +274,48 @@ export function objectBrowser(
             favoriteCell.append(favorite);
             const name = make('td');
             name.append(
-                button(row.name, () => post('inspect-object', { id: row.id })),
-                make('small', row.label)
+                button(row.label || row.name, () => post('inspect-object', { id: row.id })),
+                make('small', row.name)
             );
-            tr.append(selectionCell, favoriteCell, name, make('td', row.type), make('td', row.category));
-            columns.forEach((column) => tr.append(make('td', row.values[column])));
+            tr.append(
+                selectionCell,
+                favoriteCell,
+                name,
+                make('td', labels['group_' + (row.group ?? catalogGroup(row))] ?? displayType(row.type))
+            );
+            columns.forEach((column) => {
+                const cell = make('td', row.values[column]);
+                cell.hidden = !showAttributes;
+                tr.append(cell);
+            });
             const source = make('td');
-            source.append(button(row.source, () => post('source', { id: row.id })));
+            const sourceButton = button(labels.openDefinition, () => post('source', { id: row.id }));
+            sourceButton.title = row.source;
+            source.append(sourceButton);
             if (row.definitions > 1) {
                 source.append(make('small', labels.definitions + ' ' + row.definitions));
             }
             tr.append(source);
             body.append(tr);
         }
+        if (!rows.length) {
+            const row = make('tr'),
+                cell = make('td', labels.noObjects);
+            cell.colSpan = sortFields.length + 3;
+            row.append(cell);
+            body.append(row);
+        }
         previous.disabled = page === 0;
         next.disabled = page >= pages - 1;
         pageLabel.textContent = page + 1 + ' / ' + pages + ' · ' + rows.length;
         changed();
+        post('save-favorites', { ids: [...favorites] });
         save({
             query: query.value,
-            type: type.value,
-            category: category.value,
+            scope: scope.value,
+            page,
             favorites: [...favorites],
+            selected: objects.filter((row) => selected.has(row.id)).map(identity),
             onlyFavorites: star.checked,
         });
     };
@@ -274,8 +332,11 @@ export function objectBrowser(
             draw();
         }, 100);
     };
-    [category, type, star].forEach((input) => {
+    [scope, star].forEach((input) => {
         input.onchange = () => {
+            if (input === scope) {
+                post('remember-catalog-scope', { value: scope.value });
+            }
             page = 0;
             draw();
         };

@@ -26,7 +26,9 @@ export function mapView(
         button(labels.refresh, () => post('refresh')),
         button(labels.configureMapRenderer, () => post('configure-map-renderer'))
     );
-    host.append(bar, make('p', map.note));
+    const note = make('p', map.note);
+    note.className = 'map-note';
+    host.append(bar, note);
     const preview = make('div');
     preview.className = 'map-viewport';
     preview.tabIndex = 0;

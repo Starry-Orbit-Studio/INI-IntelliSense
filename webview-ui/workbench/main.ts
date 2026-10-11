@@ -1,3 +1,5 @@
+import { projectView } from './project-view';
+import { displayType } from '../../src/type-display';
 import './main.css';
 import type { HostState, Inspection, MediaPayload, WorkbenchLabels } from '../../src/context/workbench-protocol';
 import { Renderer, ViewSettings, imageRenderer, spriteRenderer, voxelRenderer, fromBase64 } from './renderer';
@@ -1333,7 +1335,18 @@ function voxelControls(media: Extract<MediaPayload, { kind: 'voxel' }>, host: HT
 }
 
 function render(inspection: Inspection): void {
-    app.classList.toggle('catalog-page', !!inspection.objects);
+    const pageKind = inspection.project
+        ? 'project'
+        : inspection.objects
+          ? 'catalog'
+          : inspection.map
+            ? 'map'
+            : 'object';
+    if (app.dataset.surface !== pageKind) {
+        window.scrollTo(0, 0);
+    }
+    app.dataset.surface = pageKind;
+    app.classList.toggle('catalog-page', !!inspection.objects || !!inspection.project);
     app.classList.toggle('map-page', !!inspection.map);
     const kind = inspection.media?.kind ?? '';
     if (settingsKind !== kind) {
@@ -1403,16 +1416,22 @@ function render(inspection: Inspection): void {
     }
     app.replaceChildren();
     const toolbar = element('nav', 'toolbar');
-    toolbar.append(
-        button('‹', () => post('back')),
-        button(pinned ? labels.follow : labels.pin, () => post('pin')),
-        button('↻', () => post('refresh')),
-        button(labels.browse, () => post('browse')),
-        button(labels.objects, () => post('objects'))
-    );
+    if (inspection.objects || inspection.project) {
+        toolbar.append(
+            button(labels.projectSettings, () => post('catalog-scope', { value: 'overview' })),
+            button(labels.group_game, () => post('catalog-scope', { value: 'game' })),
+            button(labels.refresh, () => post('refresh'))
+        );
+    } else {
+        toolbar.append(
+            button('‹', () => post('back')),
+            button(pinned ? labels.follow : labels.pin, () => post('pin')),
+            button('↻', () => post('refresh'))
+        );
+    }
     const heading = element('header', 'identity');
     heading.append(
-        element('span', 'eyebrow', inspection.type),
+        element('span', 'eyebrow', displayType(inspection.type)),
         element('h1', '', inspection.owner),
         element('p', 'focus', inspection.focus !== inspection.owner ? inspection.focus : '')
     );
@@ -1441,6 +1460,10 @@ function render(inspection: Inspection): void {
         resolution.entries.forEach((entry) => summary.append(element('div', '', entry)));
         resolution.issues.forEach((issue) => summary.append(element('p', 'warning', issue)));
         app.append(summary);
+    }
+    if (inspection.project) {
+        projectView(app, inspection, labels, post);
+        return;
     }
     if (inspection.map) {
         mapView(app, inspection, labels, post);

@@ -1,3 +1,4 @@
+import { catalogGroup } from '../context/catalog-groups';
 import { animatedThumbnail } from '../media/animated-thumbnail';
 import { voxelTransform, transformPoint } from '../media/voxel-math';
 import * as assert from 'assert';
@@ -73,8 +74,32 @@ suite('Optional real mod acceptance', () => {
                     (object) => object.name === 'ALTNK' && object.category === 'rules'
                 );
                 assert.strictEqual(tank?.type, 'UnitType');
+                assert.strictEqual(catalogGroup(tank!), 'vehicles');
+                const ambient = [...catalog.objects!.values()].find(
+                    (object) => object.name === '_Amb_UrbanMurmur1' && object.category === 'sound'
+                );
+                assert.ok(ambient, 'ES environment sound remains searchable');
+                assert.strictEqual(catalogGroup(ambient), 'sounds');
+                assert.ok(
+                    catalog.inspection.objects!.some(
+                        (object) => object.name === 'ALTANY' && object.group === 'infantry'
+                    )
+                );
+                assert.ok(
+                    !catalog.inspection.objects!.some(
+                        (object) =>
+                            object.category === 'art' && ['vehicles', 'infantry', 'buildings'].includes(object.group!)
+                    )
+                );
+
                 assert.ok(catalog.isCurrent?.());
                 report.push({
+                    groups: Object.fromEntries(
+                        [...new Set(catalog.inspection.objects!.map((object) => object.group))].map((group) => [
+                            group,
+                            catalog.inspection.objects!.filter((object) => object.group === group).length,
+                        ])
+                    ),
                     objectCatalog: catalog.objects!.size,
                     elapsedMs: Date.now() - started,
                     serializedBytes: Buffer.byteLength(JSON.stringify(catalog.inspection)),
@@ -84,11 +109,21 @@ suite('Optional real mod acceptance', () => {
                     await vscode.commands.executeCommand('ra2-ini-intellisense.browseObjects', origin);
                     const verify: (
                         port: number,
-                        output: string
+                        output: string,
+                        command: (name: string) => Promise<unknown>
                     ) => Promise<void> = require('../../scripts/verify-vscode-platform.cjs');
                     await verify(
                         Number(process.env.RA2_WORKBENCH_PLATFORM_UI_PORT),
-                        path.join(extension.extensionPath, 'out', 'webview-qa', 'vscode-platform.png')
+                        path.join(extension.extensionPath, 'out', 'webview-qa', 'vscode-platform.png'),
+                        (name) =>
+                            Promise.resolve(
+                                vscode.commands.executeCommand(
+                                    name,
+                                    ...(name === 'ra2-ini-intellisense.previewMap'
+                                        ? [vscode.Uri.file(path.join(root, 'Custom Maps', 'ring.map'))]
+                                        : [])
+                                )
+                            )
                     );
                     report.push({ nativeCatalogBatchPreview: true });
                 }

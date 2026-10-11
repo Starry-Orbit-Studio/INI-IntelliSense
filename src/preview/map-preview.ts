@@ -1,3 +1,4 @@
+import { decompressLzo } from './lzo';
 import { localize } from '../i18n';
 import { RgbaImagePreview, TextPreview } from './preview-types';
 
@@ -14,10 +15,18 @@ export function createMapPreview(bytes: Uint8Array, title: string): RgbaImagePre
             };
         }
 
-        if (previewSize.width < 1 || previewSize.height < 1 || previewSize.width * previewSize.height > 16 * 1024 * 1024 || packedBase64.length > 64 * 1024 * 1024) {
+        if (
+            previewSize.width < 1 ||
+            previewSize.height < 1 ||
+            previewSize.width * previewSize.height > 16 * 1024 * 1024 ||
+            packedBase64.length > 64 * 1024 * 1024
+        ) {
             throw new Error('Map preview exceeds the decoding limit.');
         }
 
+        if (packedBase64.length % 4 || !/^[A-Za-z0-9+/]*={0,2}$/.test(packedBase64)) {
+            throw new Error('Invalid map preview base64.');
+        }
         const packedBytes = Uint8Array.from(Buffer.from(packedBase64, 'base64'));
         const pixelData = decompressBlocks(packedBytes);
         const expectedLength = previewSize.width * previewSize.height * 3;
@@ -27,9 +36,9 @@ export function createMapPreview(bytes: Uint8Array, title: string): RgbaImagePre
 
         const pixels = new Uint8ClampedArray(previewSize.width * previewSize.height * 4);
         for (let i = 0, src = 0; i < pixels.length; i += 4, src += 3) {
-            pixels[i] = pixelData[src + 2] ?? 0;
+            pixels[i] = pixelData[src];
             pixels[i + 1] = pixelData[src + 1] ?? 0;
-            pixels[i + 2] = pixelData[src] ?? 0;
+            pixels[i + 2] = pixelData[src + 2];
             pixels[i + 3] = 255;
         }
 
@@ -44,7 +53,11 @@ export function createMapPreview(bytes: Uint8Array, title: string): RgbaImagePre
         return {
             kind: 'text',
             title,
-            content: localize('preview.error', 'Failed to load preview: {0}', error instanceof Error ? error.message : String(error)),
+            content: localize(
+                'preview.error',
+                'Failed to load preview: {0}',
+                error instanceof Error ? error.message : String(error)
+            ),
         };
     }
 }
@@ -72,14 +85,14 @@ function parsePreviewSize(text: string): { width: number; height: number } | und
         return undefined;
     }
 
-    const parts = sizeLine.split(',').map(part => Number.parseInt(part.trim(), 10));
-    if (parts.length < 4 || parts.some(Number.isNaN)) {
+    const parts = sizeLine.split(',').map((part) => Number(part.trim()));
+    if (parts.length !== 4 || parts.some((part) => !Number.isSafeInteger(part))) {
         return undefined;
     }
 
     return {
-        width: parts[2] - parts[0],
-        height: parts[3] - parts[1],
+        width: parts[2],
+        height: parts[3],
     };
 }
 
@@ -91,9 +104,9 @@ function parsePreviewPack(text: string): string | undefined {
 
     const lines = section
         .split(/\r?\n/)
-        .map(line => line.trim())
+        .map((line) => line.trim())
         .filter(Boolean)
-        .map(line => {
+        .map((line) => {
             const match = line.match(/^(\d+)\s*=\s*(.*)$/);
             if (!match) {
                 return undefined;
@@ -110,7 +123,7 @@ function parsePreviewPack(text: string): string | undefined {
         return undefined;
     }
 
-    return lines.map(line => line.value).join('');
+    return lines.map((line) => line.value).join('');
 }
 
 function getSection(text: string, name: string): string | undefined {
@@ -130,18 +143,23 @@ function decompressBlocks(source: Uint8Array): Uint8Array {
     let expanded = 0;
     const chunks: Uint8Array[] = [];
 
-    while (offset + 4 <= source.byteLength) {
+    while (offset < source.byteLength) {
+        if (offset + 4 > source.byteLength) {
+            throw new Error('Truncated map preview block header.');
+        }
         const view = new DataView(source.buffer, source.byteOffset + offset, 4);
         const inputSize = view.getUint16(0, true);
         const outputSize = view.getUint16(2, true);
         expanded += outputSize;
-        if (expanded > 48 * 1024 * 1024) { throw new Error('Map preview exceeds the decoding limit.'); }
+        if (expanded > 48 * 1024 * 1024) {
+            throw new Error('Map preview exceeds the decoding limit.');
+        }
         const block = source.slice(offset + 4, offset + 4 + inputSize);
-        if (block.byteLength !== inputSize) {
-            break;
+        if (!inputSize || !outputSize || block.byteLength !== inputSize) {
+            throw new Error('Truncated or empty map preview block.');
         }
 
-        chunks.push(decompressLzoBlock(block, outputSize));
+        chunks.push(decompressLzo(block, outputSize));
         offset += 4 + inputSize;
     }
 
@@ -153,110 +171,4 @@ function decompressBlocks(source: Uint8Array): Uint8Array {
         cursor += chunk.byteLength;
     }
     return result;
-}
-
-function decompressLzoBlock(block: Uint8Array, outputSize: number): Uint8Array {
-    const output = new Uint8Array(outputSize);
-    let ip = 0;
-    let op = 0;
-    let t = block[ip++];
-
-    if (t > 17) {
-        t -= 17;
-        while (t-- > 0 && ip < block.length && op < output.length) {
-            output[op++] = block[ip++];
-        }
-        t = block[ip++];
-    }
-
-    while (true) {
-        if (t < 16) {
-            if (t === 0) {
-                while (ip < block.length && block[ip] === 0) {
-                    t += 255;
-                    ip++;
-                }
-                if (ip >= block.length) {
-                    break;
-                }
-                t += 15 + block[ip++];
-            }
-            t += 3;
-            while (t-- > 0 && ip < block.length && op < output.length) {
-                output[op++] = block[ip++];
-            }
-            if (ip >= block.length) {
-                break;
-            }
-            t = block[ip++];
-            if (t < 16) {
-                const mPos = op - 0x801 - (t >> 2) - (block[ip++] << 2);
-                if (mPos < 0) {
-                    break;
-                }
-                output[op++] = output[mPos];
-                output[op++] = output[mPos + 1];
-                output[op++] = output[mPos + 2];
-                if ((t & 3) === 0) {
-                    t = block[ip - 2] & 3;
-                    if (ip >= block.length) {
-                        break;
-                    }
-                    t = block[ip++];
-                } else {
-                    t &= 3;
-                }
-                continue;
-            }
-        }
-
-        let mPos: number;
-        let length: number;
-        if (t >= 64) {
-            mPos = op - 1 - ((t >> 2) & 7) - (block[ip++] << 3);
-            length = (t >> 5) - 1;
-        } else if (t >= 32) {
-            length = t & 31;
-            if (length === 0) {
-                while (ip < block.length && block[ip] === 0) {
-                    length += 255;
-                    ip++;
-                }
-                if (ip >= block.length) {
-                    break;
-                }
-                length += 31 + block[ip++];
-            }
-            mPos = op - 1 - (block[ip] >> 2) - (block[ip + 1] << 6);
-            ip += 2;
-        } else {
-            mPos = op - 1 - (t >> 2) - (block[ip++] << 2);
-            length = 0;
-        }
-
-        if (mPos < 0) {
-            break;
-        }
-
-        if (t >= 16) {
-            mPos -= 0x4000;
-            length = (t & 7) + 2;
-            if (mPos === op) {
-                break;
-            }
-        }
-
-        while (length-- >= 0 && op < output.length) {
-            output[op] = output[mPos];
-            op++;
-            mPos++;
-        }
-
-        if (ip >= block.length) {
-            break;
-        }
-        t = block[ip++];
-    }
-
-    return output;
 }

@@ -1,7 +1,7 @@
 {
     "extension.displayName": "RA2 Mod IntelliSense",
     "extension.description": "为红色警戒2与尤里的复仇 Mod 开发提供 INI、MIX、CSF、SHP、VXL 等资源的智能感知、浏览与预览能力",
-    "view.container.title": "RA2 Mod",
+    "view.container.title": "RA2 项目工作台",
     "view.iniFiles.name": "INI 浏览器",
     "view.mixFiles.name": "MIX 浏览器",
     "command.category": "RA2 Mod IntelliSense",
@@ -71,5 +71,11 @@
     "configuration.project.entryPoints": "按文件类别（rules、art、sound）指定相对于 Mod 根目录的入口 INI；仅入口及其包含文件参与解析。留空使用编辑器上下文。",
     "configuration.project.objectColumns": "项目对象浏览器显示的 INI 属性列（最多 12 列）。",
     "command.previewMap.title": "预览当前地图",
-    "configuration.maps.renderer": "可选的 CNCMaps --worker JSON 后端，协议与 ra2rmg-rs 一致。executable、mixDirectory 必须是绝对路径；通过 modDirectories、rulesFiles、artFiles、extraMixes 指定项目加载资源。仅在受信任工作区显式点击渲染时运行。"
+    "configuration.maps.renderer": "可选的 CNCMaps --worker JSON 后端，协议与 ra2rmg-rs 一致。executable、mixDirectory 必须是绝对路径；通过 modDirectories、rulesFiles、artFiles、extraMixes 指定项目加载资源。仅在受信任工作区显式点击渲染时运行。",
+    "view.projectWorkbench.name": "项目",
+    "view.projectWorkbench.welcome": "打开 Mod 文件夹，即可浏览游戏对象、地图与项目配置。\n[打开文件夹](command:vscode.openFolder)",
+    "command.searchObjects.title": "搜索游戏内容",
+    "command.projectOverview.title": "项目概况与设置",
+    "command.refreshProject.title": "刷新项目",
+    "command.openObjectDefinition.title": "打开定义"
 }
