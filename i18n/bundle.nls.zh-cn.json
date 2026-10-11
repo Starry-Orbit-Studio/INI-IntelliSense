@@ -437,5 +437,7 @@
     "workbench.theater_lun": "月球",
     "workbench.theater_des": "沙漠",
     "workbench.spriteGestures": "滚轮缩放；拖动画面或中键拖动平移；重置恢复居中。",
-    "workbench.voxelGestures": "滚轮缩放；拖动旋转；中键拖动平移。"
+    "workbench.voxelGestures": "滚轮缩放；拖动旋转；中键拖动平移。",
+    "workbench.fireAngle": "炮管仰角（FireAngle：0–64）",
+    "workbench.dragPoint": "拖动模型上的圆点移动 FLH；拖动 F/L/H 手柄可沿单轴移动。"
 }

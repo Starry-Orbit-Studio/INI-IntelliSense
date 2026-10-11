@@ -8,10 +8,15 @@ Check [Keep a Changelog](http://keepachangelog.com/) for recommendations on how 
 
 ## [Unreleased]
 
-- Share static first-frame building composition and default house color between hover and details, including Bib and voxel turrets. Trim SHP using one union of all authored frame rectangles, preserving frame alignment without decoding every frame.
+- Cover all four SuperAnim and SpecialAnim slots, including damaged variants. Unify building turret and vehicle VXL orientation with RA2's 30-degree game projection, native normals and project VPL lighting.
+- Apply TurretOffset in lepton coordinates and read FireAngle barrel elevation. Bind unnamed HVA sections by their original order, restoring V22 rotor placement and animation.
+- Resolve elite, numbered weapon, burst and alternate FLH points; keep point editing collapsed until explicitly opened, prefer selected overlapping points and synchronize cancelled drags.
+- Replace shrinking source cards with bounded, non-overlapping name/provenance/path rows. Generate cached, bounded APNG hover previews in the decode worker; inline decorations stay static and all animation frames share one trimmed canvas.
+
+- Share animated building composition and default house color between hover and details, including Bib and voxel turrets. Trim SHP using one union of all authored frame rectangles, preserving frame alignment without decoding every frame.
 - Add searchable, width-limited palette controls, viewport wheel zoom and drag/middle-drag pan with a floating zoom input. Hide building animation palette controls and bound the compact layer list.
 
-- Unify project voxel lighting, correct incoming-light direction and keep VPL shading in both game orthographic and true perspective views. Add camera pan and a spherical light control.
+- Unify project voxel lighting, preserve native INI light axes and the game's vertical secondary light and keep VPL shading in both game orthographic and true perspective views. Add camera pan and a spherical light control.
 - Move FLH editing into the viewport; support direct point and axis dragging with perspective-aware coordinates, readable selected-point labels and native INI undo.
 - Show normal and promoted SHP/PCX icons expanded. Share media capabilities so audio has audio export and no palette, PNG or image-comparison controls.
 - Resolve theater palette prefixes separately from exact CustomPalette filenames. Building animation palettes inherit the body only when unspecified, while keeping explicit animation palettes independent. Add project-scoped theater selection shared by hover, inline previews and workbench, with synchronized body/Bib/buildup/animation filenames and palette prefixes; it does not change INIs or settings.

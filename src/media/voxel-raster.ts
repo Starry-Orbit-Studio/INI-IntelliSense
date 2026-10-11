@@ -17,14 +17,15 @@ export function voxelRaster(
         maxY = -Infinity;
     const lightLength = Math.hypot(...media.light) || 1,
         light = nativeLight(media.light).map((value) => value / lightLength);
-    const eye = [-Math.sqrt(1 / 3), Math.sqrt(1 / 3), Math.sqrt(1 / 3)];
+    // The game's additional lighting vector is vertical, independent of the camera.
+    const eye = [0, 0, 1];
     const secondary = light.map((value, axis) => value + (!media.fixed ? eye[axis] : 0));
     const secondaryLength = Math.hypot(...secondary) || 1,
         half = secondary.map((value) => value / secondaryLength);
     const project = (point: number[]) => [
         (point[0] + point[1]) / Math.sqrt(2),
-        (-point[0] + point[1]) / Math.sqrt(6) - point[2] * Math.sqrt(2 / 3),
-        (point[0] - point[1]) * Math.sqrt(1 / 3) - point[2] / Math.sqrt(3),
+        (point[0] - point[1]) / Math.sqrt(8) - (point[2] * Math.sqrt(3)) / 2,
+        (-point[0] + point[1]) * Math.sqrt(3 / 8) - point[2] / 2,
     ];
     for (const part of media.model.parts) {
         const matrix = voxelTransform(part, frame, 0),

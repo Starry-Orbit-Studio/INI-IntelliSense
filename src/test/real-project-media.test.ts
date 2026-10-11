@@ -1,4 +1,5 @@
-import { sceneThumbnail } from '../media/scene-thumbnail';
+import { animatedThumbnail } from '../media/animated-thumbnail';
+import { voxelTransform, transformPoint } from '../media/voxel-math';
 import * as assert from 'assert';
 import * as vscode from 'vscode';
 import * as path from 'path';
@@ -61,6 +62,9 @@ suite('Optional real mod acceptance', () => {
                 ['soundes.ini', 'TanyaPrimeSelect', 'audio'],
                 ['ruleses_AL.ini', 'ALIFV', 'voxel'],
                 ['ruleses_AL.ini', 'ALTNK', 'voxel'],
+                ['ruleses_AL.ini', 'ALV22B', 'voxel'],
+                ['ruleses_AL.ini', 'ALBFRT', 'voxel'],
+                ['ruleses_AL.ini', 'AAPRTC', 'sprite'],
                 ['ruleses_AL.ini', 'ALMINDebris', 'voxel'],
                 ['ruleses.ini', 'GAWEAP', 'sprite'],
                 ['ruleses.ini', 'NASAM', 'sprite'],
@@ -119,6 +123,42 @@ suite('Optional real mod acceptance', () => {
                         ['Cameo', 'AltCameo']
                     );
                 }
+                if (name === 'ALV22B' && session.inspection.media?.kind === 'voxel') {
+                    const limbs = session.inspection.media.model.parts.filter((part) => part.role === 'body');
+                    assert.strictEqual(limbs.length, 3);
+                    assert.ok(limbs.every((part) => part.animation?.length === 5));
+                    const propellers = limbs.slice(1).map((part) =>
+                        transformPoint(
+                            voxelTransform(part, 0, 0),
+                            part.size.map((value) => value / 2)
+                        )
+                    );
+                    assert.ok(
+                        propellers[0][1] > 50 && propellers[1][1] < -50,
+                        'HVA places the two rotors on opposite wings'
+                    );
+                    assert.ok(
+                        propellers.every((point) => point[2] > 40),
+                        'HVA places rotors above the wing'
+                    );
+                }
+                if (name === 'ALBFRT' && session.inspection.media?.kind === 'voxel') {
+                    assert.strictEqual(
+                        session.inspection.media.points.filter((point) => /^AlternateFLH/.test(point.name)).length,
+                        5
+                    );
+                }
+                if (name === 'ALIFV' && session.inspection.media?.kind === 'voxel') {
+                    assert.ok(session.inspection.media.points.some((point) => point.name === 'Weapon17FLH.Burst2'));
+                }
+                if (name === 'AAPRTC' && session.inspection.media?.kind === 'sprite') {
+                    for (const tag of ['SuperAnim', 'SuperAnimTwo', 'SuperAnimThree', 'SuperAnimFour']) {
+                        assert.ok(
+                            session.inspection.media.scene?.layers.some((layer) => layer.tag === tag && layer.media),
+                            tag
+                        );
+                    }
+                }
                 if (name === 'GAWEAP' && session.inspection.media?.kind === 'sprite') {
                     assert.ok(
                         session.inspection.media.scene?.layers.some((layer) => layer.tag === 'DoorAnim' && layer.media)
@@ -150,7 +190,7 @@ suite('Optional real mod acceptance', () => {
                         assert.strictEqual(session.inspection.media?.kind, 'audio');
                     }
                 }
-                if (kind === 'voxel') {
+                if (kind === 'voxel' || name === process.env.RA2_WORKBENCH_UI_OWNER) {
                     // Give background thumbnail generation a bounded opportunity to finish.
                     let contents = '';
                     for (let i = 0; i < 40; i++) {
@@ -188,12 +228,14 @@ suite('Optional real mod acceptance', () => {
                         showHover: () => Promise<void>,
                         owner: string,
                         kind: string,
-                        expectedSnow?: () => Promise<string>
+                        expectedSnow?: () => Promise<string>,
+                        media?: InspectionSession['inspection']['media']
                     ) => Promise<void> = require('../../scripts/verify-vscode-hover.cjs');
                     await verifyHover(
                         Number(process.env.RA2_WORKBENCH_UI_PORT),
                         path.join(extension.extensionPath, 'out', 'webview-qa', 'vscode-hover.png'),
                         async () => {
+                            await vscode.commands.executeCommand('workbench.action.focusActiveEditorGroup');
                             await vscode.commands.executeCommand('editor.action.showHover');
                         },
                         name,
@@ -210,9 +252,10 @@ suite('Optional real mod acceptance', () => {
                                   if (snow.inspection.media?.kind !== 'sprite') {
                                       throw new Error('Expected snow building.');
                                   }
-                                  return Buffer.from(sceneThumbnail(snow.inspection.media)).toString('base64');
+                                  return Buffer.from(animatedThumbnail(snow.inspection.media)).toString('base64');
                               }
-                            : undefined
+                            : undefined,
+                        session.inspection.media
                     );
                     report.push({ actualHoverImage: true });
                 }

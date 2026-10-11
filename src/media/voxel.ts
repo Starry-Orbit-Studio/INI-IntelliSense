@@ -13,6 +13,7 @@ export interface VoxelPart {
     role: 'body' | 'turret' | 'barrel';
     animation?: number[][];
     offset?: number[];
+    pitch?: number;
 }
 export interface VoxelFile {
     remapStart: number;
@@ -132,10 +133,15 @@ export function readHva(bytes: Uint8Array): HvaFile {
 }
 
 export function attachHva(model: VoxelFile, hva: HvaFile): void {
-    for (const part of model.parts) {
-        const index = hva.names.findIndex((name) => name.toLowerCase() === part.name.toLowerCase());
-        if (index >= 0) {
-            part.animation = hva.frames.map((frame) => frame[index]);
+    for (const [ordinal, part] of model.parts.entries()) {
+        const index = part.name.trim()
+            ? hva.names.findIndex((name) => name.trim().toLowerCase() === part.name.trim().toLowerCase())
+            : -1;
+        // Some shipped HVA files (including V22) leave every section name empty.
+        // Only unnamed sections may fall back to their ordinal; named mismatches stay unmatched.
+        const section = index >= 0 ? index : !hva.names[ordinal]?.trim() && ordinal < hva.names.length ? ordinal : -1;
+        if (section >= 0) {
+            part.animation = hva.frames.map((frame) => frame[section]);
         }
     }
 }

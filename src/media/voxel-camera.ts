@@ -17,8 +17,8 @@ export function voxelCamera(options: CameraOptions, center: number[], size: numb
         p = Math.sin(pitch),
         q = Math.cos(pitch);
     const right = [c, -s, 0],
-        up = [-s * p, -c * p, q],
-        eye = [s * q, c * q, p];
+        up = [s * p, c * p, q],
+        eye = [-s * q, -c * q, p];
     const target = center.map((value, axis) => value + (options.pan?.[axis] ?? 0));
     const aspect = width / Math.max(1, height);
     const extent = Math.max(1, Math.hypot(...size));

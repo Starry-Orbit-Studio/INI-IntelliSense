@@ -90,7 +90,8 @@ export class MediaHoverProvider implements vscode.HoverProvider, vscode.Disposab
                             }
                             const thumbnail = await this.thumbnails.create(
                                 session.inspection.media ?? session.inspection.cameo,
-                                cancellation.token
+                                cancellation.token,
+                                true
                             );
                             const image = thumbnail
                                 ? 'data:image/png;base64,' +

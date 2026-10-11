@@ -417,7 +417,7 @@ export class InspectionService implements vscode.Disposable {
         const points: PointEdit[] = [];
         for (const entry of art.values()) {
             if (
-                /^(PrimaryFireFLH|SecondaryFireFLH|ElitePrimaryFireFLH|EliteSecondaryFireFLH|Weapon\d+FLH)$/i.test(
+                /^(?:(?:Elite)?(?:Primary|Secondary)(?:Fire|Crawling|Prone)FLH|(?:Elite)?Weapon\d+FLH|AlternateFLH\d+)(?:\.Burst\d+)?$/i.test(
                     entry.key
                 )
             ) {
@@ -456,6 +456,8 @@ export class InspectionService implements vscode.Disposable {
             category === 'art'
                 ? this.ini.effective(document.uri, this.ownerNameForArt(document.uri, artName) ?? artName, 'rules')
                 : targetProperties;
+        const fireAngle = Number(value(contextRules, 'FireAngle'));
+        options.fireAngle = Number.isFinite(fireAngle) ? Math.max(0, Math.min(64, fireAngle)) : undefined;
         const theater =
             selectedTheater ??
             vscode.workspace.getConfiguration('ra2-ini-intellisense', document.uri).get<string>('media.theater', 'tem');

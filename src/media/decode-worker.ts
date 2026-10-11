@@ -8,6 +8,7 @@ import { sceneThumbnail } from './scene-thumbnail';
 import { spriteRaster, thumbnailRaster } from './sprite-raster';
 import { voxelThumbnail } from './voxel-thumbnail';
 import type { DecodeOptions } from './decoder-service';
+import { animatedThumbnail } from './animated-thumbnail';
 
 parentPort?.on(
     'message',
@@ -16,6 +17,14 @@ parentPort?.on(
             const bytes = new Uint8Array(message.bytes);
             let result: unknown;
             switch (message.kind) {
+                case 'animated-thumbnail': {
+                    const media = message.options?.sprite ?? message.options?.voxel;
+                    if (!media) {
+                        throw new Error('Missing animated thumbnail media.');
+                    }
+                    result = animatedThumbnail(media);
+                    break;
+                }
                 case 'scene-thumbnail': {
                     if (!message.options?.sprite?.scene) {
                         throw new Error('Missing sprite scene.');

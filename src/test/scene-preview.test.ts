@@ -5,6 +5,8 @@ import { spriteBounds, spriteRaster } from '../media/sprite-raster';
 import { layerFrame, layerVisible, layerBounds } from '../media/scene-layout';
 import { readShp } from '../media/shp';
 import { sceneThumbnail } from '../media/scene-thumbnail';
+import { animatedThumbnail } from '../media/animated-thumbnail';
+import { crc32 } from '../mix/core/crc32';
 
 /** Frames move inside one authored canvas; the union must remain fixed. */
 function sprite(): Extract<MediaPayload, { kind: 'sprite' }> {
@@ -38,6 +40,52 @@ function layer(tag: string, media = sprite()): SpriteLayer {
 }
 
 suite('Shared building and hover preview', () => {
+    test('slow animation sampling includes the full cycle instead of repeatedly sampling its first frame', () => {
+        const media = sprite();
+        media.scene = { kind: 'animation', foundation: [], trace: [], layers: [{ ...layer('body', media), rate: 1 }] };
+        const png = Buffer.from(animatedThumbnail(media)),
+            frames: Buffer[] = [];
+        for (let offset = 8; offset < png.length;) {
+            const size = png.readUInt32BE(offset),
+                kind = png.toString('ascii', offset + 4, offset + 8),
+                data = png.subarray(offset + 8, offset + 8 + size);
+            if (kind === 'IDAT' || kind === 'fdAT') {
+                frames.push(inflateSync(kind === 'fdAT' ? data.subarray(4) : data));
+            }
+            offset += size + 12;
+        }
+        assert.strictEqual(frames.length, 2);
+        assert.notDeepStrictEqual(frames[0], frames[1]);
+    });
+    test('animated hover replaces transparent frames on one fixed canvas with valid APNG chunks', () => {
+        const png = Buffer.from(animatedThumbnail(sprite()));
+        assert.strictEqual(png.readUInt32BE(16), 5);
+        assert.strictEqual(png.readUInt32BE(20), 1);
+        const controls: number[] = [],
+            frames: Buffer[] = [];
+        for (let offset = 8; offset < png.length;) {
+            const size = png.readUInt32BE(offset),
+                kind = png.toString('ascii', offset + 4, offset + 8),
+                data = png.subarray(offset + 8, offset + 8 + size);
+            assert.strictEqual(png.readUInt32BE(offset + 8 + size), crc32(png.subarray(offset + 4, offset + 8 + size)));
+            if (kind === 'acTL') {
+                assert.strictEqual(data.readUInt32BE(0), 2);
+            }
+            if (kind === 'fcTL') {
+                controls.push(data.readUInt32BE(0));
+                assert.strictEqual(data[25], 0);
+            }
+            if (kind === 'IDAT' || kind === 'fdAT') {
+                frames.push(inflateSync(kind === 'fdAT' ? data.subarray(4) : data));
+            }
+            offset += size + 12;
+        }
+        assert.deepStrictEqual(controls, [0, 1]);
+        assert.notDeepStrictEqual(frames[0], frames[1]);
+        assert.strictEqual(frames[0][4], 255);
+        assert.strictEqual(frames[1][4], 0, 'replacement clears the previous marker instead of leaving trails');
+        assert.strictEqual(frames[1][20], 255);
+    });
     test('all sprite frames use one cropped canvas, preserving relative placement and remap', () => {
         const media = sprite(),
             bytes = Buffer.from(media.bytes, 'base64');

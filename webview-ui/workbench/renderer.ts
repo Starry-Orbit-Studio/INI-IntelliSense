@@ -18,6 +18,7 @@ export interface ViewSettings {
     yaw: number;
     pitch: number;
     turret: number;
+    fireAngle?: number;
     light: number[];
     fixed: boolean;
     slice: number;
@@ -198,7 +199,7 @@ export function voxelRenderer(
             'uniform sampler2D palette; uniform sampler2D vpl; uniform float remapStart; uniform float remapEnd; uniform int mode; uniform float cut; uniform bool fixedLight;\n' +
             'out vec3 pixelColor; out float visible;\nvoid main(){\n' +
             'vec4 world=model*vec4(position+corner,1.0); gl_Position=projection*world;\n' +
-            'vec3 n=normalize(normalMatrix*normal.yxz); float f1=max(0.0,dot(n,light)); vec3 secondary=light+(fixedLight?vec3(0):eye); vec3 halfVector=length(secondary)>0.000001?normalize(secondary):vec3(0); float h=dot(n,halfVector);\n' +
+            'vec3 n=normalize(normalMatrix*normal); float f1=max(0.0,dot(n,light)); vec3 secondary=light+(fixedLight?vec3(0):eye); vec3 halfVector=length(secondary)>0.000001?normalize(secondary):vec3(0); float h=dot(n,halfVector);\n' +
             'int level=int(clamp(floor(16.0*(f1+max(0.0,h/(3.0-2.0*h)))),0.0,31.0)); int index=int(colorIndex);\n' +
             'if(mode!=2){index=int(texelFetch(vpl,ivec2(index,min(level,textureSize(vpl,0).y-1)),0).r*255.0+0.5);}\n' +
             'pixelColor=texelFetch(palette,ivec2(index,0),0).rgb;\n' +
@@ -302,7 +303,12 @@ export function voxelRenderer(
         min.fill(Infinity);
         max.fill(-Infinity);
         for (const part of media.model.parts) {
-            const matrix = voxelTransform(part, settings.frame, (settings.turret * Math.PI) / 180);
+            const matrix = voxelTransform(
+                part,
+                settings.frame,
+                (settings.turret * Math.PI) / 180,
+                settings.fireAngle === undefined ? undefined : (settings.fireAngle * Math.PI) / 128
+            );
             for (let corner = 0; corner < 8; corner++) {
                 const point = transformPoint(
                     matrix,
@@ -367,7 +373,7 @@ export function voxelRenderer(
             uniform('light'),
             nativeLight(settings.light).map((value) => value / length)
         );
-        gl.uniform3fv(uniform('eye'), [-Math.sqrt(1 / 3), Math.sqrt(1 / 3), Math.sqrt(1 / 3)]);
+        gl.uniform3fv(uniform('eye'), [0, 0, 1]);
         gl.uniform3fv(
             uniform('house'),
             settings.color.map((value) => value / 255)
@@ -381,7 +387,12 @@ export function voxelRenderer(
             if (settings.hidden.has(id)) {
                 continue;
             }
-            const native = voxelTransform(part, settings.frame, (settings.turret * Math.PI) / 180);
+            const native = voxelTransform(
+                part,
+                settings.frame,
+                (settings.turret * Math.PI) / 180,
+                settings.fireAngle === undefined ? undefined : (settings.fireAngle * Math.PI) / 128
+            );
             const model = new Float32Array([
                 native[0],
                 native[4],
@@ -431,7 +442,11 @@ export function voxelRenderer(
                 }
             }
         }
-        for (const point of settings.showPoints ? media.points : []) {
+        for (const point of settings.showPoints
+            ? [...media.points].sort(
+                  (a, b) => Number(a.name === settings.selectedPoint) - Number(b.name === settings.selectedPoint)
+              )
+            : []) {
             const world = pointWorld(point.value),
                 screen = project(world);
             if (!screen.every(Number.isFinite)) {
@@ -532,6 +547,9 @@ export function voxelRenderer(
         ];
     };
     const down = (event: PointerEvent) => {
+        if (event.button !== 0 && event.button !== 1 && event.button !== 2) {
+            return;
+        }
         const [x, y] = coordinates(event);
         if (settings.lightGizmo && Math.hypot(x - (overlay.width - 58), y - 58) <= 40) {
             const light = nativeLight(settings.light);
@@ -546,27 +564,31 @@ export function voxelRenderer(
             return;
         }
         // At native game scale the axis handles are close together; select the nearest, not the first hit.
-        const direct = settings.showPoints
+        const canPick = settings.showPoints && event.button === 0 && !event.shiftKey;
+        const direct = canPick
             ? media.points
                   .map((point) => ({ point, screen: project(pointWorld(point.value)) }))
                   .sort(
                       (a, b) =>
-                          Math.hypot(a.screen[0] - x, a.screen[1] - y) - Math.hypot(b.screen[0] - x, b.screen[1] - y)
+                          Math.hypot(a.screen[0] - x, a.screen[1] - y) - Math.hypot(b.screen[0] - x, b.screen[1] - y) ||
+                          Number(b.point.name === settings.selectedPoint) -
+                              Number(a.point.name === settings.selectedPoint)
                   )
-                  .find((item) => Math.hypot(item.screen[0] - x, item.screen[1] - y) <= 6)
+                  .find((item) => Math.hypot(item.screen[0] - x, item.screen[1] - y) <= 12)
             : undefined;
-        const handle = direct
-            ? undefined
-            : [...handles]
-                  .sort((a, b) => Math.hypot(a.x - x, a.y - y) - Math.hypot(b.x - x, b.y - y))
-                  .find((item) => Math.hypot(item.x - x, item.y - y) < 12);
+        const handle =
+            direct || !canPick
+                ? undefined
+                : [...handles]
+                      .sort((a, b) => Math.hypot(a.x - x, a.y - y) - Math.hypot(b.x - x, b.y - y))
+                      .find((item) => Math.hypot(item.x - x, item.y - y) < 12);
         if (handle) {
             drag = { ...handle, start: [...media.points.find((point) => point.id === handle.id)!.value], x, y };
             settings.playing = false;
         } else {
             const point =
                 direct ??
-                (settings.showPoints
+                (canPick
                     ? media.points
                           .map((point) => ({ point, screen: project(pointWorld(point.value)) }))
                           .sort(
@@ -697,6 +719,7 @@ export function voxelRenderer(
         orbit = undefined;
         lightDrag = undefined;
         update();
+        changed();
     });
     overlay.addEventListener('wheel', wheel, { passive: false });
     overlay.addEventListener('contextmenu', (event) => event.preventDefault());

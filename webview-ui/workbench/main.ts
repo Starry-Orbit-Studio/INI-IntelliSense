@@ -52,7 +52,7 @@ const settings: ViewSettings = {
     shadow: false,
     mode: 'game',
     yaw: -45,
-    pitch: 35.264,
+    pitch: 30,
     turret: 0,
     light: [...DEFAULT_VOXEL_LIGHT],
     fixed: false,
@@ -89,7 +89,7 @@ if (saved) {
         'flhScale',
         'showPoints',
     ] as const) {
-        if (saved.version !== 2 && ['zoom', 'yaw', 'pitch', 'mode'].includes(key)) {
+        if (saved.version !== 3 && ['zoom', 'yaw', 'pitch', 'mode'].includes(key)) {
             continue;
         }
         if (typeof saved[key] === typeof settings[key]) {
@@ -117,7 +117,7 @@ if (!['game', 'perspective', 'normal', 'slice'].includes(settings.mode)) {
 }
 const persist = () =>
     api.setState({
-        version: 2,
+        version: 3,
         kind: settingsKind,
         showPoints: settings.showPoints,
         direction: settings.direction,
@@ -1058,7 +1058,7 @@ function voxelControls(media: Extract<MediaPayload, { kind: 'voxel' }>, host: HT
                     settings.mode = value;
                     if (value === 'game') {
                         settings.yaw = -45;
-                        settings.pitch = 35.264;
+                        settings.pitch = 30;
                         settings.zoom = 1;
                         settings.fit = false;
                         settings.pan = [0, 0, 0];
@@ -1069,7 +1069,7 @@ function voxelControls(media: Extract<MediaPayload, { kind: 'voxel' }>, host: HT
         ),
         button(labels.reset, () => {
             settings.yaw = -45;
-            settings.pitch = 35.264;
+            settings.pitch = 30;
             settings.zoom = 1;
             settings.fit = false;
             settings.pan = [0, 0, 0];
@@ -1079,13 +1079,28 @@ function voxelControls(media: Extract<MediaPayload, { kind: 'voxel' }>, host: HT
             settings.fit = true;
             update();
         }),
-        field(
-            labels.turret,
-            number(settings.turret, -360, 360, (value) => {
-                settings.turret = value;
-                update();
-            })
-        ),
+        ...(media.model.parts.some((part) => part.role === 'turret' || part.role === 'barrel')
+            ? [
+                  field(
+                      labels.turret,
+                      number(settings.turret, -360, 360, (value) => {
+                          settings.turret = value;
+                          update();
+                      })
+                  ),
+              ]
+            : []),
+        ...(media.model.parts.some((part) => part.role === 'barrel')
+            ? [
+                  field(
+                      labels.fireAngle,
+                      number(settings.fireAngle ?? media.fireAngle ?? 0, 0, 64, (value) => {
+                          settings.fireAngle = value;
+                          update();
+                      })
+                  ),
+              ]
+            : []),
         field(
             labels.slice,
             number(settings.slice, 0, 255, (value) => {
@@ -1195,9 +1210,11 @@ function voxelControls(media: Extract<MediaPayload, { kind: 'voxel' }>, host: HT
     );
     host.append(parts);
     const points = element('details', 'firing-points');
-    points.open = !!settings.selectedPoint;
+    points.open = false;
     points.hidden = !media.points.length;
-    points.append(element('summary', '', labels.points));
+    const summary = element('summary', '', labels.points + ' · ' + media.points.length);
+    summary.title = labels.dragPoint;
+    points.append(summary);
     points.append(
         checkbox(labels.showPoints, settings.showPoints, (value) => {
             settings.showPoints = value;
@@ -1212,6 +1229,13 @@ function voxelControls(media: Extract<MediaPayload, { kind: 'voxel' }>, host: HT
         settings.selectedPoint,
         (value) => {
             settings.selectedPoint = value;
+            if (value) {
+                settings.showPoints = true;
+                const toggle = points.querySelector<HTMLInputElement>('input[type="checkbox"]');
+                if (toggle) {
+                    toggle.checked = true;
+                }
+            }
             update();
             renderPointEditor();
         }
@@ -1258,9 +1282,6 @@ function voxelControls(media: Extract<MediaPayload, { kind: 'voxel' }>, host: HT
     };
     syncPointEditor = () => {
         pointSelection.value = settings.selectedPoint;
-        if (settings.selectedPoint) {
-            points.open = true;
-        }
         renderPointEditor();
     };
     renderPointEditor();
@@ -1300,10 +1321,13 @@ function render(inspection: Inspection): void {
     const media = inspection.media;
     const capabilities = media && mediaCapabilities(media.kind);
     const mediaKey =
-        media?.kind === 'voxel' ? media.name + ':' + JSON.stringify([media.light, media.fixed]) : (media?.name ?? '');
+        media?.kind === 'voxel'
+            ? media.name + ':' + JSON.stringify([media.light, media.fixed, media.fireAngle])
+            : (media?.name ?? '');
     if (media?.kind === 'voxel' && lastMediaKey !== mediaKey) {
         settings.light = [...media.light];
         settings.fixed = media.fixed;
+        settings.fireAngle = media.fireAngle ?? 0;
     }
     lastMediaKey = mediaKey;
     if (media?.kind === 'sprite' && lastMediaIdentity !== inspection.owner + ':' + media.name) {
@@ -1319,6 +1343,9 @@ function render(inspection: Inspection): void {
         settings.pan = [0, 0, 0];
         settings.selectedPoint = '';
         settings.frame = 0;
+        if (media?.kind === 'voxel') {
+            settings.fireAngle = media.fireAngle ?? 0;
+        }
     }
     lastMediaIdentity = inspection.owner + ':' + media?.name;
     if (media?.kind === 'voxel') {
@@ -1380,6 +1407,9 @@ function render(inspection: Inspection): void {
                 'aria-pressed',
                 String(asset.id === (inspection.selectedAsset ?? inspection.assets[0].id))
             );
+            const name = element('span', 'asset-name', asset.name);
+            choice.replaceChildren(name);
+            choice.title = asset.name + '\n' + asset.source;
             choice.append(
                 element('span', 'hint', asset.source),
                 element(

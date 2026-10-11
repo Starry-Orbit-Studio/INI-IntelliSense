@@ -12,17 +12,20 @@ export class ThumbnailStore {
 
     public async create(
         media: MediaPayload | undefined,
-        token: vscode.CancellationToken
+        token: vscode.CancellationToken,
+        animate = false
     ): Promise<vscode.Uri | undefined> {
         if (!media || !['sprite', 'image', 'voxel'].includes(media.kind)) {
             return undefined;
         }
         const hash = createHash('sha256')
+            .update(animate ? 'animated-v1' : 'static-v2')
             .update(
                 media.kind === 'sprite'
                     ? media.bytes +
                           media.palette.join(',') +
                           String(media.shadow) +
+                          JSON.stringify(media.actions.map((entry) => [entry.action, entry.valid])) +
                           JSON.stringify(
                               media.scene?.layers.map((layer) => ({
                                   tag: layer.tag,
@@ -32,6 +35,7 @@ export class ThumbnailStore {
                                   z: layer.z,
                                   start: layer.start,
                                   end: layer.end,
+                                  rate: layer.rate,
                                   remap: layer.remap,
                                   media: layer.media,
                                   voxel: layer.voxel ? { ...layer.voxel, points: [] } : undefined,
@@ -49,7 +53,7 @@ export class ThumbnailStore {
         const png =
             media.kind === 'sprite'
                 ? await this.decoder.decode<Uint8Array>(
-                      media.scene ? 'scene-thumbnail' : 'thumbnail',
+                      animate ? 'animated-thumbnail' : media.scene ? 'scene-thumbnail' : 'thumbnail',
                       Buffer.from(media.bytes, 'base64'),
                       token,
                       undefined,
@@ -57,7 +61,8 @@ export class ThumbnailStore {
                           palette: media.palette,
                           frame: 0,
                           shadow: media.shadow,
-                          sprite: media.scene ? media : undefined,
+                          sprite: media,
+                          animate,
                       }
                   )
                 : media.kind === 'image'
@@ -69,11 +74,17 @@ export class ThumbnailStore {
                         { palette: [], frame: 0, image: { width: media.width, height: media.height } }
                     )
                   : media.kind === 'voxel'
-                    ? await this.decoder.decode<Uint8Array>('voxel-thumbnail', new Uint8Array(), token, undefined, {
-                          palette: media.palette,
-                          frame: 0,
-                          voxel: { ...media, points: [] },
-                      })
+                    ? await this.decoder.decode<Uint8Array>(
+                          animate ? 'animated-thumbnail' : 'voxel-thumbnail',
+                          new Uint8Array(),
+                          token,
+                          undefined,
+                          {
+                              palette: media.palette,
+                              frame: 0,
+                              voxel: { ...media, points: [] },
+                          }
+                      )
                     : undefined;
         if (!png) {
             return undefined;

@@ -4,8 +4,8 @@ import { Raster, spriteRaster, thumbnailRaster } from './sprite-raster';
 import { voxelRaster } from './voxel-raster';
 import { encodePng } from './png';
 
-/** Static first-frame composition; no game particle simulation is implied. */
-export function sceneThumbnail(media: Extract<MediaPayload, { kind: 'sprite' }>): Uint8Array {
+/** Same authored anchors and layer policy as the interactive scene. */
+export function sceneRaster(media: Extract<MediaPayload, { kind: 'sprite' }>, frame = 0): Raster {
     const scene = media.scene!;
     const planes: Raster[] = [];
     for (const layer of [...scene.layers].sort((a, b) => b.z - a.z)) {
@@ -17,7 +17,7 @@ export function sceneThumbnail(media: Extract<MediaPayload, { kind: 'sprite' }>)
                 Buffer.from(layer.media.bytes, 'base64'),
                 layer.media.file,
                 layer.media.palette,
-                layerFrame(layer, scene.kind),
+                layerFrame(layer, scene.kind, frame),
                 layer.media.shadow,
                 undefined,
                 layer.remap
@@ -25,7 +25,7 @@ export function sceneThumbnail(media: Extract<MediaPayload, { kind: 'sprite' }>)
             const bounds = layerBounds(layer)!;
             planes.push({ ...raster, x: bounds.x, y: bounds.y });
         } else if (layer.voxel) {
-            const raster = voxelRaster(layer.voxel);
+            const raster = voxelRaster(layer.voxel, 0, undefined, Math.floor(frame));
             planes.push({ ...raster, x: raster.x + layer.offset[0], y: raster.y + layer.offset[1] });
         }
     }
@@ -56,6 +56,10 @@ export function sceneThumbnail(media: Extract<MediaPayload, { kind: 'sprite' }>)
             }
         }
     }
-    const image = thumbnailRaster({ ...bounds, pixels });
+    return { ...bounds, pixels };
+}
+
+export function sceneThumbnail(media: Extract<MediaPayload, { kind: 'sprite' }>): Uint8Array {
+    const image = thumbnailRaster(sceneRaster(media));
     return encodePng(image.width, image.height, image.pixels);
 }

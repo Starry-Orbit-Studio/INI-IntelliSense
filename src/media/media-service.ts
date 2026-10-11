@@ -33,6 +33,7 @@ export interface MediaOptions {
     voxel?: boolean;
     turret?: boolean;
     turretOffset?: number[];
+    fireAngle?: number;
     volume?: number;
     loop?: boolean;
     sample?: BagSample;
@@ -262,7 +263,10 @@ export class MediaService {
                     part.role = item.role;
                     if (item.role !== 'body' && options.turretOffset) {
                         const offset = options.turretOffset;
-                        part.offset = [0, 1, 2].map((axis) => offset[axis] ?? 0);
+                        part.offset = [0, 1, 2].map((axis) => (offset[axis] ?? 0) / 8);
+                    }
+                    if (item.role === 'barrel') {
+                        part.pitch = ((options.fireAngle ?? 0) * Math.PI) / 128;
                     }
                 }
             }
@@ -292,6 +296,7 @@ export class MediaService {
                 light: options.light ?? [...DEFAULT_VOXEL_LIGHT],
                 fixed: options.fixed ?? false,
                 points: options.points ?? [],
+                fireAngle: options.fireAngle,
             };
         }
         throw new Error('Unsupported media format: ' + extension);

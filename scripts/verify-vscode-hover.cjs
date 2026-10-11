@@ -2,8 +2,18 @@ const assert = require('node:assert/strict');
 const { mkdir } = require('node:fs/promises');
 const path = require('node:path');
 const { chromium } = require('playwright');
+const { voxelCamera } = require('../out/media/voxel-camera');
+const { voxelTransform, transformPoint } = require('../out/media/voxel-math');
 
-module.exports = async function verifyHover(port, output, showHover, owner = 'ALIFV', kind = 'voxel', expectedSnow) {
+module.exports = async function verifyHover(
+    port,
+    output,
+    showHover,
+    owner = 'ALIFV',
+    kind = 'voxel',
+    expectedSnow,
+    media
+) {
     const browser = await chromium.connectOverCDP('http://127.0.0.1:' + port);
     try {
         const page = browser
@@ -43,12 +53,28 @@ module.exports = async function verifyHover(port, output, showHover, owner = 'AL
             }
             assert.ok(ready, 'automatic panel has finished rendering before hover');
         }
-        await showHover?.();
+        for (let attempt = 0; attempt < 30; attempt++) {
+            await showHover?.();
+            if (await page.locator('.monaco-hover img[src^="data:image/png;base64,"]').count()) {
+                break;
+            }
+            await page.waitForTimeout(150);
+        }
         await page.locator('.monaco-hover img[src^="data:image/png;base64,"]').first().waitFor({ timeout: 10000 });
         await page.waitForFunction(() => {
             const image = document.querySelector('.monaco-hover img[src^="data:image/png;base64,"]');
             return image?.complete && image.naturalWidth > 0;
         });
+        const hoverImage = page.locator('.monaco-hover img[src^="data:image/png;base64,"]').first();
+        const hoverBytes = Buffer.from((await hoverImage.getAttribute('src')).split(',')[1], 'base64');
+        if (hoverBytes.includes(Buffer.from('acTL'))) {
+            const frames = new Set();
+            for (let index = 0; index < 8; index++) {
+                frames.add((await hoverImage.screenshot()).toString('base64'));
+                await new Promise((resolve) => setTimeout(resolve, 75));
+            }
+            assert.ok(frames.size > 1, 'native VS Code hover visibly plays the animation');
+        }
         await mkdir(path.dirname(output), { recursive: true });
         await page.screenshot({ path: output });
         if (process.env.RA2_WORKBENCH_VERIFY_PANEL) {
@@ -150,6 +176,65 @@ module.exports = async function verifyHover(port, output, showHover, owner = 'AL
                     await preview.locator('.viewport .firing-points').count(),
                     1,
                     'damage point editor is in the viewport'
+                );
+            }
+            if (owner === 'ALBFRT') {
+                await preview
+                    .locator('select')
+                    .filter({ has: preview.locator('option[value="perspective"]') })
+                    .selectOption('game');
+                await preview.getByRole('button', { name: '重置视角', exact: true }).last().click();
+                const points = preview.locator('.firing-points');
+                await points.locator('summary').click();
+                await points.locator('input[type="checkbox"]').check();
+                await points.locator('select').selectOption('AlternateFLH0');
+                const values = points.locator('.controls input[type="number"]');
+                const before = await values.evaluateAll((fields) => fields.map((field) => Number(field.value)));
+                const scale = Number(await points.locator(':scope > .field input[type="number"]').inputValue());
+                await points.locator('summary').click();
+                const min = [Infinity, Infinity, Infinity],
+                    max = [-Infinity, -Infinity, -Infinity];
+                for (const part of media.model.parts) {
+                    const matrix = voxelTransform(part, 0, 0);
+                    for (let corner = 0; corner < 8; corner++) {
+                        transformPoint(
+                            matrix,
+                            part.size.map((size, axis) => (corner & (1 << axis) ? size : 0))
+                        ).forEach((value, axis) => {
+                            min[axis] = Math.min(min[axis], value);
+                            max[axis] = Math.max(max[axis], value);
+                        });
+                    }
+                }
+                const bounds = await preview.locator('.voxel-overlay').evaluate((canvas) => ({
+                    width: canvas.width,
+                    height: canvas.height,
+                    rect: JSON.parse(JSON.stringify(canvas.getBoundingClientRect())),
+                }));
+                const view = voxelCamera(
+                    { mode: 'game', yaw: -45, pitch: 30, zoom: 1, fit: false },
+                    min.map((value, axis) => (value + max[axis]) / 2),
+                    max.map((value, axis) => value - min[axis]),
+                    bounds.width,
+                    bounds.height
+                );
+                const point = view.project(before.map((value) => value / scale));
+                await page.screenshot({ path: path.join(path.dirname(output), 'vscode-flh-before.png') });
+                const absolute = await preview.locator('.voxel-overlay').boundingBox();
+                const x = absolute.x + (point[0] * absolute.width) / bounds.width,
+                    y = absolute.y + (point[1] * absolute.height) / bounds.height;
+                await page.mouse.move(x, y);
+                await page.mouse.down();
+                await page.mouse.move(x + 12, y + 7, { steps: 5 });
+                const moved = await values.evaluateAll((fields) => fields.map((field) => Number(field.value)));
+                // Cancellation verifies native pointer interaction without editing the user's mod.
+                await preview.locator('.voxel-overlay').dispatchEvent('pointercancel', { pointerId: 1 });
+                await page.mouse.up();
+                assert.notDeepEqual(moved, before, 'real battle fortress FLH marker must drag in the native panel');
+                assert.deepEqual(
+                    await values.evaluateAll((fields) => fields.map((field) => Number(field.value))),
+                    before,
+                    'cancelled drag restores the original FLH'
                 );
             }
             await page.screenshot({ path: path.join(path.dirname(output), 'vscode-panel.png') });

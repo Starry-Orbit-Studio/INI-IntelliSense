@@ -91,6 +91,7 @@ export type MediaPayload =
           normals: number[];
           light: number[];
           fixed: boolean;
+          fireAngle?: number;
           points: PointEdit[];
           name: string;
       }

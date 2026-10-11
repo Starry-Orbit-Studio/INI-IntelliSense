@@ -9,6 +9,7 @@ const { readShp } = require('../out/media/shp');
 const { encodeWav } = require('../out/media/audio');
 const { GAME_NORMALS } = require('../out/media/voxel-normals');
 const { voxelCamera } = require('../out/media/voxel-camera');
+const { animatedThumbnail } = require('../out/media/animated-thumbnail');
 
 const root = path.resolve(__dirname, '..');
 const labels = {};
@@ -167,6 +168,56 @@ async function main() {
             'duplicate names must retain selected source'
         );
         assert.equal(await page.locator('.asset-choice').count(), 2, 'all candidates must be visible');
+        assert.ok(
+            await page.locator('.asset-choice').evaluateAll((rows) =>
+                rows.every((row) => {
+                    const name = row.querySelector('.asset-name').getBoundingClientRect(),
+                        role = row.querySelector('.source-role').getBoundingClientRect(),
+                        hint = row.querySelector('.hint').getBoundingClientRect(),
+                        rect = row.getBoundingClientRect();
+                    return hint.top >= name.bottom && name.right <= role.left && hint.bottom <= rect.bottom;
+                })
+            ),
+            'source names, provenance badges and paths must occupy separate rows without overlap'
+        );
+        const animatedBytes = Buffer.alloc(8 + 2 * 24 + 32);
+        animatedBytes.writeUInt16LE(24, 2);
+        animatedBytes.writeUInt16LE(24, 4);
+        animatedBytes.writeUInt16LE(2, 6);
+        for (let i = 0; i < 2; i++) {
+            const at = 8 + i * 24;
+            animatedBytes.writeUInt16LE(i * 20, at);
+            animatedBytes.writeUInt16LE(4, at + 4);
+            animatedBytes.writeUInt16LE(4, at + 6);
+            animatedBytes.writeUInt32LE(56 + i * 16, at + 20);
+            animatedBytes.fill(144, 56 + i * 16, 72 + i * 16);
+        }
+        const animated = {
+            ...sprite,
+            bytes: animatedBytes.toString('base64'),
+            file: readShp(animatedBytes),
+            actions: [],
+        };
+        const previewPng = animatedThumbnail(animated);
+        await page.evaluate(
+            (src) => {
+                const img = document.createElement('img');
+                img.id = 'animated-hover-qa';
+                img.src = src;
+                img.style.cssText =
+                    'position:fixed;z-index:99;left:10px;top:10px;width:240px;height:40px;background:#111;image-rendering:pixelated';
+                document.body.append(img);
+            },
+            'data:image/png;base64,' + Buffer.from(previewPng).toString('base64')
+        );
+        await page.waitForFunction(() => document.querySelector('#animated-hover-qa').complete);
+        const animationShots = new Set();
+        for (let i = 0; i < 8; i++) {
+            animationShots.add((await page.locator('#animated-hover-qa').screenshot()).toString('base64'));
+            await page.waitForTimeout(35);
+        }
+        assert.ok(animationShots.size > 1, 'Chromium must visibly play the generated hover APNG');
+        await page.locator('#animated-hover-qa').evaluate((img) => img.remove());
         await page.getByRole('button', { name: 'Contact sheet', exact: true }).click();
         await page.waitForFunction(() => document.querySelector('.contact-thumbnail')?.width === 2);
         await page
@@ -297,7 +348,7 @@ async function main() {
                 rect: JSON.parse(JSON.stringify(canvas.getBoundingClientRect())),
             }));
         const pointCamera = voxelCamera(
-            { mode: 'game', yaw: -45, pitch: 35.264, zoom: 1, fit: false },
+            { mode: 'game', yaw: -45, pitch: 30, zoom: 1, fit: false },
             [1, 0, 4.5],
             [22, 12, 9],
             bounds.width,

@@ -461,5 +461,7 @@
     "workbench.theater_lun": "Lunar",
     "workbench.theater_des": "Desert",
     "workbench.spriteGestures": "Wheel to zoom; drag or middle-drag to pan; reset to center.",
-    "workbench.voxelGestures": "Wheel to zoom; drag to orbit; middle-drag to pan."
+    "workbench.voxelGestures": "Wheel to zoom; drag to orbit; middle-drag to pan.",
+    "workbench.fireAngle": "Barrel elevation (FireAngle: 0–64)",
+    "workbench.dragPoint": "Drag a marker to move the point; drag F/L/H handles to constrain its axis."
 }

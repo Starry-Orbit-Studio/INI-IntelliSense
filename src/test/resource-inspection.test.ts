@@ -19,7 +19,7 @@ import { shpFixture, voxelFixture, hvaFixture, idxFixture } from './media-fixtur
 import { encodeWav } from '../media/audio';
 import { mixKey, decryptMixHeader } from '../mix/core/encrypted-header';
 import { normalTransform, voxelTransform, transformPoint } from '../media/voxel-math';
-import { readVoxel } from '../media/voxel';
+import { readVoxel, attachHva, readHva } from '../media/voxel';
 import { MixGame } from '../mix/core/types';
 import { MixUriCodec } from '../mix/fs/mix-uri-codec';
 import { ThumbnailStore } from '../context/thumbnail-store';
@@ -43,7 +43,7 @@ suite('Project-scoped media integration', () => {
         directory = await mkdtemp(path.join(os.tmpdir(), 'ra2-workbench-'));
         other = await mkdtemp(path.join(os.tmpdir(), 'ra2-other-project-'));
         const source =
-            '[VehicleTypes]\n0=Tank\n[InfantryTypes]\n0=Soldier\n[Animations]\n0=ExpOne\n1=ExpTwo\n[Tank]\nImage=TankArt\nTurret=yes\nVoiceMove=GuardianGIMove\nAnimList=ExpOne,ExpTwo,ExpOne\n[Soldier]\nImage=SoldierArt\nPreviewArt=preview.pcx\n[AudioVisual]\nVoxelLightSource=0.2,-0.9,-0.3\nUseFixedVoxelLighting=yes\n';
+            '[VehicleTypes]\n0=Tank\n[InfantryTypes]\n0=Soldier\n[Animations]\n0=ExpOne\n1=ExpTwo\n[Tank]\nImage=TankArt\nTurret=yes\nVoiceMove=GuardianGIMove\nAnimList=ExpOne,ExpTwo,ExpOne\n[Soldier]\nImage=SoldierArt\nPreviewArt=preview.pcx\n[AudioVisual]\nVoxelLightSource=0.2,-0.9,-0.3\nUseFixedVoxelLighting=yes\n[Tank]\nFireAngle=32\n';
         await Promise.all([
             ...['anim', 'cameo'].map((name) =>
                 writeFile(path.join(directory, name + '.pal'), new Uint8Array(768).fill(32))
@@ -56,7 +56,7 @@ suite('Project-scoped media integration', () => {
             writeFile(
                 path.join(directory, 'art.ini'),
                 '[TankArt]\nVoxel=yes\nImage=body\nPrimaryFireFLH=100,0,80\nCameo=icon\n[SoldierArt]\nImage=infantry\nSequence=SoldierSequence\n[SoldierSequence]\nReady=0,1,0,2 ; preserved\n[ExpOne]\nImage=exp1\nNext=ExpTwo\n[ExpTwo]\nImage=exp2\n' +
-                    '[TankArt]\nAltCameoPCX=preview.pcx\n[SceneBuilding]\nImage=buildingbody\nCustomPalette=red.pal\nNewTheater=no\nFoundation=2x2\nBibShape=bib\nProductionAnim=Production\nProductionAnimDamaged=DamagedProduction\nActiveAnim=InheritedAnim\nDamageFireOffset0=10,20\n[Production]\nImage=exp1\nCustomPalette=red.pal\n[DamagedProduction]\nImage=exp2\nCustomPalette=blue.pal\n[InheritedAnim]\nImage=exp1\n[TheaterBuilding]\nImage=XGTEST\nNewTheater=yes\nActiveAnim=TheaterAnim\nBibShape=XGTESTBB\nBuildup=XGTESTMK\n[TheaterAnim]\nImage=XGTEST_A\nPalette=effect\n'
+                    '[TankArt]\nAltCameoPCX=preview.pcx\nTurretOffset=80,-8,16\n[SceneBuilding]\nImage=buildingbody\nCustomPalette=red.pal\nNewTheater=no\nFoundation=2x2\nBibShape=bib\nProductionAnim=Production\nProductionAnimDamaged=DamagedProduction\nActiveAnim=InheritedAnim\nDamageFireOffset0=10,20\n[Production]\nImage=exp1\nCustomPalette=red.pal\n[DamagedProduction]\nImage=exp2\nCustomPalette=blue.pal\n[InheritedAnim]\nImage=exp1\n[TheaterBuilding]\nImage=XGTEST\nNewTheater=yes\nActiveAnim=TheaterAnim\nBibShape=XGTESTBB\nBuildup=XGTESTMK\n[TheaterAnim]\nImage=XGTEST_A\nPalette=effect\n'
             ),
             ...['xgtest', 'xatest', 'xgtest_a', 'xatest_a', 'xgtestbb', 'xatestbb', 'xgtestmk', 'xatestmk'].map(
                 (name) => writeFile(path.join(directory, name + '.shp'), shpFixture())
@@ -157,6 +157,15 @@ suite('Project-scoped media integration', () => {
                 ['body', 'turret', 'barrel']
             );
             assert.ok(session.inspection.media.model.parts[0].animation);
+            assert.deepStrictEqual(
+                session.inspection.media.model.parts.find((part) => part.role === 'turret')?.offset,
+                [10, -1, 2]
+            );
+            assert.strictEqual(session.inspection.media.fireAngle, 32);
+            assert.strictEqual(
+                session.inspection.media.model.parts.find((part) => part.role === 'barrel')?.pitch,
+                Math.PI / 4
+            );
             assert.strictEqual(session.inspection.media.points[0].name, 'PrimaryFireFLH');
             assert.ok(session.inspection.media.fixed);
         }
@@ -528,6 +537,18 @@ suite('Project-scoped media integration', () => {
         const right = await thumbnails.create(second.inspection.media, token.token);
         assert.ok(left);
         assert.strictEqual(left.toString(), right?.toString());
+        const soldier = (await service.inspect(rules, new vscode.Position(13, 0), token.token))!.inspection.media;
+        assert.strictEqual(soldier?.kind, 'sprite');
+        if (soldier?.kind === 'sprite') {
+            const copy = structuredClone(soldier);
+            copy.actions.forEach((entry) => {
+                entry.id = 'different-edit-capability';
+            });
+            const animated = await thumbnails.create(soldier, token.token, true);
+            const repeated = await thumbnails.create(copy, token.token, true);
+            assert.strictEqual(animated?.toString(), repeated?.toString());
+            assert.notStrictEqual(animated?.toString(), (await thumbnails.create(copy, token.token))?.toString());
+        }
     });
     test('included art inherits its file category and composes theater body, active animation, buildup and foundation', async () => {
         const rulesText = rules.getText() + '\n[BuildingTypes]\n0=GACNST\n[GACNST]\n';
@@ -719,9 +740,9 @@ suite('Voxel transforms and encrypted MIX', () => {
         assert.strictEqual(header.bodyOffset, 348);
     });
     test('lighting uses the reference world axes consistently with authored normals', () => {
-        assert.deepStrictEqual(nativeLight([1, 2, 3]), [-3, -1, -2]);
+        assert.deepStrictEqual(nativeLight([1, 2, 3]), [1, 2, 3]);
         assert.deepStrictEqual(authoredLight(nativeLight([1, 2, 3])), [1, 2, 3]);
-        assert.deepStrictEqual(nativeNormal([1, 2, 3]), [2, 1, 3]);
+        assert.deepStrictEqual(nativeNormal([1, 2, 3]), [1, 2, 3]);
     });
     test('metadata indexing reads a nested MIX by ranges and preserves filename hashes', async () => {
         const archive = await MixArchive.open(new Uint8Array(10));
@@ -755,6 +776,29 @@ suite('Voxel transforms and encrypted MIX', () => {
             0,
             0.25,
         ]);
+    });
+    test('unnamed HVA sections bind by ordinal while named mismatches remain unmatched', () => {
+        const model = readVoxel(voxelFixture()),
+            hva = readHva(hvaFixture());
+        hva.names[0] = '';
+        attachHva(model, hva);
+        assert.ok(model.parts[0].animation);
+        assert.ok(Math.abs(transformPoint(voxelTransform(model.parts[0], 0, 0), [0, 0, 0])[0] - 1) < 0.00001);
+        const unmatched = readVoxel(voxelFixture());
+        hva.names[0] = 'different-part';
+        attachHva(unmatched, hva);
+        assert.strictEqual(unmatched.parts[0].animation, undefined);
+    });
+    test('barrel elevation precedes yaw and keeps the HVA attachment and body offset', () => {
+        const part = readVoxel(voxelFixture()).parts[0];
+        part.role = 'barrel';
+        part.offset = [5, 0, 0];
+        part.pitch = Math.PI / 2;
+        part.animation = [[1, 0, 0, 24, 0, 1, 0, 0, 0, 0, 1, 36]];
+        const point = transformPoint(voxelTransform(part, 0, Math.PI / 2), [1, 0, 0]);
+        assert.ok(Math.abs(point[0] - 5) < 0.00001);
+        assert.ok(Math.abs(point[1] - 2) < 0.00001);
+        assert.ok(Math.abs(point[2] - 4) < 0.00001);
     });
     test('RSA key transform matches an independent integer arithmetic vector', () => {
         assert.strictEqual(

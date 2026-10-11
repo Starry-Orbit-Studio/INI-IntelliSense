@@ -18,8 +18,8 @@ suite('Workbench projection and policy', () => {
         assert.strictEqual(mediaCapabilities('voxel').export, 'png');
         assert.strictEqual(mediaCapabilities('image').palette, false);
     });
-    test('default source is above the model and INI direction round trips', () => {
-        assert.ok(nativeLight(DEFAULT_VOXEL_LIGHT)[2] > 0.9);
+    test('INI light stays in native VXL space without sign flips or axis permutations', () => {
+        assert.deepStrictEqual(nativeLight(DEFAULT_VOXEL_LIGHT), DEFAULT_VOXEL_LIGHT);
         assert.deepStrictEqual(authoredLight(nativeLight([1, 2, 3])), [1, 2, 3]);
     });
     for (const mode of ['game', 'perspective']) {
@@ -52,7 +52,9 @@ suite('Workbench projection and policy', () => {
             600,
             300
         );
-        assert.ok(camera.project([5, 8, 0])[0] - 300 > camera.project([5, -8, 0])[0] - 300);
+        const near = [5, 0, 0].map((value, axis) => value + camera.eye[axis] * 8);
+        const far = [5, 0, 0].map((value, axis) => value - camera.eye[axis] * 8);
+        assert.ok(camera.project(near)[0] - 300 > camera.project(far)[0] - 300);
         const game = voxelCamera(
             { mode: 'game', yaw: 0, pitch: 0, zoom: 1, fit: false },
             [0, 0, 0],
@@ -61,6 +63,21 @@ suite('Workbench projection and policy', () => {
             300
         );
         assert.strictEqual(game.project([5, 8, 0])[0] - game.project([0, 8, 0])[0], 5);
+    });
+    test('game camera follows the RA2 pixel projection shared with building turrets', () => {
+        const game = voxelCamera(
+            { mode: 'game', yaw: -45, pitch: 30, zoom: 1, fit: false },
+            [0, 0, 0],
+            [100, 100, 100],
+            600,
+            300
+        );
+        const point = [20, -10, 8],
+            screen = game.project(point);
+        assert.ok(Math.abs(screen[0] - 300 - (point[0] + point[1]) / Math.sqrt(2)) < 0.00001);
+        assert.ok(
+            Math.abs(screen[1] - 150 - (point[0] - point[1]) / Math.sqrt(8) + (point[2] * Math.sqrt(3)) / 2) < 0.00001
+        );
     });
     test('foundation cell centers preserve the shared game origin and half-cell offset', () => {
         const points = foundationPoints([

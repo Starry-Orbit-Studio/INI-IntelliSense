@@ -2,7 +2,7 @@ import type { SpriteLayer, SpriteScene } from '../context/workbench-protocol';
 import { voxelTransform, transformPoint } from './voxel-math';
 import { spriteBounds, RasterRect } from './sprite-raster';
 
-/** One state policy drives both the static hover and the interactive scene. */
+/** One state policy drives hover playback and the interactive scene. */
 export function layerVisible(layer: SpriteLayer, scene: SpriteScene, state = 'normal', damaged = false): boolean {
     if (state === 'construction') {
         return layer.state === 'construction';
@@ -62,9 +62,9 @@ export function layerBounds(layer: SpriteLayer): RasterRect | undefined {
         }
         return {
             x: layer.offset[0] - radius - 2,
-            y: layer.offset[1] - radius / Math.sqrt(3) - top * Math.sqrt(2 / 3) - 2,
+            y: layer.offset[1] - radius / 2 - (top * Math.sqrt(3)) / 2 - 2,
             width: radius * 2 + 4,
-            height: (radius * 2) / Math.sqrt(3) + (top - bottom) * Math.sqrt(2 / 3) + 4,
+            height: radius + ((top - bottom) * Math.sqrt(3)) / 2 + 4,
         };
     }
     if (!layer.media) {

@@ -16,23 +16,35 @@ export function transformPoint(matrix: number[], point: number[], translation = 
     );
 }
 /** Bounds precede limb rotation. Turret offset follows rotation, in body coordinates. */
-export function voxelTransform(part: VoxelPart, frame: number, turret: number): number[] {
+export function voxelTransform(
+    part: VoxelPart,
+    frame: number,
+    turret: number,
+    barrelPitch = part.pitch ?? 0
+): number[] {
     const matrix =
         part.animation?.[frame % part.animation.length] ??
         (part.matrix.some((value) => value !== 0) ? part.matrix : IDENTITY_TRANSFORM);
     const step = part.size.map((size, axis) => (part.bounds[axis + 3] - part.bounds[axis]) / size);
     const angle = part.role === 'body' ? 0 : turret;
-    const origin = rotateVector(
-        transformPoint(matrix, part.bounds.slice(0, 3), false).map(
-            (value, axis) => value + matrix[axis * 4 + 3] * part.scale * step[axis]
-        ),
+    const pose = (point: number[]) => {
+        if (part.role === 'barrel') {
+            const c = Math.cos(barrelPitch),
+                s = Math.sin(barrelPitch);
+            // Pitch around the barrel's own HVA attachment, before turret yaw.
+            point = [point[0] * c - point[2] * s, point[1], point[0] * s + point[2] * c];
+        }
+        return rotateVector(point, angle);
+    };
+    const translation = rotateVector(
+        [0, 1, 2].map((axis) => matrix[axis * 4 + 3] * part.scale * step[axis]),
         angle
-    ).map((value, axis) => value + (part.offset?.[axis] ?? 0));
+    );
+    const origin = pose(transformPoint(matrix, part.bounds.slice(0, 3), false)).map(
+        (value, axis) => value + translation[axis] + (part.offset?.[axis] ?? 0)
+    );
     const columns = [0, 1, 2].map((column) =>
-        rotateVector(
-            [matrix[column], matrix[4 + column], matrix[8 + column]].map((value) => value * step[column]),
-            angle
-        )
+        pose([matrix[column], matrix[4 + column], matrix[8 + column]].map((value) => value * step[column]))
     );
     return Array.from({ length: 12 }, (_, i) =>
         i % 4 === 3 ? origin[(i - 3) / 4] : columns[i % 4][Math.floor(i / 4)]

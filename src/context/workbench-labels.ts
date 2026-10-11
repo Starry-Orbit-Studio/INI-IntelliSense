@@ -88,7 +88,12 @@ export function workbenchLabels(): WorkbenchLabels {
         reset: localize('workbench.reset', 'Reset view'),
         fixed: localize('workbench.fixed', 'Fixed voxel lighting'),
         turret: localize('workbench.turret', 'Turret heading'),
+        fireAngle: localize('workbench.fireAngle', 'Barrel elevation (FireAngle: 0–64)'),
         points: localize('workbench.points', 'Firing points'),
+        dragPoint: localize(
+            'workbench.dragPoint',
+            'Drag a marker to move the point; drag F/L/H handles to constrain its axis.'
+        ),
         showPoints: localize('workbench.showPoints', 'Show FLH points'),
         selectPoint: localize('workbench.selectPoint', 'Select a point to edit'),
         fire: localize('workbench.fire', 'Show firing ray'),

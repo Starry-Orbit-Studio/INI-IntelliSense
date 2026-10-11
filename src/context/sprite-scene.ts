@@ -208,7 +208,7 @@ export async function resolveSpriteScene(
     if (kind === 'building') {
         for (const entry of art.values()) {
             if (
-                /^(ActiveAnim(?:Two|Three|Four)?|IdleAnim|ProductionAnim|SpecialAnim|SuperAnim|DoorAnim|DeployingAnim|PowerUp\d+Anim)(Damaged)?$/i.test(
+                /^(ActiveAnim|IdleAnim|ProductionAnim|SpecialAnim|SuperAnim|DoorAnim|DeployingAnim|PowerUp\d+Anim)(?:Two|Three|Four)?(Damaged)?$/i.test(
                     entry.key
                 )
             ) {
