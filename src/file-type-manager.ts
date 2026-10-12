@@ -32,6 +32,7 @@ export function compileFileCategoryGlob(glob: string): RegExp {
  */
 export class FileTypeManager {
     private categories: Map<string, RegExp[]> = new Map();
+    private scopes = new Map<string, Map<string, RegExp[]>>();
 
     constructor() {
         this.reloadConfig();
@@ -42,6 +43,7 @@ export class FileTypeManager {
      */
     public reloadConfig() {
         this.categories.clear();
+        this.scopes.clear();
         const config = vscode.workspace.getConfiguration('ra2-ini-intellisense.indexing');
         const categoryConfig = config.get<{ [key: string]: string[] }>('fileCategories', {});
 
@@ -73,9 +75,20 @@ export class FileTypeManager {
     public getFileType(uri: vscode.Uri): string {
         const fileName = ResourcePath.basename(uri);
         // 优先匹配完整路径，其次匹配文件名
-        const relativePath = vscode.workspace.asRelativePath(uri).replace(/\\/g, '/');
+        const relativePath = vscode.workspace.asRelativePath(uri, false).replace(/\\/g, '/');
 
-        for (const [category, regexes] of this.categories.entries()) {
+        const configuration = vscode.workspace.getConfiguration('ra2-ini-intellisense.indexing', uri);
+        const overrides = configuration.get<Record<string, string>>('fileOverrides', {});
+        const exact = Object.entries(overrides).find(([file]) => file.replace(/\\/g, '/').toLowerCase() === relativePath.toLowerCase());
+        if (exact && typeof exact[1] === 'string') { return exact[1]; }
+        const rules = configuration.get<Record<string, string[]>>('fileCategories', {});
+        const identity = JSON.stringify(rules);
+        let scoped = this.scopes.get(identity);
+        if (!scoped) {
+            scoped = new Map(Object.entries(rules).map(([name, patterns]) => [name, (Array.isArray(patterns) ? patterns : []).filter(item => typeof item === 'string').map(compileFileCategoryGlob)]));
+            this.scopes.set(identity, scoped);
+        }
+        for (const [category, regexes] of scoped.entries()) {
             for (const regex of regexes) {
                 if (regex.test(relativePath) || regex.test(fileName)) {
                     return category;

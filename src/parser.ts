@@ -1,6 +1,7 @@
 import * as vscode from 'vscode';
 import { SchemaManager } from './schema-manager';
 import { FileTypeManager } from './file-type-manager';
+import { parsePropertyLine } from './context/ini-position';
 
 /**
  * 表示 INI 文件中的一个节的元数据
@@ -111,7 +112,7 @@ export class IniDocument {
                     parentNames: parent ? [parent] : []
                 };
                 this.sections.push(currentSection);
-                this.sectionMap.set(name, currentSection);
+                this.sectionMap.set(name.toLowerCase(), currentSection);
                 continue;
             }
 
@@ -120,7 +121,7 @@ export class IniDocument {
                 if (kvMatch) {
                     const key = kvMatch[1].trim();
                     // 简单存储值，去除行内注释
-                    const val = kvMatch[2].split(';')[0].trim();
+                    const val = parsePropertyLine(line)?.value ?? '';
                     currentSection.properties.set(key, val);
                     if (isInheritanceKey(key)) {
                         currentSection.parentNames = [
@@ -151,7 +152,7 @@ export class IniDocument {
     }
 
     public getSection(name: string): IniSection | undefined {
-        return this.sectionMap.get(name);
+        return this.sectionMap.get(name.toLowerCase());
     }
 
     public getAllSections(): IniSection[] {

@@ -6,7 +6,7 @@ import { ProjectResources } from '../resources/project-resources';
 import { parsePropertyLine } from './ini-position';
 import { TextContentService } from '../services/text-content-service';
 import * as path from 'path';
-import { PropertyResolution, resolveProperties } from './property-resolution';
+import { PropertyResolution, resolveProperties, registryValues } from './property-resolution';
 import { localize } from '../i18n';
 
 export interface EffectiveProperty {
@@ -25,6 +25,8 @@ export interface SectionSource {
 }
 
 export interface ProjectResolutionContext {
+    mode?: 'project' | 'standalone';
+    compatibility?: string;
     configured: boolean;
     complete: boolean;
     documents: number;
@@ -41,7 +43,9 @@ export class ProjectIni {
     private loaded = new Map<string, Promise<void>>();
     private generation = 0;
     private activeDocuments = new Map<string, Set<string>>();
+    private dependencies = new Map<string, string[]>();
     private contexts = new Map<string, ProjectResolutionContext>();
+    private typeIndexes = new Map<string, { sources: Map<string, SectionSource[]>; types: Map<string, string> }>();
     private queries = new Map<string, { signature: string[]; sources: Map<string, SectionSource[]> }>();
     private incomingQueries = new Map<
         string,
@@ -63,8 +67,10 @@ export class ProjectIni {
         this.order.clear();
         this.parsed.clear();
         this.queries.clear();
+        this.typeIndexes.clear();
         this.incomingQueries.clear();
         this.activeDocuments.clear();
+        this.dependencies.clear();
         this.contexts.clear();
     }
 
@@ -109,7 +115,13 @@ export class ProjectIni {
                             )
                         );
                     }
+                    const compatibility = vscode.workspace
+                        .getConfiguration('ra2-ini-intellisense', origin)
+                        .get<string>('project.compatibility', 'compatible');
+                    context.compatibility = compatibility;
+                    context.mode = 'project';
                     const reader = new TextContentService();
+                    const readErrors = new Map<string, string>();
                     const canonical = (uri: vscode.Uri) =>
                         uri.scheme === 'file' && /^\/[a-z]:/i.test(uri.path)
                             ? uri.toString().toLowerCase()
@@ -149,10 +161,7 @@ export class ProjectIni {
                     );
                     const reads = [
                         ...new Map(
-                            (context.configured ? roots : files.map((file) => file.uri)).map((uri) => [
-                                uri.toString(),
-                                uri,
-                            ])
+                            [...roots, ...files.map((file) => file.uri)].map((uri) => [uri.toString(), uri])
                         ).values(),
                     ];
                     const queued = new Set(reads.map((uri) => uri.toString()));
@@ -170,7 +179,7 @@ export class ProjectIni {
                                     if (generation === this.generation) {
                                         const parsed = new IniDocument(uri, content);
                                         this.snapshots.set(uri.toString(), parsed);
-                                        if (context.configured) {
+                                        {
                                             for (const name of parsed.getSection('#include')?.properties.values() ??
                                                 []) {
                                                 const child = includedUri(uri, name);
@@ -182,8 +191,7 @@ export class ProjectIni {
                                         }
                                     }
                                 } catch (error) {
-                                    context.complete = false;
-                                    context.issues.push(uri.toString() + ': ' + String(error));
+                                    readErrors.set(uri.toString(), String(error));
                                 }
                             })
                         );
@@ -205,12 +213,15 @@ export class ProjectIni {
                     const included = new Set<string>();
                     for (const file of files) {
                         const document = this.snapshots.get(file.uri.toString());
+                        const children: string[] = [];
                         for (const name of document?.getSection('#include')?.properties.values() ?? []) {
                             const child = includedUri(file.uri, name);
                             if (child) {
                                 included.add(child.toString());
+                                children.push(child.toString());
                             }
                         }
+                        this.dependencies.set(file.uri.toString(), compatibility === 'vanilla' ? [] : children);
                     }
                     let rank = 0;
                     const visited = new Set<string>();
@@ -225,13 +236,17 @@ export class ProjectIni {
                         }
                         if (!this.snapshots.has(key)) {
                             context.complete = false;
-                            context.issues.push(uri.toString());
+                            context.issues.push(
+                                uri.toString() + (readErrors.has(key) ? ': ' + readErrors.get(key) : '')
+                            );
                             return;
                         }
                         visited.add(key);
                         this.order.set(key, rank++);
                         this.categories.set(key, category);
-                        for (const name of this.snapshots.get(key)?.getSection('#include')?.properties.values() ?? []) {
+                        for (const name of compatibility === 'vanilla'
+                            ? []
+                            : (this.snapshots.get(key)?.getSection('#include')?.properties.values() ?? [])) {
                             const child = includedUri(uri, name);
                             if (child) {
                                 visit(child, category, depth + 1);
@@ -255,16 +270,49 @@ export class ProjectIni {
                                 }
                             }
                         }
-                        this.activeDocuments.set(key, visited);
+                        this.activeDocuments.set(key, new Set(visited));
                     } else {
-                        for (const file of files.filter((file) => !included.has(file.uri.toString()))) {
-                            visit(file.uri, this.fileTypes.getFileType(file.uri).toLowerCase());
+                        const candidates = files.filter(
+                            (file) => compatibility === 'vanilla' || !included.has(file.uri.toString())
+                        );
+                        for (const category of ['rules', 'art', 'sound', 'ai', 'eva', 'ui', 'theme']) {
+                            const matching = candidates.filter(
+                                (file) => this.fileTypes.getFileType(file.uri).toLowerCase() === category
+                            );
+                            const standard = files.find((file) =>
+                                new RegExp('^' + category + '(md|es)?\\.ini$', 'i').test(file.name)
+                            );
+                            const reaches = (uri: string, target: string, seen = new Set<string>()): boolean => {
+                                if (uri === target) {
+                                    return true;
+                                }
+                                if (seen.has(uri)) {
+                                    return false;
+                                }
+                                seen.add(uri);
+                                return (this.dependencies.get(uri) ?? []).some((child) => reaches(child, target, seen));
+                            };
+                            const entry = standard
+                                ? (matching.find((file) => reaches(file.uri.toString(), standard.uri.toString())) ??
+                                  standard)
+                                : matching.length === 1
+                                  ? matching[0]
+                                  : undefined;
+                            if (entry) {
+                                context.entries.push(category + ': ' + entry.name);
+                                visit(entry.uri, category);
+                            }
                         }
-                        for (const file of files) {
-                            visit(file.uri, this.fileTypes.getFileType(file.uri).toLowerCase());
-                        }
+                        this.activeDocuments.set(key, new Set(visited));
                     }
                     context.documents = visited.size;
+                    const complete = context.complete,
+                        issues = [...context.issues];
+                    for (const file of files) {
+                        visit(file.uri, this.fileTypes.getFileType(file.uri).toLowerCase());
+                    }
+                    context.complete = complete;
+                    context.issues = issues;
                     this.contexts.set(key, context);
                 })
                 .catch((error) => {
@@ -284,7 +332,26 @@ export class ProjectIni {
     public documents(origin: vscode.Uri): IniDocument[] {
         const result = new Map<string, IniDocument>();
         const active = this.activeDocuments.get(this.resources.projectRoot(origin).toString());
-        const included = (uri: vscode.Uri) => !active || active.has(uri.toString());
+        const standalone = /\.(ini|map|mpr|yrm)$/i.test(origin.path) && active && !active.has(origin.toString());
+        const local = new Set<string>();
+        if (standalone) {
+            const pending = [origin.toString()];
+            while (pending.length && local.size < 2000) {
+                const uri = pending.pop()!;
+                if (!local.has(uri)) {
+                    local.add(uri);
+                    pending.push(...(this.dependencies.get(uri) ?? []));
+                }
+            }
+        }
+        // A standalone file owns its category. Other active categories remain available
+        // for explicit rules/art/sound references without merging same-category keys.
+        const ownCategory = this.category(origin);
+        const included = (uri: vscode.Uri) =>
+            !active ||
+            (standalone
+                ? local.has(uri.toString()) || (active.has(uri.toString()) && this.category(uri) !== ownCategory)
+                : active.has(uri.toString()));
         for (const [key, document] of this.snapshots) {
             if (this.resources.contains(origin, document.uri) && included(document.uri)) {
                 result.set(key, document);
@@ -354,9 +421,17 @@ export class ProjectIni {
         return result;
     }
 
+    private queryScope(origin: vscode.Uri): string {
+        const root = this.resources.projectRoot(origin).toString(),
+            active = this.activeDocuments.get(root);
+        return active && /\.(ini|map|mpr|yrm)$/i.test(origin.path) && !active.has(origin.toString())
+            ? origin.toString()
+            : root;
+    }
+
     private indexedSources(origin: vscode.Uri): Map<string, SectionSource[]> {
         const documents = this.documents(origin),
-            root = this.resources.projectRoot(origin).toString();
+            root = this.queryScope(origin);
         // Include discovery can reclassify an already indexed document without
         // changing its text. Queries created by hover/annotations must follow it.
         const signature = documents.flatMap((document) => [
@@ -398,10 +473,6 @@ export class ProjectIni {
         );
         return sources.sort(
             (a, b) =>
-                (configured
-                    ? 0
-                    : Number(b.document.uri.toString() === origin.toString()) -
-                      Number(a.document.uri.toString() === origin.toString())) ||
                 (order.get(b.document.uri.toString()) ?? -1) - (order.get(a.document.uri.toString()) ?? -1) ||
                 a.document.uri.toString().localeCompare(b.document.uri.toString())
         );
@@ -428,7 +499,12 @@ export class ProjectIni {
         return {
             names: [...index.keys()],
             context,
-            sources: (name, category) => this.selectSources(index, origin, name, category, context.configured, order),
+            sources: (name, category) =>
+                this.selectSources(index, origin, name, category, context.configured, order).map((source) =>
+                    context.compatibility === 'vanilla'
+                        ? { ...source, section: { ...source.section, parentNames: [] } }
+                        : source
+                ),
             isCurrent: () => {
                 if (generation !== this.generation) {
                     return false;
@@ -469,74 +545,117 @@ export class ProjectIni {
         );
     }
 
-    public type(origin: vscode.Uri, name: string, category?: string, visited = new Set<string>()): string {
-        if (visited.has(name.toLowerCase()) || visited.size > 32) {
-            return 'Unknown';
-        }
-        visited.add(name.toLowerCase());
-        const builtins: Record<string, string> = {
-            UnitTypes: 'UnitType',
-            VehicleTypes: 'UnitType',
-            InfantryTypes: 'InfantryType',
-            AircraftTypes: 'AircraftType',
-            BuildingTypes: 'BuildingType',
-            Animations: 'AnimType',
-            VoxelAnims: 'VoxelAnimType',
-            Particles: 'ParticleType',
-            ParticleSystems: 'ParticleSystemType',
-        };
-        const declared = [...new Set(['Animations', ...Object.keys(builtins), ...this.schema.getRegistryNames()])].find(
-            (registry) =>
-                this.sources(origin, registry, 'rules').some((source) =>
-                    [...source.section.properties.values()].some((value) => value.toLowerCase() === name.toLowerCase())
-                )
-        );
-        if (declared) {
-            return builtins[declared] ?? this.schema.getTypeForRegistry(declared) ?? 'Unknown';
-        }
-        if (name.toLowerCase() === 'audiovisual') {
-            return 'AudioVisual';
-        }
-        if (this.schema.isSchemaType(name)) {
-            return name;
-        }
-        if (Object.values(builtins).includes(name) || ['ObjectType', 'TechnoType'].includes(name)) {
-            return name;
-        }
-        for (const source of this.sources(origin, name, category)) {
-            for (const parent of source.section.parentNames) {
-                const inherited = this.type(origin, parent, category, new Set(visited));
-                if (inherited !== 'Unknown') {
-                    return inherited;
+    /** Resolve the scoped registry and typed-reference index once per document snapshot. */
+    public type(origin: vscode.Uri, name: string, category = this.category(origin)): string {
+        const sources = this.indexedSources(origin),
+            scope = this.queryScope(origin);
+        let cached = this.typeIndexes.get(scope);
+        if (!cached || cached.sources !== sources) {
+            const snapshot = this.snapshot(origin),
+                types = new Map<string, string>();
+            const registries: Record<string, string> = {
+                UnitTypes: 'UnitType',
+                VehicleTypes: 'UnitType',
+                InfantryTypes: 'InfantryType',
+                AircraftTypes: 'AircraftType',
+                BuildingTypes: 'BuildingType',
+                SuperWeaponTypes: 'SuperWeaponType',
+                Warheads: 'WarheadType',
+                Animations: 'AnimType',
+                VoxelAnims: 'VoxelAnimType',
+                Particles: 'ParticleType',
+                ParticleSystems: 'ParticleSystemType',
+            };
+            for (const registry of this.schema.getRegistryNames()) {
+                registries[registry] ??= this.schema.getTypeForRegistry(registry) ?? 'Unknown';
+            }
+            const registered = new Map<string, string>();
+            for (const [registry, type] of Object.entries(registries)) {
+                for (const value of registryValues(
+                    registry,
+                    (target) => snapshot.sources(target, 'rules'),
+                    parsePropertyLine,
+                    snapshot.context.compatibility !== 'vanilla'
+                )) {
+                    registered.set(value.toLowerCase(), type);
                 }
             }
-        }
-        // Expand list element types before contextual inference.
-        if (visited.size === 1) {
-            for (const document of this.documents(origin)) {
-                for (const section of document.sections) {
-                    for (const [key, value] of section.properties) {
-                        if (!value.split(',').some((item) => item.trim().toLowerCase() === name.toLowerCase())) {
-                            continue;
+            for (const [name, type] of registered) {
+                types.set('registered:' + name, type);
+            }
+            for (const [section, definitions] of sources) {
+                for (const definition of definitions) {
+                    types.set(
+                        definition.category + ':' + section,
+                        definition.category === 'sound'
+                            ? 'Sound'
+                            : (registered.get(section) ??
+                                  (section === 'audiovisual'
+                                      ? 'AudioVisual'
+                                      : this.schema.isSchemaType(definition.section.name)
+                                        ? definition.section.name
+                                        : 'Unknown'))
+                    );
+                }
+            }
+            const keyTypes = new Map<string, Map<string, string>>();
+            for (let pass = 0; pass < 8; pass++) {
+                let changed = false;
+                for (const [section, definitions] of sources) {
+                    for (const definition of definitions) {
+                        const id = definition.category + ':' + section;
+                        if (types.get(id) === 'Unknown' && snapshot.context.compatibility !== 'vanilla') {
+                            for (const parent of definition.section.parentNames) {
+                                const inherited =
+                                    types.get(definition.category + ':' + parent.toLowerCase()) ??
+                                    (this.schema.isSchemaType(parent) ? parent : 'Unknown');
+                                if (inherited !== 'Unknown') {
+                                    types.set(id, inherited);
+                                    changed = true;
+                                    break;
+                                }
+                            }
                         }
-                        const ownerType = this.type(
-                            origin,
-                            section.name,
-                            this.fileTypes.getFileType(document.uri),
-                            new Set(visited)
-                        );
-                        const definition = this.propertyType(ownerType, key);
-                        if (definition && this.schema.isComplexType(definition)) {
-                            return definition;
+                        const type = types.get(id)!;
+                        if (!keyTypes.has(type)) {
+                            keyTypes.set(
+                                type,
+                                new Map(
+                                    [...this.schema.getAllKeysForType(type)].map(([key]) => [
+                                        key.toLowerCase(),
+                                        this.propertyType(type, key) ?? '',
+                                    ])
+                                )
+                            );
+                        }
+                        for (const [key, value] of definition.section.properties) {
+                            const expected = keyTypes.get(type)!.get(key.toLowerCase());
+                            if (!expected || !this.schema.isComplexType(expected)) {
+                                continue;
+                            }
+                            const targetCategory = expected === 'AnimType' ? 'art' : definition.category;
+                            for (const element of parsePropertyLine('x=' + value)?.elements ?? []) {
+                                const target = targetCategory + ':' + element.value.toLowerCase();
+                                if (types.get(target) === 'Unknown') {
+                                    types.set(target, expected);
+                                    changed = true;
+                                }
+                            }
                         }
                     }
                 }
+                if (!changed) {
+                    break;
+                }
             }
+            cached = { sources, types };
+            this.typeIndexes.set(scope, cached);
         }
-        if (category?.toLowerCase() === 'sound') {
-            return 'Sound';
-        }
-        return 'Unknown';
+        return (
+            cached.types.get(category.toLowerCase() + ':' + name.toLowerCase()) ??
+            cached.types.get('registered:' + name.toLowerCase()) ??
+            (this.schema.isSchemaType(name) ? name : 'Unknown')
+        );
     }
 
     public propertyType(owner: string, key: string): string | undefined {
@@ -557,6 +676,41 @@ export class ProjectIni {
     }
 
     public context(origin: vscode.Uri): ProjectResolutionContext {
+        const active = this.activeDocuments.get(this.resources.projectRoot(origin).toString());
+        if (/\.(ini|map|mpr|yrm)$/i.test(origin.path) && active && !active.has(origin.toString())) {
+            const compatibility = this.contexts.get(this.resources.projectRoot(origin).toString())?.compatibility;
+            const issues: string[] = [],
+                seen = new Set<string>();
+            const inspect = (uri: string) => {
+                if (seen.has(uri)) {
+                    return;
+                }
+                seen.add(uri);
+                const document = vscode.workspace.textDocuments.find((text) => text.uri.toString() === uri);
+                const parsed = document ? this.parse(document) : this.snapshots.get(uri);
+                if (!parsed) {
+                    issues.push(uri);
+                    return;
+                }
+                if (compatibility !== 'vanilla') {
+                    const children = this.dependencies.get(uri) ?? [];
+                    if ((parsed.getSection('#include')?.properties.size ?? 0) > children.length) {
+                        issues.push(uri + ': #include');
+                    }
+                    children.forEach(inspect);
+                }
+            };
+            inspect(origin.toString());
+            return {
+                mode: 'standalone',
+                compatibility,
+                configured: false,
+                complete: !issues.length,
+                documents: this.documents(origin).length,
+                entries: [origin.toString()],
+                issues,
+            };
+        }
         return (
             this.contexts.get(this.resources.projectRoot(origin).toString()) ?? {
                 configured: false,

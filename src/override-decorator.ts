@@ -3,11 +3,13 @@ import * as vscode from 'vscode';
 import { INIManager } from './parser';
 import { SchemaManager } from './schema-manager';
 import { FileTypeManager } from './file-type-manager';
+import { ProjectIni } from './context/project-ini';
 
 /**
  * 负责检测并高亮显示覆盖了父类键的子类键。
  */
 export class OverrideDecorator implements vscode.Disposable {
+    public project?: ProjectIni;
     private decorationType: vscode.TextEditorDecorationType;
     private timeout: NodeJS.Timeout | undefined = undefined;
     private allEditorsTimeout: NodeJS.Timeout | undefined;
@@ -66,7 +68,7 @@ export class OverrideDecorator implements vscode.Disposable {
 
     // 修改：不再只接受 URI，而是直接接受 Editor 对象，因为我们需要获取可见范围
     public triggerUpdateDecorations(editor: vscode.TextEditor | undefined, throttle = false) {
-        if (!this.isEnabled || !editor) {
+        if (!editor) {
             return;
         }
 
@@ -75,7 +77,7 @@ export class OverrideDecorator implements vscode.Disposable {
         }
 
         const callback = () => {
-            this.updateDecorations(editor!);
+            void this.updateDecorations(editor!).catch(error => console.error('[Override indicator]', error));
         };
 
         if (throttle) {
@@ -89,12 +91,15 @@ export class OverrideDecorator implements vscode.Disposable {
      * 核心更新逻辑：仅扫描可见范围并应用装饰。
      */
     private async updateDecorations(editor: vscode.TextEditor) {
-        if (!this.isEnabled || !this.schemaManager.isSchemaLoaded()) {
+        const enabled = vscode.workspace.getConfiguration('ra2-ini-intellisense', editor.document.uri).get('decorations.overrideIndicator.enabled', true);
+        if (!enabled || !this.schemaManager.isSchemaLoaded()) {
             editor.setDecorations(this.decorationType, []);
             return;
         }
         
-        const document = editor.document;
+        const document = editor.document, version = document.version;
+        await this.project?.load(document.uri);
+        if (document.isClosed || document.version !== version) { return; }
         const overrideDecorations: vscode.DecorationOptions[] = [];
         
         const sectionRegex = /^\s*\[([^\]:]+)\]/;
@@ -140,7 +145,8 @@ export class OverrideDecorator implements vscode.Disposable {
                     if (kvMatch) {
                         const key = kvMatch[1].trim();
                         // 性能瓶颈点：这里只对可见的几十行进行查找，速度极快
-                        const parentKeyInfo = this.iniManager.findInheritedKeyLocation(currentSectionName, key, currentFileType);
+                        const inherited = this.project?.explain(document.uri, currentSectionName, currentFileType).get(key.toLowerCase())?.declarations.some(property => property.inherited);
+                        const parentKeyInfo = this.project ? { location: inherited } : this.iniManager.findInheritedKeyLocation(currentSectionName, key, currentFileType);
                         
                         if (parentKeyInfo.location) {
                             const keyStartIndex = text.indexOf(key);

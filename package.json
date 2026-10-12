@@ -305,6 +305,21 @@
           "when": "editorTextFocus && editorLangId == 'ra2-ini'",
           "command": "ra2-ini-intellisense.format.document",
           "group": "9_format"
+        },
+        {
+          "command": "ra2-ini-intellisense.checkCenter",
+          "when": "editorLangId == ra2-ini",
+          "group": "ra2@10"
+        },
+        {
+          "command": "ra2-ini-intellisense.logicChain",
+          "when": "editorLangId == ra2-ini",
+          "group": "ra2@11"
+        },
+        {
+          "command": "ra2-ini-intellisense.configureFileCategory",
+          "when": "editorLangId == ra2-ini",
+          "group": "ra2-project@5"
         }
       ],
       "editor/title": [
@@ -492,6 +507,25 @@
         "command": "ra2-ini-intellisense.openObjectDefinition",
         "title": "%command.openObjectDefinition.title%",
         "icon": "$(go-to-file)"
+      },
+      {
+        "command": "ra2-ini-intellisense.checkCenter",
+        "title": "%command.checkCenter.title%",
+        "category": "RA2 Mod IntelliSense"
+      },
+      {
+        "command": "ra2-ini-intellisense.logicChain",
+        "title": "%command.logicChain.title%",
+        "category": "RA2 Mod IntelliSense"
+      },
+      {
+        "command": "ra2-ini-intellisense.downloadDictionary",
+        "title": "%command.downloadDictionary.title%",
+        "category": "RA2 Mod IntelliSense"
+      },
+      {
+        "command": "ra2-ini-intellisense.configureFileCategory",
+        "title": "%command.configureFileCategory%"
       }
     ],
     "configuration": {
@@ -511,7 +545,8 @@
             "null"
           ],
           "default": null,
-          "description": "%configuration.properties.validationFolderPath.description%"
+          "description": "%configuration.properties.validationFolderPath.description%",
+          "scope": "resource"
         },
         "ra2-ini-intellisense.validationFiles": {
           "type": "object",
@@ -521,7 +556,8 @@
             "sound": "sound.ini",
             "eva": "eva.ini"
           },
-          "description": "%configuration.properties.validationFiles.description%"
+          "description": "%configuration.properties.validationFiles.description%",
+          "scope": "resource"
         },
         "ra2-ini-intellisense.indexing.fileCategories": {
           "type": "object",
@@ -551,7 +587,8 @@
             "items": {
               "type": "string"
             }
-          }
+          },
+          "scope": "resource"
         },
         "ra2-ini-intellisense.indexing.excludePatterns": {
           "type": "array",
@@ -559,7 +596,8 @@
           "description": "%configuration.properties.indexing.excludePatterns.description%",
           "items": {
             "type": "string"
-          }
+          },
+          "scope": "resource"
         },
         "ra2-ini-intellisense.dontAskToConfigureValidator": {
           "type": "boolean",
@@ -577,37 +615,44 @@
             "null"
           ],
           "default": null,
-          "description": "%configuration.properties.schemaFilePath.description%"
+          "description": "%configuration.properties.schemaFilePath.description%",
+          "scope": "resource"
         },
         "ra2-ini-intellisense.codeLens.enabled": {
           "type": "boolean",
           "default": true,
-          "description": "%configuration.properties.codeLens.enabled.description%"
+          "description": "%configuration.properties.codeLens.enabled.description%",
+          "scope": "resource"
         },
         "ra2-ini-intellisense.decorations.overrideIndicator.enabled": {
           "type": "boolean",
           "default": true,
-          "description": "%configuration.properties.decorations.overrideIndicator.enabled.description%"
+          "description": "%configuration.properties.decorations.overrideIndicator.enabled.description%",
+          "scope": "resource"
         },
         "ra2-ini-intellisense.diagnostics.enabled": {
           "type": "boolean",
           "default": true,
-          "description": "%configuration.properties.diagnostics.enabled.description%"
+          "description": "%configuration.properties.diagnostics.enabled.description%",
+          "scope": "resource"
         },
         "ra2-ini-intellisense.diagnostics.spaceBeforeEquals": {
           "type": "boolean",
           "default": true,
-          "description": "%configuration.properties.diagnostics.spaceBeforeEquals.description%"
+          "description": "%configuration.properties.diagnostics.spaceBeforeEquals.description%",
+          "scope": "resource"
         },
         "ra2-ini-intellisense.diagnostics.spaceAfterEquals": {
           "type": "boolean",
           "default": true,
-          "description": "%configuration.properties.diagnostics.spaceAfterEquals.description%"
+          "description": "%configuration.properties.diagnostics.spaceAfterEquals.description%",
+          "scope": "resource"
         },
         "ra2-ini-intellisense.diagnostics.leadingWhitespace": {
           "type": "boolean",
           "default": true,
-          "description": "%configuration.properties.diagnostics.leadingWhitespace.description%"
+          "description": "%configuration.properties.diagnostics.leadingWhitespace.description%",
+          "scope": "resource"
         },
         "ra2-ini-intellisense.diagnostics.spacesBeforeComment": {
           "type": [
@@ -615,12 +660,14 @@
             "null"
           ],
           "default": 1,
-          "description": "%configuration.properties.diagnostics.spacesBeforeComment.description%"
+          "description": "%configuration.properties.diagnostics.spacesBeforeComment.description%",
+          "scope": "resource"
         },
         "ra2-ini-intellisense.diagnostics.spaceAfterComment": {
           "type": "boolean",
           "default": true,
-          "description": "%configuration.properties.diagnostics.spaceAfterComment.description%"
+          "description": "%configuration.properties.diagnostics.spaceAfterComment.description%",
+          "scope": "resource"
         },
         "ra2-ini-intellisense.diagnostics.severity": {
           "type": "object",
@@ -635,7 +682,8 @@
               "Hint",
               "None"
             ]
-          }
+          },
+          "scope": "resource"
         },
         "ra2-ini-intellisense.iniValidator.downloadUrl": {
           "type": "string",
@@ -645,12 +693,14 @@
         "ra2-ini-intellisense.media.enabled": {
           "type": "boolean",
           "default": true,
-          "description": "%configuration.media.enabled%"
+          "description": "%configuration.media.enabled%",
+          "scope": "resource"
         },
         "ra2-ini-intellisense.media.autoReveal": {
           "type": "boolean",
           "default": true,
-          "description": "%configuration.media.autoReveal%"
+          "description": "%configuration.media.autoReveal%",
+          "scope": "resource"
         },
         "ra2-ini-intellisense.media.excludedDirectories": {
           "type": "array",
@@ -662,17 +712,20 @@
           "items": {
             "type": "string"
           },
-          "description": "%configuration.media.excludedDirectories%"
+          "description": "%configuration.media.excludedDirectories%",
+          "scope": "resource"
         },
         "ra2-ini-intellisense.media.inlineThumbnails": {
           "type": "boolean",
           "default": true,
-          "description": "%configuration.media.inlineThumbnails%"
+          "description": "%configuration.media.inlineThumbnails%",
+          "scope": "resource"
         },
         "ra2-ini-intellisense.media.hoverEnabled": {
           "type": "boolean",
           "default": true,
-          "description": "%configuration.media.hoverEnabled%"
+          "description": "%configuration.media.hoverEnabled%",
+          "scope": "resource"
         },
         "ra2-ini-intellisense.media.resourceRoots": {
           "type": "array",
@@ -680,7 +733,8 @@
           "description": "%configuration.media.resourceRoots%",
           "items": {
             "type": "string"
-          }
+          },
+          "scope": "resource"
         },
         "ra2-ini-intellisense.media.archiveOrder": {
           "type": "array",
@@ -688,12 +742,14 @@
           "description": "%configuration.media.archiveOrder%",
           "items": {
             "type": "string"
-          }
+          },
+          "scope": "resource"
         },
         "ra2-ini-intellisense.media.theater": {
           "type": "string",
           "default": "tem",
-          "description": "%configuration.media.theater%"
+          "description": "%configuration.media.theater%",
+          "scope": "resource"
         },
         "ra2-ini-intellisense.media.semanticRules": {
           "type": "array",
@@ -735,7 +791,8 @@
               }
             },
             "additionalProperties": false
-          }
+          },
+          "scope": "resource"
         },
         "ra2-ini-intellisense.project.entryPoints": {
           "type": "object",
@@ -802,6 +859,86 @@
               }
             }
           }
+        },
+        "ra2-ini-intellisense.diagnostics.excludePatterns": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "default": [],
+          "scope": "resource",
+          "description": "%configuration.diagnostics.excludePatterns%"
+        },
+        "ra2-ini-intellisense.diagnostics.overrides": {
+          "type": "array",
+          "default": [],
+          "items": {
+            "type": "object",
+            "required": [
+              "files",
+              "severity"
+            ],
+            "properties": {
+              "files": {
+                "type": "string"
+              },
+              "severity": {
+                "type": "object",
+                "additionalProperties": {
+                  "type": "string",
+                  "enum": [
+                    "Error",
+                    "Warning",
+                    "Information",
+                    "Hint",
+                    "None"
+                  ]
+                }
+              }
+            },
+            "additionalProperties": false
+          },
+          "scope": "resource",
+          "description": "%configuration.diagnostics.overrides%"
+        },
+        "ra2-ini-intellisense.indexing.fileOverrides": {
+          "type": "object",
+          "default": {},
+          "additionalProperties": {
+            "type": "string"
+          },
+          "scope": "resource",
+          "description": "%configuration.indexing.fileOverrides%"
+        },
+        "ra2-ini-intellisense.decorations.booleanPreview.enabled": {
+          "type": "boolean",
+          "default": true,
+          "scope": "resource",
+          "description": "%configuration.decorations.booleanPreview.enabled%"
+        },
+        "ra2-ini-intellisense.decorations.csfPreview.enabled": {
+          "type": "boolean",
+          "default": true,
+          "scope": "resource",
+          "description": "%configuration.decorations.csfPreview.enabled%"
+        },
+        "ra2-ini-intellisense.decorations.csfPreview.maxLength": {
+          "type": "integer",
+          "default": 30,
+          "minimum": 5,
+          "maximum": 500,
+          "scope": "resource",
+          "description": "%configuration.decorations.csfPreview.maxLength%"
+        },
+        "ra2-ini-intellisense.project.compatibility": {
+          "type": "string",
+          "enum": [
+            "compatible",
+            "vanilla"
+          ],
+          "default": "compatible",
+          "scope": "resource",
+          "description": "%configuration.project.compatibility%"
         }
       }
     },

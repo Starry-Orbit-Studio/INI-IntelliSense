@@ -3,12 +3,14 @@ import * as vscode from 'vscode';
 import { IniDiagnostic } from './diagnostic';
 import { SchemaManager } from '../schema-manager';
 import { INIManager } from '../parser';
+import type { ProjectIni } from '../context/project-ini';
 
 /**
  * 诊断上下文基础部分
  */
 export interface DiagnosticContext {
     document: vscode.TextDocument;
+    project?: ProjectIni;
     schemaManager: SchemaManager;
     iniManager: INIManager;
     config: vscode.WorkspaceConfiguration;

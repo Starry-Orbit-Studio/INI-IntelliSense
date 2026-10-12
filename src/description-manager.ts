@@ -75,15 +75,15 @@ export class MultilineIniParser {
             }
             
             // 处理节
-            const sectionMatch = trimmedLine.match(/^\[([^\]:]+)(?::\[([^\]]+)\])?\]$/);
+            const sectionMatch = trimmedLine.match(/^\[([^\]:]+)\](?::\[([^\]]+)\])?\s*(?:;.*)?$/);
             if (sectionMatch) {
                 // 保存之前的键值对（如果有）
                 if (currentKey && currentValue) {
                     this.saveKeyValue(result, currentSection, currentKey, currentValue);
                 }
                 
-                currentSection = sectionMatch[1].trim();
-                const baseSection = sectionMatch[2] ? sectionMatch[2].trim() : null;
+                currentSection = sectionMatch[1].trim().toLowerCase();
+                const baseSection = sectionMatch[2] ? sectionMatch[2].trim().toLowerCase() : null;
 
                 currentKey = '';
                 currentValue = '';
@@ -166,7 +166,7 @@ export class MultilineIniParser {
         }
         
         const sectionData = result.get(section)!;
-        sectionData.properties.set(key, value);
+        sectionData.properties.set(key.toLowerCase(), value);
     }
 }
 
@@ -243,6 +243,7 @@ export class DescriptionManager {
      * @param mainDictPath 主字典文件路径（INIDictionary.ini）
      */
     loadFromDictionary(mainDictPath: string): boolean {
+        this.clear();
         if (!this.descriptionDir) {
             console.error('[DescriptionManager] Description directory not set');
             return false;
@@ -256,11 +257,11 @@ export class DescriptionManager {
             
             for (const line of lines) {
                 const trimmed = line.trim();
-                if (trimmed === '[Description]') {
+                if (trimmed.toLowerCase() === '[description]') {
                     inDescriptionSection = true;
                     continue;
                 }
-                if (trimmed.startsWith('[') && trimmed !== '[Description]') {
+                if (trimmed.startsWith('[') && trimmed.toLowerCase() !== '[description]') {
                     inDescriptionSection = false;
                     continue;
                 }
@@ -279,7 +280,7 @@ export class DescriptionManager {
             for (const [language, relPath] of languageFiles.entries()) {
                 const fullPath = path.isAbsolute(relPath) 
                     ? relPath 
-                    : path.join(path.dirname(mainDictPath), relPath);
+                    : path.join(path.dirname(mainDictPath), relPath.replace(/[\\/]/g, path.sep));
                 
                 if (fs.existsSync(fullPath)) {
                     if (this.loadFromFile(fullPath, language)) {
@@ -333,7 +334,7 @@ export class DescriptionManager {
             return undefined;
         }
         
-        let currentSection: string | null = sectionName;
+        let currentSection: string | null = sectionName.toLowerCase();
         const visited = new Set<string>();
 
         while (currentSection && !visited.has(currentSection)) {
@@ -345,7 +346,7 @@ export class DescriptionManager {
             }
 
             // 查找当前节是否有该键的描述
-            const desc = sectionData.properties.get(keyName);
+            const desc = sectionData.properties.get(keyName.toLowerCase());
             if (desc !== undefined && desc !== '') {
                 return desc;
             }

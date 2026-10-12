@@ -128,6 +128,19 @@ export type MediaPayload =
     | { kind: 'palette'; colors: number[]; name: string };
 
 export interface Inspection {
+    checks?: {
+        enabled: boolean;
+        scope: string;
+        checked: number;
+        total: number;
+        complete: boolean;
+        dictionary: string;
+        languages: string[];
+        rules: { id: string; name: string; group: string; severity: string; effective: string; configured?: string }[];
+        issues: { id: string; source: string; code: string; message: string; severity: number; provider: string }[];
+        settings: { key: string; value: string }[];
+    };
+    logic?: LogicGraph;
     id: string;
     owner: string;
     type: string;
@@ -149,7 +162,7 @@ export interface Inspection {
     cameos?: { tag: string; media: MediaPayload }[];
     lightEdit?: string;
     canReplace?: boolean;
-    resolution?: { configured: boolean; complete: boolean; documents: number; entries: string[]; issues: string[] };
+    resolution?: { mode?: 'project' | 'standalone'; compatibility?: string; configured: boolean; complete: boolean; documents: number; entries: string[]; issues: string[] };
     objects?: ObjectRow[];
     objectColumns?: string[];
     catalogScope?: string;
@@ -171,6 +184,18 @@ export interface Inspection {
         note: string;
         rendered?: boolean;
     };
+}
+
+export interface LogicGraph {
+    choices?: { id: string; name: string; type: string; category: string; label?: string; source?: string }[];
+    query?: string;
+    stale?: boolean;
+    focus: string;
+    direction: string;
+    depth: number;
+    truncated: boolean;
+    nodes: { id: string; name: string; type: string; category: string; label?: string; source?: string; missing: boolean }[];
+    edges: { id: string; from: string; to: string; key: string; source: string; inherited: boolean; kind: string }[];
 }
 
 export interface WorkbenchLabels {

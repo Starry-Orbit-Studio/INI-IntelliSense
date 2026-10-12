@@ -68,7 +68,7 @@
     "configuration.media.excludedDirectories": "Directory names excluded from asset discovery. Defaults skip temporary caches and tool copies; explicitly configured resource roots are still scanned.",
     "command.browseObjects.title": "Browse project objects",
     "command.configureProject.title": "Configure project entry INIs",
-    "configuration.project.entryPoints": "Root INI paths relative to the mod root, grouped by file category (rules, art, sound). Only these roots and their includes participate in resolution. Empty uses editor context.",
+    "configuration.project.entryPoints": "Entry INIs relative to the mod root, grouped by category (rules/art/sound). The project context uses these roots and their includes. Empty detects standard entries; unloaded files are isolated.",
     "configuration.project.objectColumns": "INI properties displayed as columns in the project object browser (up to 12).",
     "command.previewMap.title": "Preview current map",
     "configuration.maps.renderer": "Optional CNCMaps --worker JSON backend compatible with ra2rmg-rs. executable and mixDirectory require absolute paths. Supply modDirectories, rulesFiles, artFiles and extraMixes to match your project. Runs only on request in trusted workspaces.",
@@ -77,5 +77,16 @@
     "command.searchObjects.title": "Search game content",
     "command.projectOverview.title": "Project overview and settings",
     "command.refreshProject.title": "Refresh project",
-    "command.openObjectDefinition.title": "Open definition"
+    "command.openObjectDefinition.title": "Open definition",
+    "command.checkCenter.title": "INI check center",
+    "command.logicChain.title": "Logic chain",
+    "command.downloadDictionary.title": "Update dictionary",
+    "configuration.diagnostics.excludePatterns": "File patterns excluded from internal INI checks.",
+    "configuration.diagnostics.overrides": "Per-file rule levels. Later matching entries take precedence.",
+    "configuration.indexing.fileOverrides": "Exact project-relative file paths mapped to INI categories.",
+    "configuration.decorations.booleanPreview.enabled": "Show inline boolean checkmarks.",
+    "configuration.decorations.csfPreview.enabled": "Show inline CSF text.",
+    "configuration.decorations.csfPreview.maxLength": "Maximum inline CSF text length.",
+    "configuration.project.compatibility": "Compatible INI extensions (include/inheritance), or original game syntax without these extensions.",
+    "command.configureFileCategory": "Set INI file category"
 }

@@ -4,6 +4,13 @@ import * as https from 'https';
 import * as path from 'path';
 import { localize } from './i18n';
 
+/** Dictionary references are relative URLs and must stay inside the cache directory. */
+function dictionaryReference(filename: string): string {
+    const normalized = path.posix.normalize(filename.trim().replace(/\\/g, '/'));
+    if (!normalized || normalized === '.' || normalized === '..' || normalized.startsWith('../') || path.posix.isAbsolute(normalized) || /^[a-z]:/i.test(normalized)) { throw new Error('Invalid dictionary reference: ' + filename); }
+    return normalized;
+}
+
 const DICT_FILENAME = 'INIDictionary.ini';
 // 定义主源和备用源列表
 const DOWNLOAD_BASE_URLS = [
@@ -38,7 +45,7 @@ export class DictionaryService {
             // 外层循环：尝试不同的镜像源
             for (const baseUrl of DOWNLOAD_BASE_URLS) {
                 try {
-                    progress.report({ message: `Connecting to ${new URL(baseUrl).hostname}...` });
+                    progress.report({ message: localize('dictionary.connecting', 'Connecting to {0}...', new URL(baseUrl).hostname) });
                     
                     // 递归下载所有依赖文件
                     // 初始队列只包含入口文件
@@ -46,15 +53,16 @@ export class DictionaryService {
                     const downloadedFiles = new Set<string>();
 
                     while (downloadQueue.length > 0) {
-                        const filename = downloadQueue.shift()!;
+                        const filename = dictionaryReference(downloadQueue.shift()!);
                         if (downloadedFiles.has(filename)) { continue; }
 
-                        progress.report({ message: `Downloading ${filename}...` });
+                        progress.report({ message: localize('dictionary.downloadingFile', 'Downloading {0}...', filename) });
                         
                         // 下载文件内容
-                        const content = await this.httpsGet(baseUrl + filename);
+                        const content = await this.httpsGet(baseUrl + filename.split('/').map(encodeURIComponent).join('/'));
                         
                         // 写入本地磁盘
+                        await fs.promises.mkdir(path.dirname(path.join(dictDir, filename)), { recursive: true });
                         await fs.promises.writeFile(path.join(dictDir, filename), Buffer.from(content));
                         downloadedFiles.add(filename);
 
@@ -81,7 +89,7 @@ export class DictionaryService {
                                 }
                                 // 如果发现了新文件且未下载过，加入队列
                                 if (nextFile && !downloadedFiles.has(nextFile)) {
-                                    downloadQueue.push(nextFile);
+                                    downloadQueue.push(dictionaryReference(path.posix.join(path.posix.dirname(filename), nextFile.replace(/\\/g, '/'))));
                                 }
                             }
                         }
@@ -101,11 +109,11 @@ export class DictionaryService {
                     
                     for (const line of lines) {
                         const trimmed = line.trim();
-                        if (trimmed === '[Description]') {
+                        if (trimmed.toLowerCase() === '[description]') {
                             inDescriptionSection = true;
                             continue;
                         }
-                        if (trimmed.startsWith('[') && trimmed !== '[Description]') {
+                        if (trimmed.startsWith('[') && trimmed.toLowerCase() !== '[description]') {
                             inDescriptionSection = false;
                             continue;
                         }
@@ -115,7 +123,7 @@ export class DictionaryService {
                             if (eqIdx !== -1) {
                                 const language = trimmed.substring(0, eqIdx).trim();
                                 const filename = trimmed.substring(eqIdx + 1).trim();
-                                descriptionFiles.set(language, filename);
+                                descriptionFiles.set(language, dictionaryReference(filename));
                             }
                         }
                     }
@@ -127,8 +135,8 @@ export class DictionaryService {
                         for (const [language, filename] of descriptionFiles.entries()) {
                             try {
                                 progress.report({ message: localize('dictionary.downloadingDescriptionFile', 'Downloading {0} ({1})...', filename, language) });
-                                const descContent = await this.httpsGet(baseUrl + filename);
-                                const descPath = path.join(descriptionDir, filename);
+                                const descContent = await this.httpsGet(baseUrl + filename.split('/').map(encodeURIComponent).join('/'));
+                                const descPath = path.join(dictDir, filename);
                                 // 确保目录存在
                                 const descDir = path.dirname(descPath);
                                 if (!fs.existsSync(descDir)) {
@@ -177,6 +185,7 @@ export class DictionaryService {
         return new Promise((resolve, reject) => {
             const req = https.get(url, (res) => {
                 if (res.statusCode !== 200 && res.statusCode !== 301 && res.statusCode !== 302) {
+                    res.resume();
                     reject(new Error(`Request failed with status code: ${res.statusCode}`));
                     return;
                 }
@@ -184,7 +193,8 @@ export class DictionaryService {
                 // 处理重定向
                 if (res.statusCode === 301 || res.statusCode === 302) {
                     if (res.headers.location) {
-                        this.httpsGet(res.headers.location).then(resolve).catch(reject);
+                        res.resume();
+                        this.httpsGet(new URL(res.headers.location, url).toString()).then(resolve).catch(reject);
                         return;
                     }
                 }

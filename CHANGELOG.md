@@ -4,6 +4,11 @@
 
 ## [Unreleased]
 
+- Add a sidebar INI check center between resource checks and project settings, with rule levels, presets, configuration scopes, file exceptions, searchable results and source navigation.
+- Share entry/include resolution across contextual editing, isolate non-loaded files, and expose compatibility modes and per-file categories.
+- Add upstream/downstream logic exploration using effective typed references, inheritance, conditions and source locations, with search, bounded expansion and missing/stale indicators.
+- Restore Tag documentation and inherited descriptions with bundled English/Chinese fallback; add boolean and repeated-key checks and fix configuration commands, diagnostic refresh and overlapping semantic tokens.
+
 - Use INI terminology `VehicleType` for vehicle type labels and searches while retaining compatibility with existing dictionaries.
 - Upgrade the extension sidebar into a project workbench with semantic object categories, cross-category search, recent items, maps and project overview/settings; keep file and archive tools available in collapsed views.
 - Keep object previews in the bottom panel, preserve catalogue navigation, and separate sound events and auxiliary definitions from registered game objects.

@@ -30,12 +30,20 @@ export function parsePropertyLine(line: string): IniPropertyLine | undefined {
         return undefined;
     }
     const keyStart = line.indexOf(key);
-    const comment = line.indexOf(';', equals + 1);
-    const valueEnd = comment < 0 ? line.length : comment;
+    let quote = '', valueEnd = line.length;
+    const separators: number[] = [];
+    for (let index = equals + 1; index < line.length; index++) {
+        const character = line[index];
+        if ((character === '"' || character === "'") && line[index - 1] !== '\\') {
+            if (!quote) { quote = character; } else if (quote === character) { quote = ''; }
+        } else if (!quote && character === ';') { valueEnd = index; break; }
+        else if (!quote && character === ',') { separators.push(index); }
+    }
     const raw = line.slice(equals + 1, valueEnd);
     const elements: ValueSpan[] = [];
     let offset = equals + 1;
-    raw.split(',').forEach((part, index) => {
+    [...separators, valueEnd].forEach((end, index) => {
+        const part = line.slice(offset, end);
         const value = part.trim();
         const start = offset + (value ? part.indexOf(value) : part.length);
         elements.push({ value, start, end: start + value.length, index });

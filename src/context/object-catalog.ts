@@ -1,7 +1,7 @@
 import * as vscode from 'vscode';
 import { SchemaManager } from '../schema-manager';
 import { ProjectIni, SectionSource } from './project-ini';
-import { resolveProperties, PropertyResolution } from './property-resolution';
+import { resolveProperties, PropertyResolution, registryValues } from './property-resolution';
 import { parsePropertyLine } from './ini-position';
 import { catalogLabel } from './catalog-groups';
 
@@ -45,12 +45,8 @@ export async function objectCatalog(
     }
     const types = new Map<string, string>();
     for (const [registry, type] of Object.entries(registries)) {
-        for (const property of resolveProperties(
-            registry,
-            (name) => snapshot.sources(name, 'rules'),
-            parsePropertyLine
-        ).values()) {
-            types.set(property.effective.value.toLowerCase(), type);
+        for (const value of registryValues(registry, name => snapshot.sources(name, 'rules'), parsePropertyLine, snapshot.context.compatibility !== 'vanilla')) {
+            types.set(value.toLowerCase(), type);
         }
     }
     const registryNames = new Set(Object.keys(registries).map((name) => name.toLowerCase()));

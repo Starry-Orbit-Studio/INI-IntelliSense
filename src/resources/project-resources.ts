@@ -62,7 +62,7 @@ export class ProjectResources implements vscode.Disposable {
                 this.invalidate();
             }),
             vscode.workspace.onDidChangeConfiguration((event) => {
-                if (event.affectsConfiguration('ra2-ini-intellisense')) {
+                if (['media.resourceRoots', 'media.archiveOrder', 'media.excludedDirectories', 'indexing', 'project.entryPoints', 'project.compatibility'].some(key => event.affectsConfiguration('ra2-ini-intellisense.' + key))) {
                     this.clearProjectWatchers();
                     this.invalidate();
                 }

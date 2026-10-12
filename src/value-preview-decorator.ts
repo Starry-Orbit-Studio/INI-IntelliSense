@@ -2,6 +2,8 @@ import * as vscode from 'vscode';
 import { INIManager } from './parser';
 import { SchemaManager } from './schema-manager';
 import { CsfManager } from './csf-manager';
+import { ProjectIni } from './context/project-ini';
+import { parsePropertyLine } from './context/ini-position';
 
 /**
  * 负责在编辑器中为特定类型的值（如 bool）提供可视化的行内预览。
@@ -40,6 +42,7 @@ export class ValuePreviewDecorator implements vscode.Disposable {
         rangeBehavior: vscode.DecorationRangeBehavior.ClosedClosed
     });
 
+    public project?: ProjectIni;
     private timeout: NodeJS.Timeout | undefined = undefined;
     private disposables: vscode.Disposable[] = [];
 
@@ -66,24 +69,28 @@ export class ValuePreviewDecorator implements vscode.Disposable {
         }
 
         if (throttle) {
-            this.timeout = setTimeout(() => this.updateDecorations(editor), 100);
+            this.timeout = setTimeout(() => { void this.updateDecorations(editor).catch(error => console.error('[Value preview]', error)); }, 100);
         } else {
-            this.updateDecorations(editor);
+            void this.updateDecorations(editor).catch(error => console.error('[Value preview]', error));
         }
     }
 
     /**
      * 核心逻辑：扫描可见区域并应用装饰。
      */
-    private updateDecorations(editor: vscode.TextEditor) {
+    private async updateDecorations(editor: vscode.TextEditor) {
+        const version = editor.document.version;
+        await this.project?.load(editor.document.uri);
+        if (editor.document.isClosed || editor.document.version !== version) { return; }
         const trueRanges: vscode.Range[] = [];
         const falseRanges: vscode.Range[] = [];
         const csfDecorations: vscode.DecorationOptions[] = [];
         
         const document = editor.document;
-        const docModel = this.iniManager.getDocument(document.uri);
+        const configuration = vscode.workspace.getConfiguration('ra2-ini-intellisense', document.uri);
+        const docModel = this.project?.parse(document) ?? this.iniManager.getDocument(document.uri);
         if (!docModel) { return; }
-        const currentFileType = this.iniManager.getFileType(document.uri);
+        const currentFileType = this.project?.category(document.uri) ?? this.iniManager.getFileType(document.uri);
 
         // 仅遍历可见范围，实现极致性能
         for (const range of editor.visibleRanges) {
@@ -108,42 +115,37 @@ export class ValuePreviewDecorator implements vscode.Disposable {
                 const eqIndex = text.indexOf('=');
                 if (eqIndex === -1) { continue; }
 
-                const key = text.substring(0, eqIndex).trim();
-                const valuePart = text.substring(eqIndex + 1).split(';')[0].trim().toLowerCase();
-                
-                // 计算 Value 的精确范围，以便将图标紧贴在值后面显示，而不是行尾
-                // 这样即使行尾有注释，图标也会显示在 Value 和 注释 之间，逻辑更清晰
-                const valueStartOffset = eqIndex + 1;
-                const valueRaw = text.substring(valueStartOffset).split(';')[0];
-                const valueTrimmed = valueRaw.trim();
-                // 找到 value 在等号后的起始位置
-                const valueStartInLine = valueStartOffset + text.substring(valueStartOffset).indexOf(valueTrimmed);
-                const valueEndInLine = valueStartInLine + valueTrimmed.length;
-                
-                const valueRange = new vscode.Range(i, valueStartInLine, i, valueEndInLine);
+                const parsed = parsePropertyLine(text);
+                if (!parsed) { continue; }
+                const key = parsed.key;
+                const valuePart = parsed.value.toLowerCase();
+                const valueStartInLine = parsed.elements[0]?.start ?? parsed.valueStart;
+                const valueRange = new vscode.Range(i, valueStartInLine, i, valueStartInLine + parsed.value.length);
 
                 // 获取当前节的类型定义
-                const typeName = this.iniManager.getTypeForSection(currentSection.name, new Set(), currentFileType);
+                const typeName = this.project?.type(document.uri, currentSection.name, currentFileType) ?? this.iniManager.getTypeForSection(currentSection.name, new Set(), currentFileType);
                 const keysDef = this.schemaManager.getAllKeysForType(typeName);
-                const propDef = keysDef.get(key);
+                const propDef = [...keysDef].find(([name]) => name.toLowerCase() === key.toLowerCase())?.[1];
 
                 if (propDef) {
                     switch (propDef.type) {
                         case 'bool':
-                            const firstChar = valuePart.charAt(0);
-                            if (['y', 't', '1'].includes(firstChar)) {
+                            if (!configuration.get('decorations.booleanPreview.enabled', true)) { break; }
+                            if (/^(yes|true|1)$/.test(valuePart)) {
                                 trueRanges.push(valueRange); 
-                            } else if (['n', 'f', '0'].includes(firstChar)) {
+                            } else if (/^(no|false|0)$/.test(valuePart)) {
                                 falseRanges.push(valueRange);
                             }
                             break;
                         case 'csf':
+                            if (!configuration.get('decorations.csfPreview.enabled', true)) { break; }
                             const csfVal = this.csfManager.getLabel(valuePart); // valuePart 已经是 lowerCase 且 trimmed
                             if (csfVal) {
                                 // 截断过长的文本，避免干扰布局
                                 let displayText = csfVal.value.replace(/\r?\n/g, ' ');
-                                if (displayText.length > ValuePreviewDecorator.CSF_PREVIEW_MAX_LENGTH) {
-                                    displayText = displayText.substring(0, ValuePreviewDecorator.CSF_PREVIEW_MAX_LENGTH - 3) + '...';
+                                const maxLength = configuration.get<number>('decorations.csfPreview.maxLength', ValuePreviewDecorator.CSF_PREVIEW_MAX_LENGTH);
+                                if (displayText.length > maxLength) {
+                                    displayText = displayText.substring(0, maxLength - 3) + '...';
                                 }
                                 csfDecorations.push({
                                     range: valueRange,
@@ -158,8 +160,8 @@ export class ValuePreviewDecorator implements vscode.Disposable {
             }
         }
 
-        // editor.setDecorations(this.boolTrueDecoration, trueRanges);
-        // editor.setDecorations(this.boolFalseDecoration, falseRanges);
+        editor.setDecorations(this.boolTrueDecoration, trueRanges);
+        editor.setDecorations(this.boolFalseDecoration, falseRanges);
         editor.setDecorations(this.csfPreviewDecoration, csfDecorations);
     }
 

@@ -3,6 +3,154 @@ import { WorkbenchLabels } from './workbench-protocol';
 
 export function workbenchLabels(): WorkbenchLabels {
     return {
+        setting_exePath: localize('workbench.setting_exePath', 'External validator executable'),
+        setting_validationFolderPath: localize('workbench.setting_validationFolderPath', 'Mod project root'),
+        setting_validationFiles: localize('workbench.setting_validationFiles', 'External validator input files'),
+        'setting_indexing.fileCategories': localize(
+            'workbench.setting_indexing.fileCategories',
+            'File category matching rules'
+        ),
+        'setting_indexing.excludePatterns': localize(
+            'workbench.setting_indexing.excludePatterns',
+            'Excluded INI files'
+        ),
+        'setting_codeLens.enabled': localize('workbench.setting_codeLens.enabled', 'Reference counts above sections'),
+        'setting_decorations.overrideIndicator.enabled': localize(
+            'workbench.setting_decorations.overrideIndicator.enabled',
+            'Inherited-key override marks'
+        ),
+        'setting_diagnostics.enabled': localize('workbench.setting_diagnostics.enabled', 'Live INI checks'),
+        'setting_diagnostics.spaceBeforeEquals': localize(
+            'workbench.setting_diagnostics.spaceBeforeEquals',
+            'Legacy: space before equals'
+        ),
+        'setting_diagnostics.spaceAfterEquals': localize(
+            'workbench.setting_diagnostics.spaceAfterEquals',
+            'Legacy: space after equals'
+        ),
+        'setting_diagnostics.leadingWhitespace': localize(
+            'workbench.setting_diagnostics.leadingWhitespace',
+            'Legacy: leading whitespace'
+        ),
+        'setting_diagnostics.spacesBeforeComment': localize(
+            'workbench.setting_diagnostics.spacesBeforeComment',
+            'Expected spaces before comments'
+        ),
+        'setting_diagnostics.spaceAfterComment': localize(
+            'workbench.setting_diagnostics.spaceAfterComment',
+            'Legacy: space after comment marker'
+        ),
+        'setting_iniValidator.downloadUrl': localize(
+            'workbench.setting_iniValidator.downloadUrl',
+            'External validator download address'
+        ),
+        'setting_media.enabled': localize('workbench.setting_media.enabled', 'Asset workbench'),
+        'setting_media.autoReveal': localize(
+            'workbench.setting_media.autoReveal',
+            'Automatically open the bottom inspector'
+        ),
+        'setting_media.inlineThumbnails': localize(
+            'workbench.setting_media.inlineThumbnails',
+            'Inline asset thumbnails'
+        ),
+        'setting_media.hoverEnabled': localize('workbench.setting_media.hoverEnabled', 'Asset hover previews'),
+        'setting_media.theater': localize('workbench.setting_media.theater', 'Default theater'),
+        'setting_media.semanticRules': localize(
+            'workbench.setting_media.semanticRules',
+            'Custom asset reference rules'
+        ),
+        'setting_project.objectColumns': localize(
+            'workbench.setting_project.objectColumns',
+            'Object attribute columns'
+        ),
+        'setting_diagnostics.excludePatterns': localize(
+            'workbench.setting_diagnostics.excludePatterns',
+            'Files excluded from live checks'
+        ),
+        'setting_diagnostics.overrides': localize(
+            'workbench.setting_diagnostics.overrides',
+            'Rule exceptions by file pattern'
+        ),
+        'setting_indexing.fileOverrides': localize(
+            'workbench.setting_indexing.fileOverrides',
+            'Per-file INI categories'
+        ),
+        'setting_decorations.booleanPreview.enabled': localize(
+            'workbench.setting_decorations.booleanPreview.enabled',
+            'Boolean value indicators'
+        ),
+        'setting_decorations.csfPreview.enabled': localize(
+            'workbench.setting_decorations.csfPreview.enabled',
+            'CSF inline text'
+        ),
+        'setting_decorations.csfPreview.maxLength': localize(
+            'workbench.setting_decorations.csfPreview.maxLength',
+            'CSF inline text length'
+        ),
+        'setting_project.compatibility': localize('workbench.setting_project.compatibility', 'INI compatibility mode'),
+        standaloneContext: localize('workbench.standaloneContext', 'Standalone file context'),
+        automaticContext: localize('workbench.automaticContext', 'Detected project entry context'),
+        checksDisabled: localize('workbench.checksDisabled', 'Live INI checks are disabled'),
+        configureFileCategory: localize('workbench.configureFileCategory', 'Set INI file category'),
+        relation_typeMismatch: localize('workbench.relation_typeMismatch', 'Target type differs from the dictionary'),
+        graphStale: localize('workbench.graphStale', 'The INI changed. Refresh to rebuild these relations.'),
+        checkCenter: localize('workbench.checkCenter', 'INI check center'),
+        logicChain: localize('workbench.logicChain', 'Logic chain'),
+        scopeFolder: localize('workbench.scopeFolder', 'Current project folder'),
+        scopeWorkspace: localize('workbench.scopeWorkspace', 'Workspace'),
+        scopeUser: localize('workbench.scopeUser', 'User'),
+        saveScope: localize('workbench.saveScope', 'Save configuration to'),
+        runCurrent: localize('workbench.runCurrent', 'Check current file'),
+        runProject: localize('workbench.runProject', 'Check project'),
+        nativeSettings: localize('workbench.nativeSettings', 'Open VS Code settings'),
+        checkComplete: localize('workbench.checkComplete', 'Check complete'),
+        checkPartial: localize('workbench.checkPartial', 'Not fully checked'),
+        checkResults: localize('workbench.checkResults', 'Results'),
+        checkRules: localize('workbench.checkRules', 'Check rules'),
+        searchChecks: localize('workbench.searchChecks', 'Search rules, settings or results'),
+        noIssues: localize('workbench.noIssues', 'No issues found in the checked scope.'),
+        noResults: localize('workbench.noResults', 'No results yet. Run a check or open an INI file.'),
+        presetCompatible: localize('workbench.presetCompatible', 'Compatible defaults'),
+        presetCorrectness: localize('workbench.presetCorrectness', 'Focus on correctness'),
+        presetStrict: localize('workbench.presetStrict', 'Strict checks'),
+        presetQuiet: localize('workbench.presetQuiet', 'Quiet editing'),
+        ruleHelp: localize(
+            'workbench.ruleHelp',
+            'Choose the level for each rule. Inherit removes this scope’s override. Advanced file exceptions are available in settings.'
+        ),
+        default: localize('workbench.default', 'Default'),
+        inheritSetting: localize('workbench.inheritSetting', 'Inherit setting'),
+        level_Error: localize('workbench.level_Error', 'Error'),
+        level_Warning: localize('workbench.level_Warning', 'Warning'),
+        level_Information: localize('workbench.level_Information', 'Information'),
+        level_Hint: localize('workbench.level_Hint', 'Hint'),
+        level_None: localize('workbench.level_None', 'Off'),
+        dictionaryMissing: localize('workbench.dictionaryMissing', 'Not configured / not loaded'),
+        descriptionLanguages: localize('workbench.descriptionLanguages', 'Loaded description languages'),
+        updateDictionary: localize('workbench.updateDictionary', 'Update dictionary'),
+        externalValidator: localize('workbench.externalValidator', 'Manage external INI Validator'),
+        bothDirections: localize('workbench.bothDirections', 'Both directions'),
+        upstream: localize('workbench.upstream', 'Upstream · used by'),
+        downstream: localize('workbench.downstream', 'Downstream · uses'),
+        depth: localize('workbench.depth', 'Depth'),
+        logicHelp: localize(
+            'workbench.logicHelp',
+            'Effective typed references. Click an object to explore it; click a source to open the producing tag. Conditions do not imply runtime execution.'
+        ),
+        graphTruncated: localize(
+            'workbench.graphTruncated',
+            'More branches exist. Expand depth or focus on a branch; up to 150 objects are shown.'
+        ),
+        missingTarget: localize('workbench.missingTarget', 'Target definition is missing in this context.'),
+        noRelations: localize('workbench.noRelations', 'No direct relation in this direction.'),
+        allRelations: localize('workbench.allRelations', 'Expanded relation paths'),
+        relation_reference: localize('workbench.relation_reference', 'Reference'),
+        relation_inheritance: localize('workbench.relation_inheritance', 'Inheritance'),
+        relation_image: localize('workbench.relation_image', 'Art binding'),
+        relation_sound: localize('workbench.relation_sound', 'Sound'),
+        relation_condition: localize('workbench.relation_condition', 'Condition'),
+        relation_inferred: localize('workbench.relation_inferred', 'Inferred reference'),
+
         group_game: localize('workbench.group_game', 'Units, buildings and superweapons'),
         group_all: localize('workbench.group_all', 'All definitions'),
         group_infantry: localize('workbench.group_infantry', 'Infantry'),
@@ -48,7 +196,7 @@ export function workbenchLabels(): WorkbenchLabels {
         'setting_project.entryPoints': localize('workbench.setting_project.entryPoints', 'Entry INIs and includes'),
         'help_project.entryPoints': localize(
             'workbench.help_project.entryPoints',
-            'Select Rules, Art and Sound entry files. An empty configuration uses editor context; included files are followed automatically.'
+            'Select Rules, Art and Sound entry files. An empty configuration detects standard project entries. Included files are followed automatically; other files remain independent.'
         ),
         'setting_media.resourceRoots': localize(
             'workbench.setting_media.resourceRoots',
@@ -148,12 +296,12 @@ export function workbenchLabels(): WorkbenchLabels {
         indexIncomplete: localize('workbench.indexIncomplete', 'Index incomplete'),
         contextHelp: localize(
             'workbench.contextHelp',
-            'Explicit project entry INIs limit resolution to their include graph. Editor context prioritizes the current document and does not claim to emulate every engine load rule.'
+            'Configure entry files separately from file categories. Active definitions use the loading chain; unloaded files are isolated. Review missing includes when the index is incomplete.'
         ),
         projectEntries: localize('workbench.projectEntries', 'Project entry INIs'),
         chooseEntries: localize(
             'workbench.chooseEntries',
-            'Select the root rules, art and sound INIs; included files are followed automatically. Clear all to use editor context.'
+            'Select the root rules, art and sound INIs; included files are followed automatically. Clear all to detect standard project entries.'
         ),
         duplicateEdit: localize(
             'workbench.duplicateEdit',

@@ -1,4 +1,5 @@
 import { projectView } from './project-view';
+import { analysisView } from './analysis-view';
 import { displayType } from '../../src/type-display';
 import './main.css';
 import type { HostState, Inspection, MediaPayload, WorkbenchLabels } from '../../src/context/workbench-protocol';
@@ -1335,7 +1336,7 @@ function voxelControls(media: Extract<MediaPayload, { kind: 'voxel' }>, host: HT
 }
 
 function render(inspection: Inspection): void {
-    const pageKind = inspection.project
+    const pageKind = inspection.checks || inspection.logic ? 'analysis' : inspection.project
         ? 'project'
         : inspection.objects
           ? 'catalog'
@@ -1346,7 +1347,7 @@ function render(inspection: Inspection): void {
         window.scrollTo(0, 0);
     }
     app.dataset.surface = pageKind;
-    app.classList.toggle('catalog-page', !!inspection.objects || !!inspection.project);
+    app.classList.toggle('catalog-page', !!inspection.objects || !!inspection.project || !!inspection.checks || !!inspection.logic);
     app.classList.toggle('map-page', !!inspection.map);
     const kind = inspection.media?.kind ?? '';
     if (settingsKind !== kind) {
@@ -1416,7 +1417,9 @@ function render(inspection: Inspection): void {
     }
     app.replaceChildren();
     const toolbar = element('nav', 'toolbar');
-    if (inspection.objects || inspection.project) {
+    if (inspection.checks || inspection.logic) {
+        // Analysis views own their scoped controls.
+    } else if (inspection.objects || inspection.project) {
         toolbar.append(
             button(labels.projectSettings, () => post('catalog-scope', { value: 'overview' })),
             button(labels.group_game, () => post('catalog-scope', { value: 'game' })),
@@ -1445,7 +1448,7 @@ function render(inspection: Inspection): void {
             element(
                 'summary',
                 '',
-                (resolution.configured ? labels.configuredContext : labels.editorContext) +
+                (resolution.mode === 'standalone' ? labels.standaloneContext : resolution.configured ? labels.configuredContext : resolution.mode === 'project' ? labels.automaticContext : labels.editorContext) +
                     ' · ' +
                     resolution.documents +
                     ' ' +
@@ -1460,6 +1463,10 @@ function render(inspection: Inspection): void {
         resolution.entries.forEach((entry) => summary.append(element('div', '', entry)));
         resolution.issues.forEach((issue) => summary.append(element('p', 'warning', issue)));
         app.append(summary);
+    }
+    if (inspection.checks || inspection.logic) {
+        analysisView(app, inspection, labels, post);
+        return;
     }
     if (inspection.project) {
         projectView(app, inspection, labels, post);

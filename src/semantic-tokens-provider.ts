@@ -1,4 +1,5 @@
 import * as vscode from 'vscode';
+import { parsePropertyLine } from './context/ini-position';
 
 // 定义语义化令牌的类型
 // 这个列表的顺序必须与 package.json 中定义的 `legend.tokenTypes` 完全一致
@@ -98,7 +99,7 @@ export class IniSemanticTokensProvider implements vscode.DocumentSemanticTokensP
      */
     private pushToken(builder: vscode.SemanticTokensBuilder, line: number, start: number, length: number, tokenTypeKey: string) {
         const tokenTypeIndex = this.tokenTypeMap.get(tokenTypeKey);
-        if (tokenTypeIndex !== undefined) {
+        if (tokenTypeIndex !== undefined && length > 0) {
             builder.push(line, start, length, tokenTypeIndex, 0);
         }
     }
@@ -111,7 +112,8 @@ export class IniSemanticTokensProvider implements vscode.DocumentSemanticTokensP
         const state: ParseState = { inMultilineString: false };
         for (let i = 0; i < lineNumber; i++) {
             const lineText = document.lineAt(i).text;
-            const commentIndex = lineText.indexOf(';');
+            const property = parsePropertyLine(lineText);
+            const commentIndex = property ? property.valueEnd < lineText.length ? property.valueEnd : -1 : lineText.indexOf(';');
             const lineWithoutComment = commentIndex !== -1 ? lineText.substring(0, commentIndex) : lineText;
             
             // 检查是否进入或退出多行字符串
@@ -155,7 +157,8 @@ export class IniSemanticTokensProvider implements vscode.DocumentSemanticTokensP
         let newState = { ...state };
 
         // 优先级 1: 注释（但如果在多行字符串中，注释无效）
-        const commentIndex = !newState.inMultilineString ? lineText.indexOf(';') : -1;
+        const property = parsePropertyLine(lineText);
+        const commentIndex = newState.inMultilineString ? -1 : property ? property.valueEnd < lineText.length ? property.valueEnd : -1 : lineText.indexOf(';');
         let lineWithoutComment = lineText;
         if (commentIndex !== -1) {
             this.pushToken(builder, lineNumber, commentIndex, lineText.length - commentIndex, 'comment');
@@ -240,82 +243,26 @@ export class IniSemanticTokensProvider implements vscode.DocumentSemanticTokensP
 
             // 解析值 (Value)
             const valueOffset = lineWithoutComment.indexOf(valuePart, opOffset);
-            if (valuePart.trim().length > 0) {
-                // 首先为整个值部分应用默认的 'value' 类型
-                this.pushToken(builder, lineNumber, valueOffset, valuePart.length, 'value');
-
-                // 检查多行字符串开始
-                if (valuePart.includes('"""')) {
-                    // 查找所有 """ 出现的位置
-                    const tripleQuoteRegex = /"""/g;
-                    let match;
-                    let lastIndex = 0;
-                    let inString = false;
-                    let startIndex = -1;
-                    
-                    while ((match = tripleQuoteRegex.exec(valuePart)) !== null) {
-                        if (!inString) {
-                            // 开始多行字符串
-                            startIndex = match.index;
-                            inString = true;
-                            // 标记开始引号
-                            this.pushToken(builder, lineNumber, valueOffset + match.index, 3, 'valueMultilineString');
-                        } else {
-                            // 结束多行字符串
-                            inString = false;
-                            // 标记结束引号
-                            this.pushToken(builder, lineNumber, valueOffset + match.index, 3, 'valueMultilineString');
-                            // 标记开始和结束之间的内容
-                            if (match.index > startIndex + 3) {
-                                this.pushToken(builder, lineNumber, valueOffset + startIndex + 3, match.index - startIndex - 3, 'valueMultilineString');
-                            }
-                        }
-                        lastIndex = tripleQuoteRegex.lastIndex;
-                    }
-                    
-                    // 如果结束后仍在字符串中，说明多行字符串未结束
-                    if (inString) {
-                        newState.inMultilineString = true;
-                        // 标记开始引号之后的所有内容
-                        if (valuePart.length > startIndex + 3) {
-                            this.pushToken(builder, lineNumber, valueOffset + startIndex + 3, valuePart.length - startIndex - 3, 'valueMultilineString');
-                        }
-                    }
-                    
-                    // 如果不在多行字符串中，仍然需要处理普通字符串和逗号
-                    if (!inString) {
-                        // 接着，在值内部查找更具体的类型并进行覆盖
-                        // 但需要排除已经被标记为多行字符串的部分
-                        // 简化处理：只查找不在多行字符串区域内的普通字符串
-                        const stringRegex = /"[^"]*"/g;
-                        const commaRegex = /,/g;
-                        let strMatch;
-                        
-                        // 查找所有被引号包裹的字符串（但不处理已经在多行字符串区域内的）
-                        // 简化：我们假设多行字符串和普通字符串不会混合
-                        while ((strMatch = stringRegex.exec(valuePart)) !== null) {
-                            this.pushToken(builder, lineNumber, valueOffset + strMatch.index, strMatch[0].length, 'valueString');
-                        }
-                        
-                        // 查找所有逗号
-                        while ((strMatch = commaRegex.exec(valuePart)) !== null) {
-                            this.pushToken(builder, lineNumber, valueOffset + strMatch.index, 1, 'valueComma');
-                        }
-                    }
-                } else {
-                    // 没有多行字符串，正常处理
-                    const stringRegex = /"[^"]*"/g;
-                    const commaRegex = /,/g;
-                    let match;
-                    // 查找所有被引号包裹的字符串
-                    while ((match = stringRegex.exec(valuePart)) !== null) {
-                        this.pushToken(builder, lineNumber, valueOffset + match.index, match[0].length, 'valueString');
-                    }
-                    // 查找所有逗号
-                    while ((match = commaRegex.exec(valuePart)) !== null) {
-                        this.pushToken(builder, lineNumber, valueOffset + match.index, 1, 'valueComma');
-                    }
+            // Emit disjoint spans: Monaco does not support overlapping semantic tokens.
+            let offset = 0;
+            while (offset < valuePart.length) {
+                let end: number, type = 'value';
+                if (valuePart.startsWith('"""', offset)) {
+                    const closing = valuePart.indexOf('"""', offset + 3);
+                    end = closing < 0 ? valuePart.length : closing + 3;
+                    type = 'valueMultilineString';
+                    if (closing < 0) { newState.inMultilineString = true; }
+                } else if (valuePart[offset] === '"' || valuePart[offset] === "'") {
+                    const quote = valuePart[offset]; end = offset + 1;
+                    while (end < valuePart.length && (valuePart[end] !== quote || valuePart[end - 1] === '\\')) { end++; }
+                    if (end < valuePart.length) { end++; } type = 'valueString';
+                } else if (valuePart[offset] === ',') { end = offset + 1; type = 'valueComma'; }
+                else {
+                    end = offset + 1;
+                    while (end < valuePart.length && ![',', '"', "'"].includes(valuePart[end])) { end++; }
                 }
+                this.pushToken(builder, lineNumber, valueOffset + offset, end - offset, type);
+                offset = end;
             }
         }
         

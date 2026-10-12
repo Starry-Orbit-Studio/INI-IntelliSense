@@ -15,6 +15,7 @@ import { openContributedView } from './view-reveal';
 import { applyPropertyChanges, preparePropertyChanges, PropertyChange } from './property-edit';
 import { CATALOG_GROUPS, catalogGroup } from './catalog-groups';
 import { renderMap, MapRendererOptions } from './map-renderer';
+import { commandOrigin } from './command-origin';
 
 class WorkbenchSession implements vscode.Disposable {
     public pinned = false;
@@ -249,6 +250,10 @@ class WorkbenchSession implements vscode.Disposable {
                     documents,
                     settings: [
                         'project.entryPoints',
+                        'project.compatibility',
+                        'indexing.fileCategories',
+                        'indexing.fileOverrides',
+                        'diagnostics.enabled',
                         'media.resourceRoots',
                         'media.archiveOrder',
                         'media.excludedDirectories',
@@ -1007,7 +1012,7 @@ export class WorkbenchController
         };
         this.disposables.push(
             vscode.commands.registerCommand('ra2-ini-intellisense.previewMap', async (uri?: vscode.Uri) => {
-                const origin = uri ?? vscode.window.activeTextEditor?.document.uri;
+                const origin = commandOrigin(uri);
                 if (!origin || !/\.(map|mpr|yrm)$/i.test(origin.path)) {
                     return;
                 }
@@ -1021,9 +1026,27 @@ export class WorkbenchController
             vscode.commands.registerCommand('ra2-ini-intellisense.projectOverview', (uri?: vscode.Uri) =>
                 this.openProject(uri, 'overview')
             ),
+            vscode.commands.registerCommand('ra2-ini-intellisense.configureFileCategory', async (value?: unknown) => {
+                let origin = commandOrigin(value);
+                if (!origin) { return; }
+                if (!/\.(ini|map|mpr|yrm)$/i.test(origin.path)) {
+                    const files = await service.resources.listDocuments(origin);
+                    const chosen = await vscode.window.showQuickPick(files.map(file => ({ label: vscode.workspace.asRelativePath(file.uri), uri: file.uri })), { title: localize('workbench.configureFileCategory', 'Set INI file category') });
+                    if (!chosen) { return; } origin = chosen.uri;
+                }
+                const configuration = vscode.workspace.getConfiguration('ra2-ini-intellisense', origin);
+                const rules = configuration.get<Record<string, string[]>>('indexing.fileCategories', {});
+                const selected = await vscode.window.showQuickPick([{ label: localize('workbench.automatic', 'Automatic'), category: undefined }, ...Object.keys(rules).map(category => ({ label: category, category }))], { title: localize('workbench.configureFileCategory', 'Set INI file category'), placeHolder: vscode.workspace.asRelativePath(origin) });
+                if (!selected) { return; }
+                const target = vscode.workspace.getWorkspaceFolder(origin) ? vscode.ConfigurationTarget.WorkspaceFolder : vscode.ConfigurationTarget.Global;
+                const details = configuration.inspect<Record<string, string>>('indexing.fileOverrides');
+                const overrides = { ...(target === vscode.ConfigurationTarget.WorkspaceFolder ? details?.workspaceFolderValue : details?.globalValue) };
+                const relative = vscode.workspace.asRelativePath(origin, false).replace(/\\/g, '/');
+                if (selected.category) { overrides[relative] = selected.category; } else { delete overrides[relative]; }
+                await configuration.update('indexing.fileOverrides', Object.keys(overrides).length ? overrides : undefined, target);
+            }),
             vscode.commands.registerCommand('ra2-ini-intellisense.configureProject', async (uri?: vscode.Uri) => {
-                const origin =
-                    uri ?? vscode.window.activeTextEditor?.document.uri ?? vscode.workspace.workspaceFolders?.[0]?.uri;
+                const origin = commandOrigin(uri);
                 if (!origin || !vscode.workspace.workspaceFolders?.length) {
                     return;
                 }
@@ -1055,7 +1078,7 @@ export class WorkbenchController
                     title: localize('workbench.projectEntries', 'Project entry INIs'),
                     placeHolder: localize(
                         'workbench.chooseEntries',
-                        'Select the root rules, art and sound INIs; included files are followed automatically. Clear all to use editor context.'
+                        'Select the root rules, art and sound INIs; included files are followed automatically. Clear all to detect standard project entries.'
                     ),
                 });
                 if (!chosen) {
@@ -1132,8 +1155,7 @@ export class WorkbenchController
                 }
             ),
             vscode.commands.registerCommand('ra2-ini-intellisense.browseAssets', async (uri?: vscode.Uri) => {
-                const origin =
-                    uri ?? vscode.window.activeTextEditor?.document.uri ?? vscode.workspace.workspaceFolders?.[0]?.uri;
+                const origin = commandOrigin(uri);
                 if (!origin) {
                     return;
                 }
@@ -1219,8 +1241,7 @@ export class WorkbenchController
     }
     private projectPanels = new Map<string, { panel: vscode.WebviewPanel; session: WorkbenchSession }>();
     private async openProject(uri?: vscode.Uri, scope = 'game'): Promise<void> {
-        const origin =
-            uri ?? vscode.window.activeTextEditor?.document.uri ?? vscode.workspace.workspaceFolders?.[0]?.uri;
+        const origin = commandOrigin(uri);
         if (!origin) {
             return;
         }

@@ -8,6 +8,9 @@ The RA2 sidebar is your project workbench: browse game objects, search across de
 
 ---
 
+The **INI check center** in the sidebar collects results, configures individual rule levels and exposes extension settings. **Logic chain** in the editor context menu explores incoming/outgoing typed references and opens their producing Tags. Configure **Project entry INIs** separately from **Set INI file category**; files outside the loading chain retain editor features without overriding game definitions. See [checks and logic chains](docs/asset-workbench.md#ini-checks-and-logic-chains).
+
+
 ## Key Features
 
 ### Asset Workbench and Cursor-following Inspector

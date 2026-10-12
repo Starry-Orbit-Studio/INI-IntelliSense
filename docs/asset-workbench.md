@@ -17,7 +17,7 @@ Use **Browse project objects** from the command palette or **Project objects** i
 
 The inspector's **Attributes** tab shows winning and overridden declarations with their source and inheritance path. Editing inherited values creates an override in the inspected object's last local section. Read-only archive sources and objects outside the effective load context cannot be edited here. Removing a declaration removes duplicates in that selected section block, keeps inline comments as standalone comments, then recalculates the value. It does not remove overrides in other repeated section blocks.
 
-Configure **Project entry INIs** to select rules/art/sound roots. Paths are relative to the mod root; included files inherit the root's category. Entry array order and include traversal determine precedence, with later visited files winning. This is an extension load context, not a guarantee that every engine or patch loader behaves identically. Without entries, editor context retains current-document precedence. Missing includes and incomplete indexing remain visible while editing known declarations; review these before relying on effective values from a partial graph. Changed parents or resources invalidate a prepared batch.
+Configure **Project entry INIs** to select rules/art/sound roots. Paths are relative to the mod root; included files inherit the root's category. Entry array order and include traversal determine precedence, with later visited files winning. This is an extension load context, not a guarantee that every engine or patch loader behaves identically. Without explicit entries, standard project entry names and their include ancestors are detected. Unloaded files retain an isolated editing context. Missing includes and incomplete indexing remain visible while editing known declarations; review these before relying on effective values from a partial graph. Changed parents or resources invalidate a prepared batch.
 
 ```jsonc
 {
@@ -172,3 +172,31 @@ Selecting an object previews it in the bottom inspector. The inline Open definit
 Embedded map thumbnails use bounded LZO1X decoding with input/output and back-reference validation. Preview.Size stores x,y,width,height; PreviewPack stores RGB triples. Decoding failure never returns a partially zero-filled image. Full CNCMaps rendering remains a separate optional action.
 
 Acceptance includes native development-host tests, browser interaction checks, and read-only ES catalog/map checks. Map pixel validation can additionally compare the decoded RGB bytes against an independent LZO implementation. No map writes are necessary.
+
+
+## INI checks and logic chains
+
+The sidebar places **INI check center** between resource auditing and project overview/settings. Its Results, Check rules and Settings tabs support search, per-rule Error/Warning/Information/Hint/Off levels and compatible/correctness/strict/quiet presets. Choose the configuration destination before changing rules: user, workspace or project folder. Inherit removes the selected scope's override; the effective level also reflects legacy switches and file exceptions. Unknown-key checks default to Off because dictionaries may lag engine extensions. Changes invalidate pending validation and clear stale diagnostics. Current-file and project checks report their coverage and can be cancelled. Project checks cover the active entry/include graph; standalone drafts can be checked individually. External INI Validator and resource-audit results retain their own providers and execution controls.
+
+Use **Project entry INIs** for the actual load roots. File categories identify Rules/Art/Sound meaning separately; **Set INI file category** adds an exact workspace-relative override for the chosen file. Included files inherit their entry's category. Compatible mode understands extension includes/inheritance; Vanilla mode ignores them. Unloaded files use their own same-category include closure and can still resolve explicitly referenced active Art/Sound definitions. Unrelated same-name Rules objects never merge into drafts. Open, unsaved text remains authoritative. Incomplete discovery is reported and does not create conclusive missing-section diagnostics.
+
+```jsonc
+{
+    "ra2-ini-intellisense.project.entryPoints": {
+        "rules": ["Rules/ruleses.ini"],
+        "art": ["Rules/artes.ini"],
+        "sound": ["Rules/soundes.ini"]
+    },
+    "ra2-ini-intellisense.project.compatibility": "compatible",
+    "ra2-ini-intellisense.indexing.fileOverrides": { "drafts/new-units.ini": "rules" },
+    "ra2-ini-intellisense.diagnostics.severity": { "S001": "None", "T008": "Error" },
+    "ra2-ini-intellisense.diagnostics.overrides": [
+        { "files": "drafts/**", "severity": { "L001": "Information" } }
+    ],
+    "ra2-ini-intellisense.diagnostics.excludePatterns": ["generated/**"]
+}
+```
+
+**Logic chain** starts at the selected section or lets you search for an object. Incoming links show users; outgoing links show dependencies. Relations come from effective dictionary-typed references, inheritance, Rules→Art bindings, sound events and declared animation inference. Conditions are labeled separately and do not prove runtime execution. Click a source to open its actual declaration, including inherited values. Change focus or expand 1–5 levels; expansion is capped at 150 objects with an explicit truncation indicator. Editing INI text marks the graph stale until refreshed. Scalar text that happens to match another section does not become a reference. This is a configuration dependency explorer, not an engine execution simulator.
+
+Tag hovers support standard description inheritance and case-insensitive lookup. If an older downloaded dictionary has no description files, bundled English/Chinese descriptions provide a fallback. Dictionary updates resolve include/description paths relative to the dictionary cache, including Windows separators.

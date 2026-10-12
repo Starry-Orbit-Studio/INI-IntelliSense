@@ -4,6 +4,7 @@ import { ErrorCode } from '../error-codes';
 import { RuleContext, ValidationRule } from '../rules';
 import { ValueTypeCategory } from '../../schema-manager';
 import { localize } from '../../i18n';
+import { parsePropertyLine } from '../../context/ini-position';
 
 /**
  * 验证一个值是否符合其 Schema 定义的类型规则，并返回带精确范围的错误。
@@ -15,6 +16,7 @@ import { localize } from '../../i18n';
  */
 function validateValue(value: string, valueType: string, context: RuleContext, valueStartIndex: number): IniDiagnostic[] {
     const { schemaManager, iniManager, lineNumber } = context;
+    if (value === '') { return []; }
     const category = schemaManager.getValueTypeCategory(valueType);
     const fullRange = new vscode.Range(lineNumber, valueStartIndex, lineNumber, valueStartIndex + value.length);
 
@@ -24,14 +26,15 @@ function validateValue(value: string, valueType: string, context: RuleContext, v
 
     switch (category) {
         case ValueTypeCategory.Primitive:
-            if (valueType === 'int' && !/^-?\d+$/.test(value)) {return createError(localize('diag.type.invalidInteger', 'Value "{0}" is not a valid integer.', value), ErrorCode.TYPE_INVALID_INTEGER);}
-            if ((valueType === 'float' || valueType === 'double') && isNaN(parseFloat(value))) {return createError(localize('diag.type.invalidFloat', 'Value "{0}" is not a valid floating-point number.', value), ErrorCode.TYPE_INVALID_FLOAT);}
+            if (valueType === 'int' && !/^[+-]?\d+$/.test(value)) {return createError(localize('diag.type.invalidInteger', 'Value "{0}" is not a valid integer.', value), ErrorCode.TYPE_INVALID_INTEGER);}
+            if ((valueType === 'float' || valueType === 'double') && (!/^[+-]?(?:\d+(?:\.\d*)?|\.\d+)(?:e[+-]?\d+)?%?$/i.test(value) || !Number.isFinite(Number(value.replace(/%$/, ''))))) {return createError(localize('diag.type.invalidFloat', 'Value "{0}" is not a valid floating-point number.', value), ErrorCode.TYPE_INVALID_FLOAT);}
+            if (valueType === 'bool' && !/^(yes|no|true|false|1|0)$/i.test(value)) { return createError(localize('diag.type.invalidBoolean', 'Value "{0}" is not a valid boolean.', value), ErrorCode.TYPE_INVALID_BOOLEAN); }
             return [];
 
         case ValueTypeCategory.NumberLimit: {
             const limit = schemaManager.getNumberLimit(valueType);
             if (!limit) {return [];}
-            const num = parseInt(value, 10);
+            const num = /^[-+]?\d+$/.test(value) ? Number(value) : NaN;
             if (isNaN(num)) {return createError(localize('diag.type.invalidInteger', 'Value "{0}" is not a valid integer.', value), ErrorCode.TYPE_INVALID_INTEGER);}
             if (num < limit.min || num > limit.max) {
                 return createError(localize('diag.type.numberOutOfRange', 'Value {0} is outside the allowed range [{1}, {2}] for type "{3}".', value, limit.min, limit.max, valueType), ErrorCode.TYPE_NUMBER_OUT_OF_RANGE);
@@ -91,7 +94,8 @@ function validateValue(value: string, valueType: string, context: RuleContext, v
         }
 
         case ValueTypeCategory.Section:
-            if (iniManager.findSectionLocations(value).length === 0) {
+            if (/^(none|<none>)$/i.test(value) || (context.project && !context.project.context(context.document.uri).complete)) { return []; }
+            if (context.project ? !context.project.sources(context.document.uri, value, valueType === 'AnimType' ? 'art' : valueType === 'Sound' ? 'sound' : context.project.category(context.document.uri)).length : iniManager.findSectionLocations(value).length === 0) {
                 return createError(localize('diag.logic.undefinedSection', 'Definition for section "[{0}]" not found in the project.', value), ErrorCode.LOGIC_UNDEFINED_SECTION_REFERENCE);
             }
             return [];
@@ -124,7 +128,8 @@ const checkKeyValueTypes: ValidationRule = (context: RuleContext): IniDiagnostic
 
     if (valueType) {
         // 计算值在行中的精确起始位置
-        const valueStartIndex = codePart.indexOf(kvMatch[2]) + (kvMatch[2].length - kvMatch[2].trimStart().length);
+        const parsed = parsePropertyLine(codePart)!;
+        const valueStartIndex = parsed.elements[0]?.start ?? parsed.valueStart;
         return validateValue(valueString, valueType, context, valueStartIndex);
     }
     

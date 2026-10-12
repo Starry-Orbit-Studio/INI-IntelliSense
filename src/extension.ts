@@ -1,5 +1,6 @@
 import * as vscode from 'vscode';
 import * as path from 'path';
+import * as fs from 'fs';
 import { INIManager } from './parser';
 import { INIValidatorExt } from './ini-validator-ext';
 import { SchemaManager } from './schema-manager';
@@ -20,6 +21,10 @@ import { FileTypeManager } from './file-type-manager';
 import { CsfManager } from './csf-manager';
 import { CsfOutlineProvider } from './csf-outline-provider';
 import { DescriptionManager } from './description-manager';
+import { registryValues } from './context/property-resolution';
+import { parsePropertyLine } from './context/ini-position';
+import { indexLogic } from './context/logic-graph';
+import { AnalysisController } from './context/analysis-controller';
 import { MixFileSystemProvider } from './mix/fs/mix-file-system-provider';
 import { MixWorkspaceManager } from './mix/fs/mix-workspace-manager';
 import { MixUriCodec } from './mix/fs/mix-uri-codec';
@@ -131,6 +136,11 @@ export async function activate(context: vscode.ExtensionContext) {
     const decoder = new DecoderService(vscode.Uri.joinPath(context.extensionUri, 'dist', 'media-worker.js').fsPath);
     const media = new MediaService(projectResources, decoder, context.extensionUri);
     const inspection = new InspectionService(projectResources, media, iniManager, schemaManager, fileTypeManager, (key) => csfManager.getLabel(key)?.value);
+    diagnosticManager.project = inspection.ini;
+    overrideDecorator.project = inspection.ini;
+    valuePreviewDecorator.project = inspection.ini;
+    context.subscriptions.push(new AnalysisController(context, inspection, schemaManager, descriptionManager, diagnosticManager, key => csfManager.getLabel(key)?.value));
+    context.subscriptions.push(vscode.commands.registerCommand('ra2-ini-intellisense.downloadDictionary', async () => { await dictionaryService.downloadAndConfigure(); await loadSchemaFromConfiguration(); }));
     const workbench = new WorkbenchController(context, inspection, media);
     context.subscriptions.push(new ProjectWorkbench(inspection), projectResources, decoder, inspection, workbench, new ResourceAudit(inspection),
         vscode.window.registerWebviewViewProvider(WorkbenchController.viewId, workbench, { webviewOptions: { retainContextWhenHidden: true } }),
@@ -450,6 +460,7 @@ export async function activate(context: vscode.ExtensionContext) {
 				const schemaContentBytes = await vscode.workspace.fs.readFile(schemaUri);
 				const schemaContent = Buffer.from(schemaContentBytes).toString('utf-8');
 				schemaManager.loadSchema(schemaContent, schemaPath);
+                inspection.ini.invalidate();
 				
 				// 加载描述文件
 				try {
@@ -462,7 +473,13 @@ export async function activate(context: vscode.ExtensionContext) {
 					descriptionManager.setDescriptionDir(dictDir);
 					
 					// 从字典文件加载描述
-					const loaded = descriptionManager.loadFromDictionary(schemaPath);
+					let loaded = descriptionManager.loadFromDictionary(schemaPath);
+                    if (!loaded) {
+                        for (const language of ['zh-CN', 'en-US']) {
+                            const bundled = context.asAbsolutePath('assets/descriptions/INIDictionary-' + language + '.ini');
+                            if (fs.existsSync(bundled)) { loaded = descriptionManager.loadFromFile(bundled, language) || loaded; }
+                        }
+                    }
 					if (loaded) {
 						console.log(`[RA2 Mod IntelliSense] Loaded descriptions for language: ${language}`);
 					} else {
@@ -621,7 +638,9 @@ export async function activate(context: vscode.ExtensionContext) {
 		if (event.document.languageId === LANGUAGE_ID) {
 			await iniManager.updateFile(event.document.uri, event.document.getText());
             // 传入变更范围，触发局部热检查
-			diagnosticManager.handleDocumentChange(event.document, event.contentChanges.map(c => c.range));
+			for (const document of vscode.workspace.textDocuments) {
+                if (document.languageId === 'ra2-ini') { diagnosticManager.handleDocumentChange(document); }
+            }
             // 触发装饰器（防抖）—— 仅当变更文档是当前活动编辑器时
             const activeEditor = vscode.window.activeTextEditor;
             if (activeEditor && activeEditor.document === event.document) {
@@ -643,20 +662,22 @@ export async function activate(context: vscode.ExtensionContext) {
 
 	let codeLensProvider: vscode.Disposable | undefined;
 	function updateCodeLensProvider() {
-		const isEnabled = vscode.workspace.getConfiguration('ra2-ini-intellisense').get('codeLens.enabled');
+		const isEnabled = vscode.workspace.textDocuments.some(document => vscode.workspace.getConfiguration('ra2-ini-intellisense', document.uri).get('codeLens.enabled', false)) || vscode.workspace.getConfiguration('ra2-ini-intellisense').get('codeLens.enabled', false);
 		if (isEnabled) {
 			if (!codeLensProvider) {
 				codeLensProvider = vscode.languages.registerCodeLensProvider(selector, {
-					provideCodeLenses(document, token) {
-						if (isIndexing) { return []; }
+					async provideCodeLenses(document, token) {
+                        if (!vscode.workspace.getConfiguration('ra2-ini-intellisense', document.uri).get('codeLens.enabled', false)) { return []; }
+                        const graph = await indexLogic(inspection.ini, schemaManager, document.uri, token);
 						const codeLenses: vscode.CodeLens[] = [];
                         // 使用新 API：直接遍历 Sections
-                        const doc = iniManager.getDocument(document.uri);
+                        const doc = inspection.ini.parse(document);
                         if (!doc) { return []; }
 
 						for (const sec of doc.sections) {
-                            const valueRefs = iniManager.valueReferences.get(sec.name) || [];
-                            const inheritanceRefs = iniManager.inheritanceReferences.get(sec.name) || [];
+                            const id = inspection.ini.category(document.uri) + ':' + sec.name.toLowerCase();
+                            const valueRefs = graph.edges.filter(edge => edge.to === id && edge.kind !== 'inheritance');
+                            const inheritanceRefs = graph.edges.filter(edge => edge.to === id && edge.kind === 'inheritance');
                             
                             const range = document.lineAt(sec.startLine).range;
                             const parts: string[] = [];
@@ -698,7 +719,7 @@ export async function activate(context: vscode.ExtensionContext) {
                 fileTypeManager.reloadConfig();
             }
 
-			loadSchemaFromConfiguration().then(() => {
+			(e.affectsConfiguration('ra2-ini-intellisense.schemaFilePath') ? loadSchemaFromConfiguration() : Promise.resolve()).then(() => {
 				updateMainStatus();
                 updateFileTypeStatus(vscode.window.activeTextEditor);
 				if (e.affectsConfiguration('ra2-ini-intellisense.codeLens.enabled')) {
@@ -776,7 +797,7 @@ export async function activate(context: vscode.ExtensionContext) {
         outputChannel.appendLine(`File Type: ${fileTypeManager.getFileType(document.uri)}`);
 		outputChannel.appendLine(localize('debug.context.position', 'Cursor Position: Line {0}, Character {1}\n', position.line + 1, position.character + 1));
 
-		const currentSectionName = iniManager.getSectionNameAtLine(document.uri, position.line);
+		const currentSectionName = inspection.ini.parse(document).getSectionAt(position.line)?.name;
 
 		if (!currentSectionName) {
 			outputChannel.appendLine(localize('debug.context.noSection', 'Error: Cursor is not within a valid section.'));
@@ -786,7 +807,7 @@ export async function activate(context: vscode.ExtensionContext) {
 		
 		outputChannel.appendLine(localize('debug.context.currentSection', '✅ Current Section: [{0}]', currentSectionName));
 
-		const typeName = iniManager.getTypeForSection(currentSectionName, new Set(), fileTypeManager.getFileType(document.uri));
+		const typeName = inspection.ini.type(document.uri, currentSectionName, inspection.ini.category(document.uri));
 		if (typeName) {
 			outputChannel.appendLine(localize('debug.inference.success', "✅ Inferred Type: '{0}'", typeName));
 
@@ -817,7 +838,8 @@ export async function activate(context: vscode.ExtensionContext) {
 	context.subscriptions.push(
 		vscode.languages.registerDefinitionProvider(selector, {
 			async provideDefinition(document, position, token) {
-				if (isIndexing) { return []; }
+                await inspection.ini.load(document.uri);
+                if (token.isCancellationRequested) { return []; }
 				const wordRange = document.getWordRangeAtPosition(position, /[a-zA-Z0-9_.-]+/);
 				if (!wordRange) { return []; }
 				const word = document.getText(wordRange);
@@ -828,7 +850,7 @@ export async function activate(context: vscode.ExtensionContext) {
 					return new vscode.Location(document.uri, new vscode.Position(lineInCurrentFile, 0));
 				}
 				
-				const sectionLocations = iniManager.findSectionLocations(word);
+				const sectionLocations = inspection.ini.sources(document.uri, word).map(source => new vscode.Location(source.document.uri, new vscode.Position(source.section.startLine, 0)));
 				if (sectionLocations.length > 0) {
 					return sectionLocations;
 				}
@@ -836,8 +858,9 @@ export async function activate(context: vscode.ExtensionContext) {
 			}
 		}),
 		vscode.languages.registerHoverProvider(selector, {
-			provideHover(document, position, token) {
-				if (isIndexing) { return null; }
+			async provideHover(document, position, token) {
+                await inspection.ini.load(document.uri);
+                if (token.isCancellationRequested) { return null; }
 				const line = document.lineAt(position.line);
 				const lineText = line.text;
 				const equalsIndex = lineText.indexOf('=');
@@ -865,7 +888,7 @@ export async function activate(context: vscode.ExtensionContext) {
 
 				if (!keyRange.contains(position)) {return null;}
 
-				const currentSectionName = iniManager.getSectionNameAtLine(document.uri, position.line);
+				const currentSectionName = inspection.ini.parse(document).getSectionAt(position.line)?.name;
 				if (!currentSectionName) {return null;}
 		
 				const markdown = new vscode.MarkdownString("", true);
@@ -873,8 +896,8 @@ export async function activate(context: vscode.ExtensionContext) {
 				markdown.supportThemeIcons = true;
 				let hasContent = false;
 
-                const currentFileType = fileTypeManager.getFileType(document.uri);
-				const typeName = iniManager.getTypeForSection(currentSectionName, new Set(), currentFileType);
+                const currentFileType = inspection.ini.category(document.uri);
+                const typeName = inspection.ini.type(document.uri, currentSectionName, currentFileType);
 				if (typeName) {
 					const allKeys = schemaManager.getAllKeysForType(typeName);
 					let propDef: import('./schema-manager').PropertyDefinition | undefined;
@@ -930,7 +953,9 @@ export async function activate(context: vscode.ExtensionContext) {
 					}
 				}
 
-				const parentKeyInfo = iniManager.findInheritedKeyLocation(currentSectionName, keyPart, currentFileType); 
+				const effective = inspection.ini.explain(document.uri, currentSectionName, currentFileType).get(keyPart.toLowerCase());
+                const parent = effective?.declarations.find(item => item.inherited);
+                const parentKeyInfo = parent ? { location: new vscode.Location(parent.uri, new vscode.Position(parent.line, 0)), lineText: parent.key + '=' + parent.value, definer: parent.section } : null;
 				
 				if (parentKeyInfo && parentKeyInfo.location && parentKeyInfo.lineText && parentKeyInfo.definer) {
 						if(hasContent) {markdown.appendMarkdown('\n\n---\n\n');}
@@ -960,16 +985,17 @@ export async function activate(context: vscode.ExtensionContext) {
 		}),
 		vscode.languages.registerCompletionItemProvider(selector, {
 			async provideCompletionItems(document, position, token, context) {
-				if (isIndexing) { return new vscode.CompletionList([], true); }
+				await inspection.ini.load(document.uri);
+                if (token.isCancellationRequested) { return new vscode.CompletionList([], true); }
 				const line = document.lineAt(position.line);
 				const equalsIndex = line.text.indexOf('=');
 				const isKeyCompletion = equalsIndex === -1 || position.character <= equalsIndex;
 
-				const currentSectionName = iniManager.getSectionNameAtLine(document.uri, position.line);
+				const currentSectionName = inspection.ini.parse(document).getSectionAt(position.line)?.name;
 				if (!currentSectionName) {return new vscode.CompletionList([], false);}
 		
-                const currentFileType = fileTypeManager.getFileType(document.uri);
-				const typeName = iniManager.getTypeForSection(currentSectionName, new Set(), currentFileType);
+                const currentFileType = inspection.ini.category(document.uri);
+                const typeName = inspection.ini.type(document.uri, currentSectionName, currentFileType);
 				if (!typeName) {return new vscode.CompletionList([], false);}
 
 				if (isKeyCompletion) {
@@ -1017,22 +1043,23 @@ export async function activate(context: vscode.ExtensionContext) {
 							item.documentation = localize('completion.color.documentation', 'Enter an RGB color value, e.g., 255,0,0');
 							suggestions.push(item);
 						}
-						const targetRegistry = schemaManager.getRegistryForType(valueType);
+						const targetRegistry = schemaManager.getRegistryForType(inspection.ini.propertyType(typeName, currentKey) ?? valueType);
 						if (targetRegistry) {
-							const ids = iniManager.getValuesForRegistry(targetRegistry);
+							const snapshot = inspection.ini.snapshot(document.uri);
+                            const ids = registryValues(targetRegistry, name => snapshot.sources(name), parsePropertyLine, snapshot.context.compatibility !== 'vanilla');
 							ids.forEach(id => suggestions.push(new vscode.CompletionItem(id, vscode.CompletionItemKind.EnumMember)));
 							if (suggestions.length > 0) {return new vscode.CompletionList(suggestions, true);}
 						}
 					}
 					
 					const fallbackSuggestions = new Map<string, vscode.CompletionItem>();
-					iniManager.getAllSectionNames().forEach(name => {
+					inspection.ini.snapshot(document.uri).names.forEach(name => {
 						if (!fallbackSuggestions.has(name)) {
 							fallbackSuggestions.set(name, new vscode.CompletionItem(name, vscode.CompletionItemKind.Module));
 						}
 					});
 					if (currentKey) {
-						iniManager.getValuesForKey(currentKey).forEach(value => {
+						inspection.ini.documents(document.uri).flatMap(model => model.sections.flatMap(section => [...section.properties].filter(([key]) => key.toLowerCase() === currentKey.toLowerCase()).map(([, value]) => value))).forEach(value => {
 							if (!fallbackSuggestions.has(value)) {
 								const item = new vscode.CompletionItem(value, vscode.CompletionItemKind.Value);
 								if (/^-?\d+(\.\d+)?$/.test(value)) {
@@ -1051,19 +1078,19 @@ export async function activate(context: vscode.ExtensionContext) {
 			}
 		}),
 		vscode.languages.registerColorProvider(selector, {
-			provideDocumentColors(document, token) {
-				if (isIndexing) { return []; }
+			async provideDocumentColors(document, token) {
+                await inspection.ini.load(document.uri);
 				const colors: vscode.ColorInformation[] = [];
 				for (let i = 0; i < document.lineCount; i++) {
 					const line = document.lineAt(i);
 					const equalsIndex = line.text.indexOf('=');
 					if (equalsIndex === -1) {continue;}
 
-					const currentSectionName = iniManager.getSectionNameAtLine(document.uri, i);
+					const currentSectionName = inspection.ini.parse(document).getSectionAt(i)?.name;
 					if (!currentSectionName) {continue;}
 					
 					const currentKey = line.text.substring(0, equalsIndex).trim();
-					const typeName = iniManager.getTypeForSection(currentSectionName, new Set(), fileTypeManager.getFileType(document.uri));
+					const typeName = inspection.ini.type(document.uri, currentSectionName, inspection.ini.category(document.uri));
 
 					if (typeName) {
 						const allKeys = schemaManager.getAllKeysForType(typeName);
@@ -1076,14 +1103,15 @@ export async function activate(context: vscode.ExtensionContext) {
 						}
 
 						if (valueType === 'ColorStruct') {
-							const valuePart = line.text.substring(equalsIndex + 1).split(';')[0].trim();
+							const parsed = parsePropertyLine(line.text);
+                            const valuePart = parsed?.value ?? '';
 							const rgb = valuePart.match(/^(\d{1,3}),\s*(\d{1,3}),\s*(\d{1,3})$/);
 							if (rgb) {
 								const r = parseInt(rgb[1], 10);
 								const g = parseInt(rgb[2], 10);
 								const b = parseInt(rgb[3], 10);
 								if (r <= 255 && g <= 255 && b <= 255) {
-									const range = new vscode.Range(i, equalsIndex + 1, i, line.text.length);
+									const range = new vscode.Range(i, parsed!.elements[0].start, i, parsed!.elements[0].start + parsed!.value.length);
 									colors.push(new vscode.ColorInformation(range, new vscode.Color(r / 255, g / 255, b / 255, 1)));
 								}
 							}
@@ -1100,18 +1128,16 @@ export async function activate(context: vscode.ExtensionContext) {
 			}
 		}),
 		vscode.languages.registerReferenceProvider(selector, {
-			provideReferences(document, position, context, token) {
-				if (isIndexing) { return []; }
-				const line = document.lineAt(position.line);
-				const sectionMatch = line.text.match(/^\s*\[([^\]:]+)\]/);
-				if (sectionMatch) {
-					const sectionName = sectionMatch[1];
-					const valueRefs = iniManager.valueReferences.get(sectionName) || [];
-					const inheritanceRefs = iniManager.inheritanceReferences.get(sectionName) || [];
-					return [...valueRefs, ...inheritanceRefs];
-				}
-				return [];
-			}
+            async provideReferences(document, position, context, token) {
+                await inspection.ini.load(document.uri);
+                const section = inspection.ini.parse(document).getSectionAt(position.line);
+                if (!section) { return []; }
+                const graph = await indexLogic(inspection.ini, schemaManager, document.uri, token);
+                const id = inspection.ini.category(document.uri) + ':' + section.name.toLowerCase();
+                const references = graph.edges.filter(edge => edge.to === id).map(edge => graph.locations.get(edge.id)!).filter(Boolean);
+                if (context.includeDeclaration) { const declaration = graph.locations.get(id); if (declaration) { references.unshift(declaration); } }
+                return references;
+            }
 		}),
 		vscode.languages.registerFoldingRangeProvider(selector, {
 			provideFoldingRanges(document, context, token) {

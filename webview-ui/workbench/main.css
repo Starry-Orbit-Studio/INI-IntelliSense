@@ -863,3 +863,105 @@ main.map-page {
         grid-column: 1 / -1;
     }
 }
+/* Analysis surfaces use bounded controls and readable source evidence. */
+.analysis-toolbar,
+.analysis-tabs {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    margin: 12px 0;
+}
+.analysis-toolbar select {
+    width: auto;
+    max-width: 220px;
+}
+.analysis-tabs button[aria-pressed='true'] {
+    background: var(--vscode-button-background);
+    color: var(--vscode-button-foreground);
+}
+.analysis-content {
+    margin-top: 12px;
+}
+.rule-row {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) 150px;
+    gap: 12px;
+    align-items: center;
+    padding: 12px 8px;
+    border-bottom: 1px solid var(--vscode-panel-border);
+}
+.rule-row small {
+    display: block;
+    margin-top: 5px;
+    color: var(--vscode-descriptionForeground);
+}
+.rule-row select {
+    width: 100%;
+}
+.analysis-issue,
+.logic-card {
+    padding: 12px;
+    border: 1px solid var(--vscode-panel-border);
+    border-radius: 8px;
+    margin: 8px 0;
+    overflow-wrap: anywhere;
+}
+.analysis-issue.severity-0,
+.logic-card.missing {
+    border-left: 3px solid var(--vscode-errorForeground);
+}
+.analysis-issue.severity-1 {
+    border-left: 3px solid var(--vscode-editorWarning-foreground);
+}
+.analysis-issue button,
+.logic-card button,
+.logic-paths button {
+    text-align: left;
+}
+.setting-row {
+    padding: 10px;
+    border-bottom: 1px solid var(--vscode-panel-border);
+}
+.setting-row pre {
+    max-height: 220px;
+    overflow: auto;
+    white-space: pre-wrap;
+    overflow-wrap: anywhere;
+}
+.logic-focus {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 12px;
+    border: 1px solid var(--vscode-focusBorder);
+    border-radius: 8px;
+    padding: 12px;
+    margin: 12px 0;
+}
+.logic-focus h2 {
+    margin: 0;
+    font-size: 18px;
+}
+.logic-focus p {
+    margin: 0;
+    color: var(--vscode-descriptionForeground);
+}
+.logic-focus button {
+    margin-left: auto;
+}
+.logic-columns {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 20px;
+}
+.logic-paths {
+    margin-top: 16px;
+}
+@media (max-width: 600px) {
+    .logic-columns {
+        grid-template-columns: 1fr;
+    }
+    .rule-row {
+        grid-template-columns: minmax(0, 1fr) 110px;
+    }
+}

@@ -68,3 +68,17 @@ export function resolveProperties(
     }
     return result;
 }
+
+/** Registry append entries retain every '+' declaration; ordinary keys use effective overrides. */
+export function registryValues(name: string, sources: (name: string) => SectionSource[], parse: (line: string) => { key: string; value: string } | undefined, append = true): string[] {
+    const values = [...resolveProperties(name, sources, parse)].filter(([key]) => key !== '+').map(([, property]) => property.effective.value);
+    if (append) {
+        for (const source of sources(name)) {
+            for (let line = source.section.startLine + 1; line <= source.section.endLine; line++) {
+                const property = parse(source.document.lines[line]);
+                if (property?.key === '+') { values.push(property.value); }
+            }
+        }
+    }
+    return [...new Set(values.filter(Boolean))];
+}

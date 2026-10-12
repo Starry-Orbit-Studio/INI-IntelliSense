@@ -83,6 +83,37 @@ module.exports = async function verifyPlatform(port, output, command) {
             if (await vehicles.getAttribute('aria-expanded') !== 'true') await vehicles.press('ArrowRight');
             await tree.getByRole('treeitem').filter({ hasText: /打开列表|Open list/ }).first().waitFor();
             await page.screenshot({ path: output.replace('.png', '-sidebar.png') });
+            await command('ra2-ini-intellisense.projectOverview');
+            await target.locator('.project-layout').waitFor();
+            await command('ra2-ini-intellisense.checkCenter');
+            const findFrame = async (selector) => {
+                for (let attempt = 0; attempt < 200; attempt++) {
+                    for (const frame of page.frames()) {
+                        if (await frame.locator(selector).count()) return frame;
+                    }
+                    await new Promise(resolve => setTimeout(resolve, 100));
+                }
+                throw new Error('Missing native analysis view: ' + selector);
+            };
+            const checks = await findFrame('.analysis-tabs');
+            await checks.locator('[data-tab=rules]').click();
+            await checks.locator('.rule-row').first().waitFor();
+            assert.equal(await checks.locator('.rule-row').count(), 18);
+            await page.screenshot({ path: output.replace('.png', '-checks.png') });
+            await checks.locator('.analysis-toolbar > button').nth(0).click();
+            await checks.waitForFunction(() => document.querySelector('.analysis-status')?.textContent.includes('1/1'));
+            await checks.locator('[data-tab=settings]').click();
+            assert.ok((await checks.locator('.analysis-content').textContent()).includes('INIDictionary'));
+            await page.screenshot({ path: output.replace('.png', '-settings.png') });
+            await command('ra2-ini-intellisense.logicChain');
+            const logic = await findFrame('.logic-focus');
+            await logic.locator('form input[type=search]').fill('ALTNK');
+            await logic.locator('form input[type=search]').press('Enter');
+            try { await logic.getByRole('button', { name: 'ALTNK · VehicleType', exact: true }).click({ timeout: 5000 }); }
+            catch (error) { console.error('Logic page:', await logic.locator('#app').textContent()); await page.screenshot({ path: output.replace('.png', '-logic-failed.png') }); throw error; }
+            await logic.waitForFunction(() => document.querySelector('.logic-focus h2')?.textContent === 'ALTNK');
+            assert.ok((await logic.locator('.logic-columns').textContent()).includes('Primary'));
+            await page.screenshot({ path: output.replace('.png', '-logic.png') });
             await command('ra2-ini-intellisense.previewMap');
             let mapFrame;
             for (let attempt = 0; attempt < 100 && !mapFrame; attempt++) {

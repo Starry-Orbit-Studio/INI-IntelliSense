@@ -119,7 +119,7 @@ suite('Optional real mod acceptance', () => {
                             Promise.resolve(
                                 vscode.commands.executeCommand(
                                     name,
-                                    ...(name === 'ra2-ini-intellisense.previewMap'
+                                    ...(name === 'ra2-ini-intellisense.projectOverview' ? [{ viewId: 'ra2-project-workbench' }] : name === 'ra2-ini-intellisense.checkCenter' || name === 'ra2-ini-intellisense.logicChain' ? [origin] : name === 'ra2-ini-intellisense.previewMap'
                                         ? [vscode.Uri.file(path.join(root, 'Custom Maps', 'ring.map'))]
                                         : [])
                                 )

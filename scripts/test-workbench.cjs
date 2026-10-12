@@ -153,7 +153,7 @@ async function main() {
             await page.waitForFunction(
                 (id) =>
                     document.getElementById('app')?.dataset.inspection === id &&
-                    document.querySelector('.sprite-canvas,.voxel-canvas,audio,.catalog-table,.project-layout,.map-sections'),
+                    document.querySelector('.sprite-canvas,.voxel-canvas,audio,.catalog-table,.project-layout,.map-sections,.analysis-content,.logic-focus'),
                 value.id
             );
         };
@@ -962,6 +962,33 @@ async function main() {
             skyBefore
         );
         await page.screenshot({ path: path.join(root, 'out', 'webview-qa', 'sky-preview.png'), fullPage: true });
+        const checks = inspection('checks', undefined);
+        checks.type = ''; checks.assets = []; checks.paletteOptions = [];
+        checks.checks = { enabled: true, scope: 'folder', checked: 1, total: 2, complete: false, dictionary: 'dictionary.ini', languages: ['zh-CN', 'en-US'], rules: [{ id: 'S001', name: 'Leading whitespace', group: 'S', severity: 'Warning', effective: 'Error', configured: 'Error' }], issues: [{ id: 'problem', source: 'rules.ini:4', code: 'T008', message: 'Invalid boolean', severity: 0, provider: 'RA2 INI' }], settings: [{ key: 'indexing.fileCategories', value: '{"rules":["rules*.ini"]}' }] };
+        await send(checks);
+        await page.getByRole('button', { name: labels.checkRules, exact: true }).click();
+        await page.getByLabel('Leading whitespace', { exact: true }).selectOption('None');
+        assert.ok(await page.evaluate(() => window.messages.some(message => message.type === 'rule-level' && message.id === 'S001' && message.value === 'None')));
+        await page.screenshot({ path: path.join(root, 'out', 'webview-qa', 'check-rules.png'), fullPage: true });
+        await page.getByRole('button', { name: labels.projectSettings, exact: true }).click();
+        assert.ok((await page.locator('.analysis-content').textContent()).includes('dictionary.ini'));
+        await page.setViewportSize({ width: 350, height: 800 });
+        assert.ok(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1));
+        await page.screenshot({ path: path.join(root, 'out', 'webview-qa', 'check-settings-narrow.png'), fullPage: true });
+        const graph = inspection('logic', undefined); graph.type = ''; graph.assets = []; graph.paletteOptions = [];
+        graph.logic = { focus: 'rules:tank', direction: 'both', depth: 2, truncated: false, nodes: [{ id: 'rules:tank', name: 'Tank', type: 'UnitType', category: 'rules', missing: false }, { id: 'rules:gun', name: 'Gun', type: 'WeaponType', category: 'rules', missing: false }], edges: [{ id: 'edge', from: 'rules:tank', to: 'rules:gun', key: 'Primary', source: 'rules.ini:4', kind: 'reference', inherited: false }] };
+        await send(graph);
+        await page.getByRole('button', { name: 'Gun · WeaponType', exact: true }).click();
+        assert.ok(await page.evaluate(() => window.messages.some(message => message.type === 'logic-options' && message.value.focus === 'rules:gun')));
+        await page.getByRole('button', { name: 'rules.ini:4', exact: true }).click();
+        assert.ok(await page.evaluate(() => window.messages.some(message => message.type === 'source' && message.id === 'edge')));
+        await page.screenshot({ path: path.join(root, 'out', 'webview-qa', 'logic-narrow.png'), fullPage: true });
+        graph.mediaRevision = 2;
+        graph.logic.query = 'Gun'; graph.logic.choices = [graph.logic.nodes[1]];
+        await send(graph);
+        await page.waitForFunction(() => document.querySelector('form input')?.value === 'Gun');
+        assert.ok(await page.getByRole('button', { name: 'Gun · WeaponType', exact: true }).count() === 2, 'same-page revisions render search results');
+
         assert.deepEqual(errors, [], 'Webview must not emit browser or CSP errors');
         console.log(
             'Webview regression passed: worker pixels, source/palette selection, action edits, comparison, PNG, WebGL, light edits, narrow layout, audio pause, asset library.'
