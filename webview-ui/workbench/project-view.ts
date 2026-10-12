@@ -1,5 +1,8 @@
 import type { Inspection, WorkbenchLabels } from '../../src/context/workbench-protocol';
+import { configurationView } from './configuration-view';
 import { CATALOG_GROUPS } from '../../src/context/catalog-groups';
+
+let projectTab = 'overview';
 
 /** Readable project facts; configuration writes use VS Code's scoped settings editor. */
 export function projectView(
@@ -8,6 +11,7 @@ export function projectView(
     labels: WorkbenchLabels,
     post: (type: string, data?: object) => void
 ): void {
+    host.classList.add('project-page');
     const project = inspection.project!;
     const make = <K extends keyof HTMLElementTagNameMap>(tag: K, text = '') => {
         const node = document.createElement(tag);
@@ -23,7 +27,8 @@ export function projectView(
     const root = make('p', project.root);
     root.className = 'project-root';
     host.append(root);
-    host.append(make('p', labels.projectOverviewHelp));
+    const overviewHelp = make('p', labels.projectOverviewHelp);
+    host.append(overviewHelp);
     const cards = make('section');
     cards.className = 'project-counts';
     for (const group of CATALOG_GROUPS) {
@@ -36,24 +41,33 @@ export function projectView(
     const layout = make('div');
     layout.className = 'project-layout';
     host.append(layout);
-    const settings = make('section');
-    settings.className = 'project-card';
-    settings.append(make('h2', labels.projectSettings), make('p', labels.projectSettingsHelp));
-    for (const setting of project.settings) {
-        const row = make('details');
-        row.append(make('summary', labels['setting_' + setting.key] ?? setting.key));
-        row.append(make('p', labels['help_' + setting.key] ?? ''));
-        row.append(make('pre', setting.value));
-        row.append(
-            button(labels.editProperty, () =>
-                post(setting.key === 'project.entryPoints' ? 'configure-project' : 'project-setting', {
-                    key: setting.key,
-                })
-            )
-        );
-        settings.append(row);
-    }
-    layout.append(settings);
+    const navigation = make('nav');
+    navigation.className = 'analysis-tabs project-navigation';
+    const overview = button(labels.configOverview, () => {
+        projectTab = 'overview';
+        draw();
+    });
+    overview.dataset.projectTab = 'overview';
+    const configure = button(labels.configProjectConfiguration, () => {
+        projectTab = 'configuration';
+        draw();
+    });
+    configure.dataset.projectTab = 'configuration';
+    navigation.append(overview, configure);
+    host.insertBefore(navigation, cards);
+    const facts = make('section');
+    facts.className = 'project-card';
+    facts.append(
+        make('h2', labels.configOverview),
+        make('p', labels.configOverviewHelp),
+        button(labels.checkCenter, () => post('check-center'))
+    );
+    const configureHere = button(labels.configProjectConfiguration, () => {
+        projectTab = 'configuration';
+        draw();
+    });
+    facts.append(configureHere);
+    layout.append(facts);
     const sources = make('section');
     sources.className = 'project-card';
     sources.append(make('h2', labels.projectSources), make('p', labels.resourcePriorityHelp));
@@ -71,7 +85,7 @@ export function projectView(
     search.setAttribute('aria-label', labels.searchSources);
     const list = make('div');
     list.className = 'project-source-list';
-    const draw = () => {
+    const drawSources = () => {
         list.replaceChildren();
         const matches = project.documents.filter((document) =>
             document.label.toLowerCase().includes(search.value.toLowerCase())
@@ -83,8 +97,8 @@ export function projectView(
             list.append(make('p', labels.refineSearch));
         }
     };
-    search.oninput = draw;
-    draw();
+    search.oninput = drawSources;
+    drawSources();
     documents.append(search, list);
     sources.append(documents);
     const archives = make('details');
@@ -105,4 +119,24 @@ export function projectView(
     });
     sources.append(status);
     layout.append(sources);
+    const editor = make('section');
+    editor.className = 'project-configuration';
+    host.append(editor);
+    const draw = () => {
+        host.classList.toggle('project-config-active', projectTab === 'configuration');
+        root.hidden = projectTab !== 'overview';
+        overviewHelp.hidden = projectTab !== 'overview';
+        cards.hidden = projectTab !== 'overview';
+        layout.hidden = projectTab !== 'overview';
+        editor.hidden = projectTab !== 'configuration';
+        overview.setAttribute('aria-pressed', String(projectTab === 'overview'));
+        configure.setAttribute('aria-pressed', String(projectTab === 'configuration'));
+        editor.replaceChildren();
+        if (projectTab === 'configuration') {
+            if (project.configuration) {
+                configurationView(editor, project.configuration, labels, post);
+            }
+        }
+    };
+    draw();
 }

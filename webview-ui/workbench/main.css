@@ -949,6 +949,178 @@ main.map-page {
 .logic-focus button {
     margin-left: auto;
 }
+.project-configuration {
+    min-width: 0;
+}
+.configuration-editor {
+    min-width: 0;
+}
+.configuration-bar {
+    position: sticky;
+    top: 40px;
+    z-index: 4;
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 8px;
+    padding: 10px 0;
+    background: var(--vscode-sideBar-background, var(--vscode-editor-background));
+    border-bottom: 1px solid var(--vscode-panel-border);
+}
+.configuration-destination {
+    flex: 1 1 200px;
+    min-width: 0;
+    overflow-wrap: anywhere;
+    color: var(--vscode-descriptionForeground);
+    font-size: 11px;
+}
+.configuration-path-status {
+    width: 100%;
+    margin: 0;
+    font-size: 12px;
+    overflow-wrap: anywhere;
+}
+.configuration-bar select,
+.configuration-field select {
+    width: auto;
+    max-width: min(100%, 240px);
+}
+.configuration-controls {
+    margin: 14px 0;
+}
+.configuration-groups {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    margin-bottom: 12px;
+}
+.configuration-groups button[aria-pressed='true'] {
+    background: var(--vscode-button-background);
+    color: var(--vscode-button-foreground);
+}
+.configuration-controls input[type='search'] {
+    width: min(100%, 420px);
+}
+.configuration-field {
+    padding: 14px;
+    margin: 12px 0;
+    border: 1px solid var(--vscode-panel-border);
+    border-radius: 8px;
+    min-width: 0;
+}
+.configuration-field-head {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    align-items: center;
+    gap: 4px 10px;
+}
+.configuration-field-head h3 {
+    margin: 0;
+    font-size: 14px;
+}
+.configuration-field-head small {
+    grid-column: 1;
+    color: var(--vscode-descriptionForeground);
+}
+.configuration-field-head button {
+    grid-column: 2;
+    grid-row: 1 / span 2;
+}
+.configuration-field p {
+    margin: 8px 0;
+    color: var(--vscode-descriptionForeground);
+}
+.configuration-field > input[type='text'],
+.configuration-field > input[type='number'] {
+    width: min(100%, 560px);
+}
+.configuration-field input[type='checkbox'] {
+    width: 18px;
+    height: 18px;
+    min-height: 0;
+    accent-color: var(--vscode-focusBorder);
+}
+.configuration-key {
+    display: block;
+    margin-top: 9px;
+    color: var(--vscode-descriptionForeground);
+    font-size: 10px;
+    overflow-wrap: anywhere;
+}
+.configuration-path,
+.configuration-actions {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 6px;
+    margin: 8px 0;
+}
+.configuration-path input {
+    flex: 1 1 180px;
+    min-width: 0;
+}
+.configuration-field details {
+    margin: 12px 0;
+}
+.configuration-field summary {
+    cursor: pointer;
+}
+.configuration-list-row {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) repeat(3, 30px);
+    gap: 5px;
+    margin: 6px 0;
+}
+.configuration-list-row input {
+    width: 100%;
+    min-width: 0;
+}
+.configuration-mapping-row {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    align-items: center;
+    margin: 8px 0;
+}
+.configuration-mapping-row span {
+    flex: 1 1 180px;
+    min-width: 0;
+    overflow-wrap: anywhere;
+}
+.configuration-mapping-row input {
+    flex: 1 1 180px;
+    min-width: 0;
+}
+.configuration-exception {
+    margin: 10px 0;
+    padding: 10px;
+    background: var(--vscode-editor-background);
+    border-radius: 6px;
+}
+.configuration-exception > input {
+    width: 100%;
+}
+.configuration-field textarea {
+    width: 100%;
+    max-width: 100%;
+    resize: vertical;
+    color: var(--vscode-input-foreground);
+    background: var(--vscode-input-background);
+    font: inherit;
+}
+@media (max-width: 450px) {
+    .configuration-field-head {
+        grid-template-columns: minmax(0, 1fr);
+    }
+    .configuration-field-head button {
+        grid-column: 1;
+        grid-row: auto;
+        justify-self: start;
+    }
+    .configuration-bar {
+        top: 0;
+    }
+}
 .logic-columns {
     display: grid;
     grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -964,4 +1136,42 @@ main.map-page {
     .rule-row {
         grid-template-columns: minmax(0, 1fr) 110px;
     }
+}
+
+.configuration-editor button:disabled {
+    opacity: 0.5;
+    cursor: default;
+}
+.configuration-field.control-toggle {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) 20px;
+    align-items: center;
+    gap: 12px;
+}
+.configuration-field.control-toggle > input {
+    grid-column: 2;
+    grid-row: 1;
+}
+
+.project-config-active > .toolbar {
+    display: none;
+}
+.project-page .identity {
+    padding: 5px 0;
+}
+.project-page .resolution-context {
+    margin: 8px 0;
+}
+.configuration-controls {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 8px;
+}
+.configuration-groups {
+    flex: 1 1 350px;
+    margin-bottom: 0;
+}
+.configuration-controls input[type='search'] {
+    flex: 0 1 220px;
 }

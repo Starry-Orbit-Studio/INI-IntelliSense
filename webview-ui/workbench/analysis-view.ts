@@ -1,8 +1,10 @@
 import type { Inspection, WorkbenchLabels } from '../../src/context/workbench-protocol';
+import { configurationView, hasConfigurationDraft } from './configuration-view';
 import { displayType } from '../../src/type-display';
 
 let query = '',
     tab = 'results';
+let cleanupScope = () => undefined;
 let graphDraft: { id: string; value: string } | undefined;
 /** DOM-only views keep project text inert and preserve search while results refresh. */
 export function analysisView(
@@ -11,6 +13,7 @@ export function analysisView(
     labels: WorkbenchLabels,
     post: (type: string, data?: object) => void
 ): void {
+    cleanupScope();
     const make = <K extends keyof HTMLElementTagNameMap>(tag: K, text = '') => {
         const node = document.createElement(tag);
         node.textContent = text;
@@ -39,20 +42,27 @@ export function analysisView(
     const checks = inspection.checks;
     if (checks) {
         const scope = select(
-            [
-                ['folder', labels.scopeFolder],
-                ['workspace', labels.scopeWorkspace],
-                ['user', labels.scopeUser],
-            ],
+            (checks.configuration?.scopes ?? ['user']).map(
+                (id) => [id, labels['configScope_' + id]] as [string, string]
+            ),
             checks.scope,
             (value) => post('analysis-scope', { value })
         );
         scope.setAttribute('aria-label', labels.saveScope);
+        const updateScope = () => {
+            scope.disabled = hasConfigurationDraft();
+        };
+        updateScope();
+        document.addEventListener('configuration-draft-changed', updateScope);
+        cleanupScope = () => {
+            document.removeEventListener('configuration-draft-changed', updateScope);
+            return undefined;
+        };
         toolbar.append(
             scope,
             button(labels.runCurrent, () => post('run-checks', { value: 'current' })),
             button(labels.runProject, () => post('run-checks', { value: 'project' })),
-            button(labels.nativeSettings, () => post('native-settings'))
+            button(labels.configProjectLink, () => post('project-settings'))
         );
         const coverage = make(
             'p',
@@ -65,12 +75,17 @@ export function analysisView(
         );
         coverage.className = 'analysis-status';
         host.append(coverage);
+        if (checks.dictionaryReady === false || !checks.dictionary) {
+            const warning = make('p', labels.configDictionaryUnavailable);
+            warning.className = 'warning';
+            host.append(warning);
+        }
         const tabs = make('nav');
         tabs.className = 'analysis-tabs';
         for (const [id, title] of [
             ['results', labels.checkResults],
             ['rules', labels.checkRules],
-            ['settings', labels.projectSettings],
+            ['validator', labels.configExternalValidator],
         ]) {
             const node = button(title, () => {
                 tab = id;
@@ -151,6 +166,11 @@ export function analysisView(
                                 labels['level_' + rule.severity]
                         )
                     );
+                    if (rule.source) {
+                        info.append(
+                            make('small', labels.configEffectiveFrom + ' ' + labels['configScope_' + rule.source])
+                        );
+                    }
                     const choices: [string, string][] = [
                         ['inherit', labels.inheritSetting],
                         ...['Error', 'Warning', 'Information', 'Hint', 'None'].map(
@@ -165,34 +185,17 @@ export function analysisView(
                     table.append(row);
                 }
                 content.append(table);
+                if (checks.configuration) {
+                    configurationView(content, checks.configuration, labels, post, ['checks'], false);
+                }
             } else {
-                const dictionary = make('article');
-                dictionary.className = 'project-card';
-                dictionary.append(
-                    make('h2', labels.dictionary),
-                    make('p', checks.dictionary || labels.dictionaryMissing),
-                    make(
-                        'p',
-                        labels.descriptionLanguages + ': ' + (checks.languages.join(', ') || labels.dictionaryMissing)
-                    ),
-                    button(labels.updateDictionary, () => post('dictionary-update')),
-                    button(labels.externalValidator, () => post('external-validator')),
-                    button(labels.audit, () => post('resource-audit')),
-                    button(labels.projectEntries, () => post('configure-project')),
-                    button(labels.configureFileCategory, () => post('configure-file'))
+                content.append(
+                    make('p', labels.configValidatorHelp),
+                    button(labels.configRunValidator, () => post('run-validator')),
+                    button(labels.externalValidator, () => post('external-validator'))
                 );
-                content.append(dictionary);
-                for (const setting of checks.settings.filter((setting) =>
-                    matches(setting.key, labels['setting_' + setting.key] ?? '', setting.value)
-                )) {
-                    const row = make('details');
-                    row.className = 'setting-row';
-                    row.append(
-                        make('summary', labels['setting_' + setting.key] ?? setting.key),
-                        make('pre', setting.value),
-                        button(labels.editProperty, () => post('edit-setting', { key: setting.key }))
-                    );
-                    content.append(row);
+                if (checks.configuration) {
+                    configurationView(content, checks.configuration, labels, post, ['validator'], false);
                 }
             }
         };

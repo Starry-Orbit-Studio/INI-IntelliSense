@@ -135,10 +135,11 @@ export interface Inspection {
         total: number;
         complete: boolean;
         dictionary: string;
+        dictionaryReady?: boolean;
         languages: string[];
-        rules: { id: string; name: string; group: string; severity: string; effective: string; configured?: string }[];
+        rules: { id: string; name: string; group: string; severity: string; effective: string; source?: string; configured?: string }[];
         issues: { id: string; source: string; code: string; message: string; severity: number; provider: string }[];
-        settings: { key: string; value: string }[];
+        configuration?: import('./configuration-model').ConfigurationModel;
     };
     logic?: LogicGraph;
     id: string;
@@ -172,7 +173,7 @@ export interface Inspection {
         files: number;
         archives: { source: string; entries: number }[];
         counts: Record<string, number>;
-        settings: { key: string; value: string }[];
+        configuration?: import('./configuration-model').ConfigurationModel;
         documents: SourceLink[];
         errors: string[];
     };

@@ -35,6 +35,25 @@ export function ruleCatalog() {
 export function isSeverity(value: unknown): value is RuleSeverity {
     return typeof value === 'string' && SEVERITIES.includes(value as RuleSeverity);
 }
+/** Explain the winning setting without exposing compatibility switches as duplicate controls. */
+export function ruleSource(uri: vscode.Uri, id: string): string {
+    const configuration = vscode.workspace.getConfiguration('ra2-ini-intellisense.diagnostics', uri);
+    const relative = vscode.workspace.asRelativePath(uri, false).replace(/\\/g, '/');
+    const overrides = configuration.get<{ files: string; severity: Record<string, string> }[]>('overrides', []);
+    if (overrides.some(override => typeof override.files === 'string' && compileFileCategoryGlob(override.files).test(relative) && override.severity?.[id] !== undefined)) { return 'exception'; }
+    const severity = configuration.inspect<Record<string, string>>('severity');
+    for (const [scope, values] of [['folder', severity?.workspaceFolderValue], ['workspace', severity?.workspaceValue], ['user', severity?.globalValue]] as const) { if (values?.[id] !== undefined) { return scope; } }
+    const switches: Record<string, string> = { S001: 'leadingWhitespace', S002: 'spaceBeforeEquals', S003: 'spaceAfterEquals', S005: 'spaceAfterComment' };
+    const key = switches[id];
+    if (key) {
+        const details = configuration.inspect(key);
+        if (details?.workspaceFolderValue !== undefined) { return 'folder'; }
+        if (details?.workspaceValue !== undefined) { return 'workspace'; }
+        if (details?.globalValue !== undefined) { return 'user'; }
+    }
+    return 'default';
+}
+
 /** Explicit severities supersede legacy switches; policies are resource-scoped. */
 export function rulePolicy(uri: vscode.Uri): Map<string, vscode.DiagnosticSeverity | null> {
     const configuration = vscode.workspace.getConfiguration('ra2-ini-intellisense.diagnostics', uri);
@@ -48,7 +67,7 @@ export function rulePolicy(uri: vscode.Uri): Map<string, vscode.DiagnosticSeveri
     const disabled = configuration.get<string[]>('disable', []),
         names = ['error', 'warning', 'information', 'hint'];
     const result = new Map<string, vscode.DiagnosticSeverity | null>();
-    const relative = vscode.workspace.asRelativePath(uri).replace(/\\/g, '/');
+    const relative = vscode.workspace.asRelativePath(uri, false).replace(/\\/g, '/');
     for (const rule of ruleCatalog()) {
         let value =
             raw[rule.id] ??

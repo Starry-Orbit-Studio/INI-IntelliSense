@@ -61,6 +61,8 @@ export async function activate(context: vscode.ExtensionContext) {
 	const iniManager = new INIManager();
 	context.subscriptions.push(iniManager);
 	const schemaManager = new SchemaManager();
+    let schemaLoadGeneration = 0;
+    let loadedSchemaPath: string | undefined;
     const fileTypeManager = new FileTypeManager();
     const csfManager = new CsfManager();
     const csfOutlineProvider = new CsfOutlineProvider(csfManager);
@@ -140,7 +142,11 @@ export async function activate(context: vscode.ExtensionContext) {
     overrideDecorator.project = inspection.ini;
     valuePreviewDecorator.project = inspection.ini;
     context.subscriptions.push(new AnalysisController(context, inspection, schemaManager, descriptionManager, diagnosticManager, key => csfManager.getLabel(key)?.value));
-    context.subscriptions.push(vscode.commands.registerCommand('ra2-ini-intellisense.downloadDictionary', async () => { await dictionaryService.downloadAndConfigure(); await loadSchemaFromConfiguration(); }));
+    context.subscriptions.push(vscode.commands.registerCommand('ra2-ini-intellisense.downloadDictionary', async (origin?: vscode.Uri, scope?: string) => {
+        const uri = origin instanceof vscode.Uri ? origin : undefined;
+        const target = scope === 'folder' && uri && vscode.workspace.getWorkspaceFolder(uri) ? vscode.ConfigurationTarget.WorkspaceFolder : scope === 'workspace' && vscode.workspace.workspaceFolders?.length ? vscode.ConfigurationTarget.Workspace : vscode.ConfigurationTarget.Global;
+        await dictionaryService.downloadAndConfigure(uri, target); await loadSchemaFromConfiguration(uri, true);
+    }), vscode.commands.registerCommand('ra2-ini-intellisense.reloadDictionary', async (origin?: vscode.Uri) => { await loadSchemaFromConfiguration(origin instanceof vscode.Uri ? origin : undefined, true); }));
     const workbench = new WorkbenchController(context, inspection, media);
     context.subscriptions.push(new ProjectWorkbench(inspection), projectResources, decoder, inspection, workbench, new ResourceAudit(inspection),
         vscode.window.registerWebviewViewProvider(WorkbenchController.viewId, workbench, { webviewOptions: { retainContextWhenHidden: true } }),
@@ -450,15 +456,21 @@ export async function activate(context: vscode.ExtensionContext) {
 		mainStatusBar.show();
 	}
     
-	async function loadSchemaFromConfiguration() {
-		const config = vscode.workspace.getConfiguration('ra2-ini-intellisense');
+	async function loadSchemaFromConfiguration(origin?: vscode.Uri, force = false) {
+        origin ??= vscode.window.activeTextEditor?.document.uri ?? vscode.workspace.workspaceFolders?.[0]?.uri;
+		const config = vscode.workspace.getConfiguration('ra2-ini-intellisense', origin);
 		let schemaPath = config.get<string | null>('schemaFilePath', null);
+        if (schemaPath && !path.isAbsolute(schemaPath)) { schemaPath = path.resolve(origin ? projectResources.projectRoot(origin).fsPath : process.cwd(), schemaPath); }
+        if (!force && loadedSchemaPath === (schemaPath ?? '')) { return; }
+        const generation = ++schemaLoadGeneration;
+        loadedSchemaPath = schemaPath ?? '';
 		
 		if (schemaPath) {
 			try {
 				const schemaUri = vscode.Uri.file(schemaPath);
 				const schemaContentBytes = await vscode.workspace.fs.readFile(schemaUri);
 				const schemaContent = Buffer.from(schemaContentBytes).toString('utf-8');
+                if (generation !== schemaLoadGeneration) { return; }
 				schemaManager.loadSchema(schemaContent, schemaPath);
                 inspection.ini.invalidate();
 				
@@ -490,11 +502,14 @@ export async function activate(context: vscode.ExtensionContext) {
 					// 描述加载失败不应阻止主流程
 				}
 			} catch (error) {
+                if (generation !== schemaLoadGeneration) { return; }
 				schemaManager.clearSchema();
+                descriptionManager.clear();
 				vscode.window.showErrorMessage(localize('schema.load.failure', 'Failed to load the specified INI Dictionary file: {0}.', schemaPath));
 			}
 		} else {
 			schemaManager.clearSchema();
+            descriptionManager.clear();
 		}
 		
 		indexWorkspaceFiles();
@@ -650,6 +665,9 @@ export async function activate(context: vscode.ExtensionContext) {
 		}
 	}));
 
+    context.subscriptions.push(vscode.window.onDidChangeActiveTextEditor(editor => {
+        if (editor?.document.languageId === 'ra2-ini') { void loadSchemaFromConfiguration(editor.document.uri).catch(error => console.error('[Dictionary]', error)); }
+    }));
 	loadSchemaFromConfiguration().then(() => {
 		overrideDecorator.triggerUpdateDecorationsForAllVisibleEditors();
         // 初始加载时触发所有编辑器的预览更新
@@ -719,7 +737,8 @@ export async function activate(context: vscode.ExtensionContext) {
                 fileTypeManager.reloadConfig();
             }
 
-			(e.affectsConfiguration('ra2-ini-intellisense.schemaFilePath') ? loadSchemaFromConfiguration() : Promise.resolve()).then(() => {
+            const schemaOrigin = [vscode.window.activeTextEditor?.document.uri, ...(vscode.workspace.workspaceFolders ?? []).map(folder => folder.uri)].find(uri => uri && e.affectsConfiguration('ra2-ini-intellisense.schemaFilePath', uri));
+			(e.affectsConfiguration('ra2-ini-intellisense.schemaFilePath') ? loadSchemaFromConfiguration(schemaOrigin, true) : Promise.resolve()).then(() => {
 				updateMainStatus();
                 updateFileTypeStatus(vscode.window.activeTextEditor);
 				if (e.affectsConfiguration('ra2-ini-intellisense.codeLens.enabled')) {

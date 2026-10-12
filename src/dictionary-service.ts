@@ -26,7 +26,7 @@ export class DictionaryService {
     /**
      * 递归下载字典及其依赖。
      */
-    public async downloadAndConfigure(): Promise<string> {
+    public async downloadAndConfigure(origin?: vscode.Uri, target = vscode.ConfigurationTarget.Global): Promise<string> {
         const globalStoragePath = this.context.globalStorageUri.fsPath;
         
         // 使用专门的子目录来存放字典，保持整洁
@@ -154,15 +154,8 @@ export class DictionaryService {
                     // 如果执行到这里没有抛错，说明该镜像源下载成功
                     // 更新配置并返回
                     const targetPath = path.join(dictDir, DICT_FILENAME);
-                    const config = vscode.workspace.getConfiguration('ra2-ini-intellisense');
-                    
-                    // 更新 workspace 设置（如果存在）以避免冲突
-                    const inspect = config.inspect('schemaFilePath');
-                    if (inspect?.workspaceValue !== undefined) {
-                        await config.update('schemaFilePath', undefined, vscode.ConfigurationTarget.Workspace);
-                    }
-                    // 更新全局设置
-                    await config.update('schemaFilePath', targetPath, vscode.ConfigurationTarget.Global);
+                    const config = vscode.workspace.getConfiguration('ra2-ini-intellisense', origin);
+                    await config.update('schemaFilePath', targetPath, target);
                     
                     vscode.window.showInformationMessage(localize('dictionary.download.success', 'INI Dictionary downloaded and configured successfully.'));
                     return targetPath;

@@ -4,6 +4,7 @@ import { DiagnosticSeverity } from 'vscode';
 import * as cp from 'child_process';
 import * as os from 'os';
 import * as fs from 'fs/promises';
+import { resolveProjectRoot } from './resources/project-root';
 import { localize } from './i18n';
 
 type ValidatorStatus = 'ready' | 'invalid' | 'unconfigured';
@@ -44,8 +45,8 @@ export class INIValidatorExt {
             this.showQuickPick();
         }));
 
-        context.subscriptions.push(vscode.commands.registerCommand('ra2-ini-intellisense.runValidator', () => {
-            this.runValidatorCommand();
+        context.subscriptions.push(vscode.commands.registerCommand('ra2-ini-intellisense.runValidator', (origin?: vscode.Uri) => {
+            return this.runValidatorCommand(origin);
         }));
 
         await this.validatePath();
@@ -208,13 +209,15 @@ export class INIValidatorExt {
     /**
      * 检查验证器路径是否有效, 并更新内部状态和UI
      */
-    private async validatePath() {
-        const config = vscode.workspace.getConfiguration(CONFIG_SECTION);
+    private async validatePath(origin?: vscode.Uri) {
+        origin ??= vscode.window.activeTextEditor?.document.uri ?? vscode.workspace.workspaceFolders?.[0]?.uri;
+        const config = vscode.workspace.getConfiguration(CONFIG_SECTION, origin);
         let configuredPath = config.get<string>('exePath');
         if (!configuredPath) {
             this.updateStatus('unconfigured'); return;
         }
-        this.exePath = path.resolve(configuredPath.startsWith('~/') ? path.join(os.homedir(), configuredPath.slice(2)) : configuredPath);
+        const root = config.get<string>('validationFolderPath') || (origin ? resolveProjectRoot(origin, vscode.workspace.getWorkspaceFolder(origin)?.uri).fsPath : process.cwd());
+        this.exePath = path.resolve(root, configuredPath.startsWith('~/') ? path.join(os.homedir(), configuredPath.slice(2)) : configuredPath);
         try {
             const stats = await fs.stat(this.exePath);
             this.updateStatus(stats.isFile() ? 'ready' : 'invalid', stats.isFile() ? '' : localize('validator.status.pathIsDirectory', 'The path points to a directory, not a file.'));
@@ -268,7 +271,8 @@ export class INIValidatorExt {
     /**
      * 作为命令独立执行校验流程, 并提供用户反馈
      */
-    public async runValidatorCommand() {
+    public async runValidatorCommand(origin?: vscode.Uri) {
+        await this.validatePath(origin);
         if (!this.isReady()) {
             vscode.window.showWarningMessage(localize('validator.run.notReady', 'INI Validator is not configured, cannot run validation.'));
             return;
@@ -278,7 +282,7 @@ export class INIValidatorExt {
             title: localize('validator.run.progress.title', 'Running INI Validator...'),
             cancellable: false
         }, async (progress) => {
-            const success = await this.runValidation();
+            const success = await this.runValidation(origin);
             if (success) {
                 progress.report({ message: localize('validator.run.progress.success', 'Validation complete!') });
             } else {
@@ -292,15 +296,18 @@ export class INIValidatorExt {
      * 核心校验逻辑: 生成Settings.ini, 调用外部程序, 并处理结果
      * @returns 一个布尔值, 表示操作是否成功
      */
-    public async runValidation(): Promise<boolean> {
+    public async runValidation(origin?: vscode.Uri): Promise<boolean> {
+        if (!vscode.workspace.isTrusted) { vscode.window.showWarningMessage(localize('validator.workspaceTrust', 'Trust this workspace before running an external INI checker.')); return false; }
+        origin ??= vscode.window.activeTextEditor?.document.uri ?? vscode.workspace.workspaceFolders?.[0]?.uri;
+        await this.validatePath(origin);
         if (!this.isReady() || !this.exePath) {
             return false;
         }
 
         // 优先使用配置的路径，如果没有，则使用当前工作区
-        let folderPath = vscode.workspace.getConfiguration('ra2-ini-intellisense').get<string>('validationFolderPath');
+        let folderPath = vscode.workspace.getConfiguration('ra2-ini-intellisense', origin).get<string>('validationFolderPath');
         if (!folderPath && vscode.workspace.workspaceFolders && vscode.workspace.workspaceFolders.length > 0) {
-            folderPath = vscode.workspace.workspaceFolders[0].uri.fsPath;
+            folderPath = origin ? resolveProjectRoot(origin, vscode.workspace.getWorkspaceFolder(origin)?.uri).fsPath : vscode.workspace.workspaceFolders[0].uri.fsPath;
         }
 
         if (!folderPath) {
@@ -308,7 +315,7 @@ export class INIValidatorExt {
             return false;
         }
 
-        const files = vscode.workspace.getConfiguration('ra2-ini-intellisense').get<object>('validationFiles');
+        const files = vscode.workspace.getConfiguration('ra2-ini-intellisense', origin).get<object>('validationFiles');
         const exeDir = path.dirname(this.exePath);
         const filesSectionContent = Object.entries(files || {}).map(([k, v]) => `${k}=${v}`).join('\n');
         const settingsContent = `[INIValidator]\nFolderPath=${folderPath}\nJsonLog=true\n\n[Files]\n${filesSectionContent}\n`;

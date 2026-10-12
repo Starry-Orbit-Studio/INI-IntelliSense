@@ -537,7 +537,8 @@
             "null"
           ],
           "default": null,
-          "description": "%configuration.properties.exePath.description%"
+          "description": "%configuration.properties.exePath.description%",
+          "scope": "resource"
         },
         "ra2-ini-intellisense.validationFolderPath": {
           "type": [
@@ -557,7 +558,10 @@
             "eva": "eva.ini"
           },
           "description": "%configuration.properties.validationFiles.description%",
-          "scope": "resource"
+          "scope": "resource",
+          "additionalProperties": {
+            "type": "string"
+          }
         },
         "ra2-ini-intellisense.indexing.fileCategories": {
           "type": "object",
@@ -688,7 +692,8 @@
         "ra2-ini-intellisense.iniValidator.downloadUrl": {
           "type": "string",
           "default": "https://www.bilibili.com/opus/1022686010171981842",
-          "description": "%configuration.properties.iniValidator.downloadUrl.description%"
+          "description": "%configuration.properties.iniValidator.downloadUrl.description%",
+          "scope": "resource"
         },
         "ra2-ini-intellisense.media.enabled": {
           "type": "boolean",
@@ -880,7 +885,8 @@
             ],
             "properties": {
               "files": {
-                "type": "string"
+                "type": "string",
+                "minLength": 1
               },
               "severity": {
                 "type": "object",

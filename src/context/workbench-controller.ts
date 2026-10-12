@@ -15,6 +15,9 @@ import { openContributedView } from './view-reveal';
 import { applyPropertyChanges, preparePropertyChanges, PropertyChange } from './property-edit';
 import { CATALOG_GROUPS, catalogGroup } from './catalog-groups';
 import { renderMap, MapRendererOptions } from './map-renderer';
+import { ConfigurationService } from './configuration-service';
+import { ConfigurationScope } from './configuration-model';
+import { configurationMessage } from './configuration-channel';
 import { commandOrigin } from './command-origin';
 
 class WorkbenchSession implements vscode.Disposable {
@@ -32,6 +35,8 @@ class WorkbenchSession implements vscode.Disposable {
     private error?: string;
     private thumbnails = 0;
     private history: { uri: vscode.Uri; position: vscode.Position; resource?: boolean }[] = [];
+    private readonly configuration: ConfigurationService;
+    private configurationScope?: ConfigurationScope;
     private target?: { uri: vscode.Uri; position: vscode.Position; resource?: boolean };
     private disposables: vscode.Disposable[] = [];
 
@@ -43,6 +48,7 @@ class WorkbenchSession implements vscode.Disposable {
         private readonly visible: () => boolean,
         private readonly preferences?: vscode.Memento
     ) {
+        this.configuration = new ConfigurationService(extension);
         webview.options = {
             enableScripts: true,
             localResourceRoots: [vscode.Uri.joinPath(extension, 'dist', 'workbench')],
@@ -248,22 +254,9 @@ class WorkbenchSession implements vscode.Disposable {
                     errors: index.errors,
                     counts,
                     documents,
-                    settings: [
-                        'project.entryPoints',
-                        'project.compatibility',
-                        'indexing.fileCategories',
-                        'indexing.fileOverrides',
-                        'diagnostics.enabled',
-                        'media.resourceRoots',
-                        'media.archiveOrder',
-                        'media.excludedDirectories',
-                        'schemaFilePath',
-                        'maps.renderer',
-                    ].map((key) => ({
-                        key,
-                        value: JSON.stringify(configuration.get(key) ?? null, null, 2),
-                    })),
+                    configuration: this.configuration.describe(origin, ['loading', 'resources', 'dictionary', 'editing', 'maps'], this.configurationScope),
                 };
+                this.configurationScope = session.inspection.project.configuration!.scope;
                 session.inspection.owner = localize('workbench.projectSettings', 'Project overview and settings');
                 session.inspection.objects = undefined;
             }
@@ -413,6 +406,17 @@ class WorkbenchSession implements vscode.Disposable {
             return;
         }
         const current = this.current;
+        if (current.inspection.project && await configurationMessage({
+            service: this.configuration, origin: current.origin, root: this.service.resources.projectRoot(current.origin), scope: this.configurationScope,
+            groups: ['loading', 'resources', 'dictionary', 'editing', 'maps'],
+            setScope: scope => { this.configurationScope = scope; },
+            post: message => { void this.webview.postMessage(message); },
+            refresh: () => this.refresh(), editing: active => { this.editing = active; },
+        }, message)) { return; }
+        if (data.type === 'check-center') { await vscode.commands.executeCommand('ra2-ini-intellisense.checkCenter', current.origin); return; }
+        if (data.type === 'dictionary-update') { await vscode.commands.executeCommand('ra2-ini-intellisense.downloadDictionary', current.origin, this.configurationScope ?? (vscode.workspace.getWorkspaceFolder(current.origin) ? 'folder' : 'user')); this.refresh(); return; }
+        if (data.type === 'native-settings') { await vscode.commands.executeCommand('workbench.action.openSettings', '@ext:Astralette.ra2-ini-intellisense'); return; }
+
         if (
             data.type === 'save-favorites' &&
             this.preferences &&
@@ -441,15 +445,6 @@ class WorkbenchSession implements vscode.Disposable {
             ['game', 'all', 'favorites', 'overview', ...CATALOG_GROUPS].includes(data.value)
         ) {
             await this.browseObjects(current.origin, data.value);
-        } else if (
-            data.type === 'project-setting' &&
-            typeof data.key === 'string' &&
-            current.inspection.project?.settings.some((setting) => setting.key === data.key)
-        ) {
-            await vscode.commands.executeCommand(
-                'workbench.action.openWorkspaceSettings',
-                '@id:ra2-ini-intellisense.' + data.key
-            );
         } else if (data.type === 'configure-map-renderer') {
             await vscode.commands.executeCommand('workbench.action.openSettings', 'ra2-ini-intellisense.maps');
         } else if (data.type === 'render-map' && current.inspection.map) {

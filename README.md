@@ -189,3 +189,5 @@ Maintained by **Astralette (小星星)**.
 
 ## License
 This project is licensed under the MIT License. See the `LICENSE` file for details.
+
+The top-level Project overview and settings page has Overview and Project configuration tabs, with typed controls for loading entries, resource directories/archive priority, dictionaries, preview preferences and map rendering. Configuration destinations and effective sources are explicit; grouped changes require Apply and isolated toggles save immediately. The check center contains results, rules/file exceptions and external-checker configuration, retaining existing rule preferences transparently.

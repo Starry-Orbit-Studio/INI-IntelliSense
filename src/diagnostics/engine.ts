@@ -90,7 +90,7 @@ export class DiagnosticManager implements vscode.Disposable {
         const generation = (this.generations.get(key) ?? 0) + 1;
         this.generations.set(key, generation);
         const configuration = vscode.workspace.getConfiguration('ra2-ini-intellisense.diagnostics', uri);
-        const relative = vscode.workspace.asRelativePath(uri).replace(/\\/g, '/');
+        const relative = vscode.workspace.asRelativePath(uri, false).replace(/\\/g, '/');
         if (
             !configuration.get('enabled', true) ||
             configuration

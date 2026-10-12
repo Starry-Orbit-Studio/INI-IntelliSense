@@ -4,6 +4,10 @@
 
 ## [Unreleased]
 
+- Split the top-level project page into Overview and Project configuration, with direct entry/file/directory pickers, reorderable lists, file categories, display toggles and map renderer inputs.
+- Keep the check center focused on results, rules/file exceptions and the external checker; remove duplicate general settings and hide compatibility switches behind the unified rules.
+- Show configuration destinations and effective sources, preserve drafts, restore inheritance, detect external edits, roll back failed batches and check saved paths without running programs. Resolve dictionary/checker configuration in the selected project.
+
 - Add a sidebar INI check center between resource checks and project settings, with rule levels, presets, configuration scopes, file exceptions, searchable results and source navigation.
 - Share entry/include resolution across contextual editing, isolate non-loaded files, and expose compatibility modes and per-file categories.
 - Add upstream/downstream logic exploration using effective typed references, inheritance, conditions and source locations, with search, bounded expansion and missing/stale indicators.

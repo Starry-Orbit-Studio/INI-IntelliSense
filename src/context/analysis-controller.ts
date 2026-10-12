@@ -4,12 +4,14 @@ import { InspectionService } from './inspection-service';
 import { SchemaManager } from '../schema-manager';
 import { DescriptionManager } from '../description-manager';
 import { DiagnosticManager } from '../diagnostics/engine';
-import { isSeverity, ruleCatalog, rulePolicy, SEVERITIES } from '../diagnostics/rule-catalog';
+import { isSeverity, ruleCatalog, rulePolicy, ruleSource, SEVERITIES } from '../diagnostics/rule-catalog';
 import { commandOrigin } from './command-origin';
 import { workbenchHtml } from './workbench-html';
 import { workbenchLabels } from './workbench-labels';
 import { Inspection } from './workbench-protocol';
 import { IndexedLogicGraph, indexLogic, logicSlice } from './logic-graph';
+import { ConfigurationService } from './configuration-service';
+import { configurationMessage } from './configuration-channel';
 import { localize } from '../i18n';
 
 interface AnalysisPage {
@@ -27,6 +29,7 @@ interface AnalysisPage {
     complete: boolean;
     scope: vscode.ConfigurationTarget;
     links: Map<string, vscode.Location>;
+    configuration: ConfigurationService;
     results: Map<string, readonly vscode.Diagnostic[]>;
     graph?: IndexedLogicGraph;
     graphOrigin?: string;
@@ -124,6 +127,7 @@ export class AnalysisController implements vscode.Disposable {
                     : vscode.ConfigurationTarget.Global,
                 links: new Map(),
                 results: new Map(),
+                configuration: new ConfigurationService(this.context.extensionUri),
                 direction: 'both',
                 depth: 1,
                 cancellation: new vscode.CancellationTokenSource(),
@@ -202,6 +206,8 @@ export class AnalysisController implements vscode.Disposable {
                 'ra2-ini-intellisense',
                 page.currentFile ?? page.origin
             );
+            const configurationModel = page.configuration.describe(page.currentFile ?? page.origin, ['checks', 'validator'], page.scope === vscode.ConfigurationTarget.Global ? 'user' : page.scope === vscode.ConfigurationTarget.Workspace ? 'workspace' : 'folder');
+            page.scope = configurationModel.scope === 'user' ? vscode.ConfigurationTarget.Global : configurationModel.scope === 'workspace' ? vscode.ConfigurationTarget.Workspace : vscode.ConfigurationTarget.WorkspaceFolder;
             const configured = configuration.inspect<Record<string, string>>('diagnostics.severity');
             const selected =
                 page.scope === vscode.ConfigurationTarget.Global
@@ -243,19 +249,6 @@ export class AnalysisController implements vscode.Disposable {
                     });
                 }
             }
-            const settings = Object.keys(
-                this.context.extension.packageJSON.contributes.configuration.properties as Record<string, unknown>
-            )
-                .filter(
-                    (key) =>
-                        key.startsWith('ra2-ini-intellisense.') &&
-                        !key.includes('dontAsk') &&
-                        key !== 'ra2-ini-intellisense.diagnostics.severity'
-                )
-                .map((key) => ({
-                    key: key.slice(21),
-                    value: JSON.stringify(configuration.get(key.slice(21)) ?? null, null, 2),
-                }));
             inspection.checks = {
                 enabled: configuration.get('diagnostics.enabled', true),
                 scope:
@@ -268,14 +261,16 @@ export class AnalysisController implements vscode.Disposable {
                 total: page.total,
                 complete: page.complete,
                 dictionary: configuration.get('schemaFilePath', '') ?? '',
+                dictionaryReady: this.schema.isSchemaLoaded(),
                 languages: this.descriptions.getLoadedLanguages(),
                 rules: ruleCatalog().map((rule) => ({
                     ...rule,
                     configured: selected?.[rule.id],
+                    source: ruleSource(page.currentFile ?? page.origin, rule.id),
                     effective: effective.get(rule.id) === null ? 'None' : SEVERITIES[effective.get(rule.id) ?? 0],
                 })),
                 issues,
-                settings,
+                configuration: configurationModel,
             };
             inspection.resolution = this.service.ini.context(page.currentFile ?? page.origin);
         } else if (page.graph && page.focus) {
@@ -368,6 +363,13 @@ export class AnalysisController implements vscode.Disposable {
             return;
         }
         page.error = undefined;
+        if (page.kind === 'checks' && await configurationMessage({
+            service: page.configuration, origin: page.currentFile ?? page.origin, root: this.service.resources.projectRoot(page.origin),
+            scope: page.scope === vscode.ConfigurationTarget.Global ? 'user' : page.scope === vscode.ConfigurationTarget.Workspace ? 'workspace' : 'folder',
+            groups: ['checks', 'validator'], setScope: scope => { page.scope = scope === 'user' ? vscode.ConfigurationTarget.Global : scope === 'workspace' ? vscode.ConfigurationTarget.Workspace : vscode.ConfigurationTarget.WorkspaceFolder; },
+            post: message => { void page.panel.webview.postMessage(message); }, refresh: () => this.send(page), editing: () => undefined,
+        }, message)) { return; }
+
         if (data.type === 'source' && typeof data.id === 'string') {
             const location = page.kind === 'logic' ? page.graph?.locations.get(data.id) : page.links.get(data.id);
             if (location) {
@@ -418,64 +420,10 @@ export class AnalysisController implements vscode.Disposable {
                 ])
             );
             await configuration.update('diagnostics.severity', values, page.scope);
-        } else if (data.type === 'edit-setting' && typeof data.key === 'string') {
-            const full = 'ra2-ini-intellisense.' + data.key;
-            const properties = this.context.extension.packageJSON.contributes.configuration.properties as Record<
-                string,
-                { type: string | string[]; enum?: unknown[]; minimum?: number; maximum?: number }
-            >;
-            const definition = properties[full];
-            if (!definition) {
-                return;
-            }
-            const configuration = vscode.workspace.getConfiguration('ra2-ini-intellisense', page.origin);
-            if (definition.enum || definition.type === 'boolean') {
-                const values = definition.enum ?? [true, false];
-                const choice = await vscode.window.showQuickPick(
-                    values.map((value) => ({ label: String(value), value })),
-                    { title: workbenchLabels()['setting_' + data.key] ?? full }
-                );
-                if (choice) {
-                    await configuration.update(data.key, choice.value, page.scope);
-                }
-                this.send(page);
-                return;
-            }
-            if (definition.type === 'array' || definition.type === 'object') {
-                await vscode.commands.executeCommand('workbench.action.openSettings', full);
-                return;
-            }
-            const stringValue = [definition.type].flat().includes('string');
-            const current = configuration.get(data.key);
-            const text = await vscode.window.showInputBox({
-                title: workbenchLabels()['setting_' + data.key] ?? full,
-                value: stringValue ? String(current ?? '') : JSON.stringify(current ?? null),
-                prompt: stringValue
-                    ? undefined
-                    : localize(
-                          'checks.jsonPrompt',
-                          'Enter a JSON value. Use the native settings editor for detailed field help.'
-                      ),
-                validateInput: (input) => {
-                    try {
-                        const value = stringValue ? input : JSON.parse(input);
-                        const type = value === null ? 'null' : Array.isArray(value) ? 'array' : typeof value;
-                        return ([definition.type].flat().includes(type) ||
-                            ([definition.type].flat().includes('integer') && Number.isInteger(value))) &&
-                            (!definition.enum || definition.enum.includes(value)) &&
-                            (typeof value !== 'number' ||
-                                ((definition.minimum === undefined || value >= definition.minimum) &&
-                                    (definition.maximum === undefined || value <= definition.maximum)))
-                            ? null
-                            : localize('checks.invalidSetting', 'The value does not match this setting’s type.');
-                    } catch {
-                        return localize('checks.invalidSetting', 'The value does not match this setting’s type.');
-                    }
-                },
-            });
-            if (text !== undefined) {
-                await configuration.update(data.key, stringValue ? text : JSON.parse(text), page.scope);
-            }
+        } else if (data.type === 'project-settings') {
+            await vscode.commands.executeCommand('ra2-ini-intellisense.projectOverview', page.origin);
+        } else if (data.type === 'run-validator') {
+            await vscode.commands.executeCommand('ra2-ini-intellisense.runValidator', page.currentFile ?? page.origin);
         } else if (data.type === 'native-settings') {
             await vscode.commands.executeCommand(
                 'workbench.action.openSettings',

@@ -894,16 +894,32 @@ async function main() {
             'changing the input invalidates the old plan'
         );
         await page.screenshot({ path: path.join(root, 'out', 'webview-qa', 'object-browser.png'), fullPage: true });
+        const configuration = (id, fields) => ({ id, origin: 'file:///E:/Extreme%20Starry', scope: 'folder', scopes: ['user', 'workspace', 'folder'], destination: 'E:/Extreme Starry/.vscode/settings.json', fields });
+        const projectConfig = configuration('project-config', [
+            { key: 'project.entryPoints', group: 'loading', control: 'entries', picker: 'ini', value: { rules: ['Rules/ruleses.ini'], art: ['Rules/artes.ini'] }, source: 'folder', configured: true },
+            { key: 'media.resourceRoots', group: 'resources', control: 'list', picker: 'directory', value: ['Resources', 'Backup'], source: 'folder', configured: true },
+            { key: 'media.hoverEnabled', group: 'editing', control: 'toggle', immediate: true, value: true, source: 'default', configured: false },
+        ]);
         const project = inspection('project', undefined);
         project.owner = labels.projectSettings; project.type = '';
-        project.project = { root: 'E:/Extreme Starry', files: 37483, archives: [{ source: 'expandmd01.mix', entries: 10 }], counts: { vehicles: 512, sounds: 1485 }, settings: [{ key: 'media.resourceRoots', value: '["Resources"]' }], documents: [{ id: 'rules', label: 'Rules/ruleses.ini' }], errors: [] };
+        project.project = { root: 'E:/Extreme Starry', files: 37483, archives: [{ source: 'expandmd01.mix', entries: 10 }], counts: { vehicles: 512, sounds: 1485 }, configuration: projectConfig, documents: [{ id: 'rules', label: 'Rules/ruleses.ini' }], errors: [] };
         await send(project);
         await page.locator('.project-layout').waitFor();
         await page.getByRole('button', { name: labels.group_vehicles + ' · 512', exact: true }).click();
         assert.ok(await page.evaluate(() => window.messages.some(message => message.type === 'catalog-scope' && message.value === 'vehicles')));
-        await page.getByText(labels['setting_media.resourceRoots'], { exact: true }).click();
-        await page.getByRole('button', { name: labels.editProperty, exact: true }).click();
-        assert.ok(await page.evaluate(() => window.messages.some(message => message.type === 'project-setting' && message.key === 'media.resourceRoots')));
+        await page.locator('[data-project-tab=configuration]').click();
+        await page.getByRole('button', { name: labels.configGroup_resources, exact: true }).click();
+        await page.getByLabel(labels['setting_media.resourceRoots'] + '  1', { exact: true }).fill('UpdatedResources');
+        await page.getByRole('button', { name: new RegExp('^' + labels.configApply) }).click();
+        const configRequest = await page.evaluate(() => window.messages.filter(message => message.type === 'configuration-apply').at(-1));
+        assert.equal(configRequest.snapshot, 'project-config');
+        assert.deepEqual(configRequest.changes[0].value, ['UpdatedResources', 'Backup']);
+        await page.evaluate(model => window.postMessage({ type: 'configuration-result', snapshot: 'project-config', ok: true, configuration: model }, '*'), { ...projectConfig, id: 'project-config-saved', fields: projectConfig.fields.map(field => field.key === 'media.resourceRoots' ? { ...field, value: ['UpdatedResources', 'Backup'] } : field) });
+        await page.waitForFunction(() => document.querySelector('.configuration-bar')?.textContent.includes('Saved'));
+        await page.getByRole('button', { name: labels.configGroup_loading, exact: true }).click();
+        await page.getByRole('button', { name: labels.configBrowse, exact: true }).first().click();
+        assert.ok(await page.evaluate(() => window.messages.some(message => message.type === 'configuration-pick' && message.key === 'project.entryPoints' && message.parts[0] === 'rules')));
+        await page.evaluate(() => window.postMessage({ type: 'configuration-picked', snapshot: 'project-config-saved', key: 'project.entryPoints', parts: ['rules'], values: [] }, '*'));
         await page.setViewportSize({ width: 350, height: 800 });
         assert.ok(await page.evaluate(() => document.body.scrollWidth <= window.innerWidth), 'project settings fit a narrow editor');
         await page.evaluate(() => window.scrollTo(0, 0));
@@ -964,14 +980,16 @@ async function main() {
         await page.screenshot({ path: path.join(root, 'out', 'webview-qa', 'sky-preview.png'), fullPage: true });
         const checks = inspection('checks', undefined);
         checks.type = ''; checks.assets = []; checks.paletteOptions = [];
-        checks.checks = { enabled: true, scope: 'folder', checked: 1, total: 2, complete: false, dictionary: 'dictionary.ini', languages: ['zh-CN', 'en-US'], rules: [{ id: 'S001', name: 'Leading whitespace', group: 'S', severity: 'Warning', effective: 'Error', configured: 'Error' }], issues: [{ id: 'problem', source: 'rules.ini:4', code: 'T008', message: 'Invalid boolean', severity: 0, provider: 'RA2 INI' }], settings: [{ key: 'indexing.fileCategories', value: '{"rules":["rules*.ini"]}' }] };
+        checks.checks = { enabled: true, scope: 'folder', checked: 1, total: 2, complete: false, dictionary: 'dictionary.ini', languages: ['zh-CN', 'en-US'], rules: [{ id: 'S001', name: 'Leading whitespace', group: 'S', severity: 'Warning', effective: 'Error', configured: 'Error' }], issues: [{ id: 'problem', source: 'rules.ini:4', code: 'T008', message: 'Invalid boolean', severity: 0, provider: 'RA2 INI' }], configuration: configuration('check-config', [{ key: 'diagnostics.excludePatterns', group: 'checks', control: 'list', value: [], source: 'default', configured: false }, { key: 'exePath', group: 'validator', control: 'path', picker: 'file', value: 'E:/Tools/INIValidator.exe', source: 'folder', configured: true }]) };
         await send(checks);
         await page.getByRole('button', { name: labels.checkRules, exact: true }).click();
         await page.getByLabel('Leading whitespace', { exact: true }).selectOption('None');
         assert.ok(await page.evaluate(() => window.messages.some(message => message.type === 'rule-level' && message.id === 'S001' && message.value === 'None')));
         await page.screenshot({ path: path.join(root, 'out', 'webview-qa', 'check-rules.png'), fullPage: true });
-        await page.getByRole('button', { name: labels.projectSettings, exact: true }).click();
-        assert.ok((await page.locator('.analysis-content').textContent()).includes('dictionary.ini'));
+        await page.getByRole('button', { name: labels.configExternalValidator, exact: true }).click();
+        assert.equal(await page.locator('[data-tab=settings]').count(), 0, 'check center has no duplicate project settings tab');
+        assert.ok(!(await page.locator('.analysis-content').textContent()).includes('Legacy:'));
+        assert.equal(await page.getByLabel(labels.setting_exePath, { exact: true }).inputValue(), 'E:/Tools/INIValidator.exe');
         await page.setViewportSize({ width: 350, height: 800 });
         assert.ok(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1));
         await page.screenshot({ path: path.join(root, 'out', 'webview-qa', 'check-settings-narrow.png'), fullPage: true });
@@ -991,7 +1009,7 @@ async function main() {
 
         assert.deepEqual(errors, [], 'Webview must not emit browser or CSP errors');
         console.log(
-            'Webview regression passed: worker pixels, source/palette selection, action edits, comparison, PNG, WebGL, light edits, narrow layout, audio pause, asset library.'
+            'Webview regression passed (configuration drafts, apply acknowledgments and entry picker included): worker pixels, source/palette selection, action edits, comparison, PNG, WebGL, light edits, narrow layout, audio pause, asset library.'
         );
     } finally {
         await browser?.close();

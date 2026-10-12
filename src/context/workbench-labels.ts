@@ -1,8 +1,133 @@
+import { ruleCatalog } from '../diagnostics/rule-catalog';
 import { localize } from '../i18n';
 import { WorkbenchLabels } from './workbench-protocol';
 
 export function workbenchLabels(): WorkbenchLabels {
     return {
+        configEnabled: localize('workbench.configEnabled', 'On'),
+        configScope_exception: localize('workbench.configScope_exception', 'File exception'),
+        configDictionaryUnavailable: localize(
+            'workbench.configDictionaryUnavailable',
+            'The dictionary is not loaded. Configure it in project settings to enable typed checks.'
+        ),
+        configValue_rules: localize('workbench.configValue_rules', 'Rules \u00b7 game rules'),
+        configValue_art: localize('workbench.configValue_art', 'Art \u00b7 sprites and animations'),
+        configValue_sound: localize('workbench.configValue_sound', 'Sound \u00b7 sound events'),
+        configValue_eva: localize('workbench.configValue_eva', 'EVA \u00b7 voice alerts'),
+        configValue_ai: localize('workbench.configValue_ai', 'AI \u00b7 computer logic'),
+        configValue_ui: localize('workbench.configValue_ui', 'UI \u00b7 user interface'),
+        configValue_theme: localize('workbench.configValue_theme', 'Theme \u00b7 music'),
+        configValue_ini: localize('workbench.configValue_ini', 'General INI'),
+        ...Object.fromEntries(ruleCatalog().map((rule) => ['configRule_' + rule.id, rule.id + ' · ' + rule.name])),
+        configActualEffective: localize('workbench.configActualEffective', 'Currently effective in this project:'),
+        configScope_user: localize('workbench.configScope_user', 'Personal settings'),
+        configScope_workspace: localize('workbench.configScope_workspace', 'Workspace settings'),
+        configScope_folder: localize('workbench.configScope_folder', 'This project folder'),
+        configScope_default: localize('workbench.configScope_default', 'Extension defaults'),
+        configSaveTo: localize('workbench.configSaveTo', 'Save to:'),
+        configApply: localize('workbench.configApply', 'Apply changes'),
+        configApplying: localize('workbench.configApplying', 'Applying…'),
+        configDiscard: localize('workbench.configDiscard', 'Discard draft'),
+        configSaved: localize('workbench.configSaved', 'Saved'),
+        configAdd: localize('workbench.configAdd', 'Add item'),
+        configBrowse: localize('workbench.configBrowse', 'Choose…'),
+        configRemove: localize('workbench.configRemove', 'Remove'),
+        configMoveUp: localize('workbench.configMoveUp', 'Move up'),
+        configMoveDown: localize('workbench.configMoveDown', 'Move down'),
+        configSearch: localize('workbench.configSearch', 'Search configuration'),
+        configReset: localize('workbench.configReset', 'Restore inheritance'),
+        configEffectiveFrom: localize('workbench.configEffectiveFrom', 'Effective value from'),
+        configWillInherit: localize('workbench.configWillInherit', 'Applying will remove this scope’s override.'),
+        configAdvanced: localize('workbench.configAdvanced', 'Advanced settings'),
+        configInvalidJson: localize('workbench.configInvalidJson', 'Enter valid JSON before applying.'),
+        configCategoryName: localize('workbench.configCategoryName', 'Category name'),
+        configAddCategory: localize('workbench.configAddCategory', 'Add category'),
+        configChooseFile: localize('workbench.configChooseFile', 'Choose INI file'),
+        configFilePattern: localize('workbench.configFilePattern', 'File pattern, e.g. drafts/**'),
+        configChooseRule: localize('workbench.configChooseRule', 'Choose a rule'),
+        configAddRule: localize('workbench.configAddRule', 'Add rule level'),
+        configAddException: localize('workbench.configAddException', 'Add file exception'),
+        configProjectLink: localize('workbench.configProjectLink', 'Go to project settings'),
+        configProjectConfiguration: localize('workbench.configProjectConfiguration', 'Project configuration'),
+        configOverview: localize('workbench.configOverview', 'Overview'),
+        configOverviewHelp: localize(
+            'workbench.configOverviewHelp',
+            'Review project content and index status. Configure loading, resource sources and editor preferences in Project configuration. Check policies have their own center.'
+        ),
+        configExternalValidator: localize('workbench.configExternalValidator', 'External checker'),
+        configRunValidator: localize('workbench.configRunValidator', 'Run external checker'),
+        configValidatorHelp: localize(
+            'workbench.configValidatorHelp',
+            'Configure INI Validator independently of the built-in checks. The program runs only when you choose Run; check saved paths before running.'
+        ),
+        configCheckPaths: localize('workbench.configCheckPaths', 'Check saved paths'),
+        configPath_ready: localize('workbench.configPath_ready', 'Available'),
+        configPath_missing: localize('workbench.configPath_missing', 'Missing or inaccessible'),
+        configPath_wrongType: localize('workbench.configPath_wrongType', 'Wrong file/directory type'),
+        configPath_unconfigured: localize('workbench.configPath_unconfigured', 'Not configured'),
+        configGroup_loading: localize('workbench.configGroup_loading', 'INI files and loading'),
+        configGroup_resources: localize('workbench.configGroup_resources', 'Resource sources'),
+        configGroup_dictionary: localize('workbench.configGroup_dictionary', 'Dictionary'),
+        configGroup_editing: localize('workbench.configGroup_editing', 'Editing and preview'),
+        configGroup_maps: localize('workbench.configGroup_maps', 'Map rendering'),
+        configGroup_checks: localize('workbench.configGroup_checks', 'Rule options and file exceptions'),
+        configGroup_validator: localize('workbench.configGroup_validator', 'External checker'),
+        configHelp_toggle: localize(
+            'workbench.configHelp_toggle',
+            'Changes save immediately when no other changes are pending.'
+        ),
+        configHelp_entries: localize(
+            'workbench.configHelp_entries',
+            'Select root INIs by purpose. List order defines precedence; includes follow each entry. Empty uses automatic discovery. Drag a row or use arrow buttons to reorder.'
+        ),
+        configHelp_categories: localize(
+            'workbench.configHelp_categories',
+            'Match filenames or workspace-relative paths with glob patterns.'
+        ),
+        configHelp_files: localize(
+            'workbench.configHelp_files',
+            'Set the purpose of individual files. Included files follow their loading entry’s category.'
+        ),
+        configHelp_list: localize(
+            'workbench.configHelp_list',
+            'Add, remove or reorder items. Drag rows or use the arrow buttons.'
+        ),
+        configHelp_path: localize('workbench.configHelp_path', 'Choose a file or directory, or enter its path.'),
+        configHelp_renderer: localize(
+            'workbench.configHelp_renderer',
+            'Select a compatible CNCMaps worker executable and its input resources. Runs only from the map preview’s Render action.'
+        ),
+        configHelp_exceptions: localize(
+            'workbench.configHelp_exceptions',
+            'Rules here override the normal level for matching files. Later exceptions take precedence.'
+        ),
+        configHelp_advanced: localize(
+            'workbench.configHelp_advanced',
+            'Edit advanced semantic rules as JSON. Invalid values cannot be applied.'
+        ),
+        configHelp_bindings: localize(
+            'workbench.configHelp_bindings',
+            'Choose the input INI for each external-checker role.'
+        ),
+        configRenderer_executable: localize('workbench.configRenderer_executable', 'Renderer executable'),
+        configRenderer_mixDirectory: localize('workbench.configRenderer_mixDirectory', 'Game MIX directory'),
+        configRenderer_modDirectories: localize('workbench.configRenderer_modDirectories', 'Mod resource directories'),
+        configRenderer_rulesFiles: localize('workbench.configRenderer_rulesFiles', 'Rules input files'),
+        configRenderer_artFiles: localize('workbench.configRenderer_artFiles', 'Art input files'),
+        configRenderer_extraMixes: localize('workbench.configRenderer_extraMixes', 'Extra MIX archives'),
+        configValue_compatible: localize('workbench.configValue_compatible', 'Compatible extensions'),
+        configValue_vanilla: localize('workbench.configValue_vanilla', 'Vanilla INI loading'),
+        configValue_tem: localize('workbench.configValue_tem', 'Temperate'),
+        configValue_sno: localize('workbench.configValue_sno', 'Snow'),
+        configValue_urb: localize('workbench.configValue_urb', 'Urban'),
+        configValue_ubn: localize('workbench.configValue_ubn', 'New urban'),
+        configValue_lun: localize('workbench.configValue_lun', 'Lunar'),
+        configValue_des: localize('workbench.configValue_des', 'Desert'),
+        configValue_Error: localize('workbench.configValue_Error', 'Error'),
+        configValue_Warning: localize('workbench.configValue_Warning', 'Warning'),
+        configValue_Information: localize('workbench.configValue_Information', 'Information'),
+        configValue_Hint: localize('workbench.configValue_Hint', 'Hint'),
+        configValue_None: localize('workbench.configValue_None', 'Off'),
         setting_exePath: localize('workbench.setting_exePath', 'External validator executable'),
         setting_validationFolderPath: localize('workbench.setting_validationFolderPath', 'Mod project root'),
         setting_validationFiles: localize('workbench.setting_validationFiles', 'External validator input files'),
@@ -22,15 +147,15 @@ export function workbenchLabels(): WorkbenchLabels {
         'setting_diagnostics.enabled': localize('workbench.setting_diagnostics.enabled', 'Live INI checks'),
         'setting_diagnostics.spaceBeforeEquals': localize(
             'workbench.setting_diagnostics.spaceBeforeEquals',
-            'Legacy: space before equals'
+            'space before equals'
         ),
         'setting_diagnostics.spaceAfterEquals': localize(
             'workbench.setting_diagnostics.spaceAfterEquals',
-            'Legacy: space after equals'
+            'space after equals'
         ),
         'setting_diagnostics.leadingWhitespace': localize(
             'workbench.setting_diagnostics.leadingWhitespace',
-            'Legacy: leading whitespace'
+            'leading whitespace'
         ),
         'setting_diagnostics.spacesBeforeComment': localize(
             'workbench.setting_diagnostics.spacesBeforeComment',
@@ -38,7 +163,7 @@ export function workbenchLabels(): WorkbenchLabels {
         ),
         'setting_diagnostics.spaceAfterComment': localize(
             'workbench.setting_diagnostics.spaceAfterComment',
-            'Legacy: space after comment marker'
+            'space after comment marker'
         ),
         'setting_iniValidator.downloadUrl': localize(
             'workbench.setting_iniValidator.downloadUrl',

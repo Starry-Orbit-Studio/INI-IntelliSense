@@ -85,6 +85,10 @@ module.exports = async function verifyPlatform(port, output, command) {
             await page.screenshot({ path: output.replace('.png', '-sidebar.png') });
             await command('ra2-ini-intellisense.projectOverview');
             await target.locator('.project-layout').waitFor();
+            await target.locator('[data-project-tab=configuration]').click();
+            await target.locator('[data-setting=\"project.entryPoints\"] input').first().waitFor();
+            assert.ok(!(await target.locator('.project-configuration').textContent()).includes('旧设置'));
+            await page.screenshot({ path: output.replace('.png', '-project-configuration.png') });
             await command('ra2-ini-intellisense.checkCenter');
             const findFrame = async (selector) => {
                 for (let attempt = 0; attempt < 200; attempt++) {
@@ -95,15 +99,16 @@ module.exports = async function verifyPlatform(port, output, command) {
                 }
                 throw new Error('Missing native analysis view: ' + selector);
             };
-            const checks = await findFrame('.analysis-tabs');
+            const checks = await findFrame('[data-tab=rules]');
             await checks.locator('[data-tab=rules]').click();
             await checks.locator('.rule-row').first().waitFor();
             assert.equal(await checks.locator('.rule-row').count(), 18);
             await page.screenshot({ path: output.replace('.png', '-checks.png') });
             await checks.locator('.analysis-toolbar > button').nth(0).click();
             await checks.waitForFunction(() => document.querySelector('.analysis-status')?.textContent.includes('1/1'));
-            await checks.locator('[data-tab=settings]').click();
-            assert.ok((await checks.locator('.analysis-content').textContent()).includes('INIDictionary'));
+            await checks.locator('[data-tab=validator]').click();
+            assert.equal(await checks.locator('[data-tab=settings]').count(), 0);
+            await checks.locator('[data-setting=exePath]').waitFor();
             await page.screenshot({ path: output.replace('.png', '-settings.png') });
             await command('ra2-ini-intellisense.logicChain');
             const logic = await findFrame('.logic-focus');
