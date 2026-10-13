@@ -88,5 +88,6 @@
     "configuration.decorations.csfPreview.enabled": "Show inline CSF text.",
     "configuration.decorations.csfPreview.maxLength": "Maximum inline CSF text length.",
     "configuration.project.compatibility": "Compatible INI extensions (include/inheritance), or original game syntax without these extensions.",
-    "command.configureFileCategory": "Set INI file category"
+    "command.configureFileCategory": "Set INI file category",
+    "command.editDictionary.title": "Dictionary editor"
 }

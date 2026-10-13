@@ -713,6 +713,7 @@ export function configurationView(
                 const actions = make('div');
                 actions.className = 'configuration-actions';
                 actions.append(
+                    button(labels.editDictionary, () => post('dictionary-edit')),
                     button(labels.updateDictionary, () => post('dictionary-update')),
                     button(labels.configAdvanced, () => post('native-settings'))
                 );

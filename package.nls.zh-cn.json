@@ -88,5 +88,6 @@
     "configuration.decorations.csfPreview.enabled": "显示 CSF 行内文本。",
     "configuration.decorations.csfPreview.maxLength": "CSF 行内文本最大长度。",
     "configuration.project.compatibility": "兼容 include 与继承扩展，或使用不启用这些扩展的原版语法。",
-    "command.configureFileCategory": "定义 INI 文件用途"
+    "command.configureFileCategory": "定义 INI 文件用途",
+    "command.editDictionary.title": "字典编辑器"
 }

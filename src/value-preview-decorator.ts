@@ -124,8 +124,7 @@ export class ValuePreviewDecorator implements vscode.Disposable {
 
                 // 获取当前节的类型定义
                 const typeName = this.project?.type(document.uri, currentSection.name, currentFileType) ?? this.iniManager.getTypeForSection(currentSection.name, new Set(), currentFileType);
-                const keysDef = this.schemaManager.getAllKeysForType(typeName);
-                const propDef = [...keysDef].find(([name]) => name.toLowerCase() === key.toLowerCase())?.[1];
+                const propDef = this.schemaManager.getProperty(typeName, key);
 
                 if (propDef) {
                     switch (propDef.type) {

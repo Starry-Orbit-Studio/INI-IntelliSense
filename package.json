@@ -130,6 +130,16 @@
           }
         ],
         "priority": "default"
+      },
+      {
+        "viewType": "ra2-ini-intellisense.dictionary",
+        "displayName": "%command.editDictionary.title%",
+        "selector": [
+          {
+            "filenamePattern": "**/INIDictionary.ini"
+          }
+        ],
+        "priority": "option"
       }
     ],
     "viewsContainers": {
@@ -320,6 +330,11 @@
           "command": "ra2-ini-intellisense.configureFileCategory",
           "when": "editorLangId == ra2-ini",
           "group": "ra2-project@5"
+        },
+        {
+          "command": "ra2-ini-intellisense.editDictionary",
+          "when": "editorLangId == ra2-ini",
+          "group": "ra2-dictionary@1"
         }
       ],
       "editor/title": [
@@ -526,6 +541,11 @@
       {
         "command": "ra2-ini-intellisense.configureFileCategory",
         "title": "%command.configureFileCategory%"
+      },
+      {
+        "command": "ra2-ini-intellisense.editDictionary",
+        "title": "%command.editDictionary.title%",
+        "category": "%command.category%"
       }
     ],
     "configuration": {
@@ -1062,7 +1082,8 @@
     "test": "vscode-test",
     "i18n:extract": "vscode-nls-dev extract --outDir i18n",
     "format:workbench": "prettier --write src/context src/media src/resources/project-resources.ts src/mix/core/encrypted-header.ts src/test/media* src/test/resource-inspection.test.ts src/test/visual-edit.test.ts webview-ui/workbench",
-    "test:webview": "node scripts/test-workbench.cjs"
+    "test:webview": "node scripts/test-workbench.cjs",
+    "test:dictionary-ui": "node scripts/test-dictionary.cjs"
   },
   "devDependencies": {
     "@types/ini": "^4.1.1",
@@ -1084,6 +1105,7 @@
   },
   "dependencies": {
     "egoroof-blowfish": "^4.0.3",
-    "ini": "^5.0.0"
+    "ini": "^5.0.0",
+    "markdown-it": "^15.0.2"
   }
 }

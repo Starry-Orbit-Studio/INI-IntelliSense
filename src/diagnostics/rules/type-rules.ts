@@ -5,6 +5,7 @@ import { RuleContext, ValidationRule } from '../rules';
 import { ValueTypeCategory } from '../../schema-manager';
 import { localize } from '../../i18n';
 import { parsePropertyLine } from '../../context/ini-position';
+import { referenceCategory } from './context-rules';
 
 /**
  * 验证一个值是否符合其 Schema 定义的类型规则，并返回带精确范围的错误。
@@ -14,7 +15,9 @@ import { parsePropertyLine } from '../../context/ini-position';
  * @param valueStartIndex 完整值字符串在行中的起始位置
  * @returns 一个包含所有验证错误的数组，如果验证成功，则返回空数组
  */
-function validateValue(value: string, valueType: string, context: RuleContext, valueStartIndex: number): IniDiagnostic[] {
+function validateValue(value: string, valueType: string, context: RuleContext, valueStartIndex: number, visited = new Set<string>()): IniDiagnostic[] {
+    if (visited.has(valueType)) { return []; }
+    visited = new Set(visited).add(valueType);
     const { schemaManager, iniManager, lineNumber } = context;
     if (value === '') { return []; }
     const category = schemaManager.getValueTypeCategory(valueType);
@@ -81,7 +84,9 @@ function validateValue(value: string, valueType: string, context: RuleContext, v
                 
                 const itemStartIndexInLine = valueStartIndex + currentOffsetInValue + originalItem.indexOf(trimmedItem);
 
-                const itemErrors = validateValue(trimmedItem, definition.type, context, itemStartIndexInLine);
+                const itemErrors = trimmedItem === '' && originalItems.length > 1
+                    ? createError(localize('checks.emptyListMember', 'Empty list member. Review the separator or supply a value.'), ErrorCode.TYPE_EMPTY_LIST_ITEM, new vscode.Range(lineNumber, Math.max(valueStartIndex, itemStartIndexInLine - 1), lineNumber, Math.max(valueStartIndex, itemStartIndexInLine - 1) + 1))
+                    : validateValue(trimmedItem, definition.type, context, itemStartIndexInLine, visited);
                 if (itemErrors.length > 0) {
                     itemErrors.forEach(err => {
                         err.message = localize('diag.type.listItemInvalid', 'List item "{0}" is invalid: {1}', trimmedItem, err.message);
@@ -93,13 +98,27 @@ function validateValue(value: string, valueType: string, context: RuleContext, v
             return allErrors;
         }
 
-        case ValueTypeCategory.Section:
+        case ValueTypeCategory.Section: {
             if (/^(none|<none>)$/i.test(value) || (context.project && !context.project.context(context.document.uri).complete)) { return []; }
-            if (context.project ? !context.project.sources(context.document.uri, value, valueType === 'AnimType' ? 'art' : valueType === 'Sound' ? 'sound' : context.project.category(context.document.uri)).length : iniManager.findSectionLocations(value).length === 0) {
+            const targetCategory = context.project ? referenceCategory(schemaManager, valueType, context.project.category(context.document.uri)) : undefined;
+            const sources = context.project?.sources(context.document.uri, value, targetCategory);
+            if (sources ? !sources.length : iniManager.findSectionLocations(value).length === 0) {
+                const registry = schemaManager.getRegistryForType(valueType);
+                if (registry && /^(false|no|0)$/i.test(schemaManager.getProperty(registry, 'CheckExist')?.type ?? '')) { return []; }
                 return createError(localize('diag.logic.undefinedSection', 'Definition for section "[{0}]" not found in the project.', value), ErrorCode.LOGIC_UNDEFINED_SECTION_REFERENCE);
             }
+            if (context.project) {
+                const actual = context.project.type(context.document.uri, value, targetCategory);
+                const registered = context.project.registeredTypes(context.document.uri, value);
+                if (registered.length && !registered.some(type => schemaManager.isAssignable(type, valueType))) {
+                    const result = createError(localize('checks.referenceType', '[{0}] is {1}, but this field expects {2}.', value, actual, valueType), ErrorCode.TYPE_REFERENCE_MISMATCH);
+                    result[0].relatedInformation = sources?.slice(0, 8).map(source => new vscode.DiagnosticRelatedInformation(new vscode.Location(source.document.uri, new vscode.Position(source.section.startLine, 0)), localize('checks.targetDeclaration', 'Referenced declaration')));
+                    return result;
+                }
+            }
             return [];
-            
+        }
+
         default:
             return [];
     }
@@ -116,15 +135,7 @@ const checkKeyValueTypes: ValidationRule = (context: RuleContext): IniDiagnostic
     const key = kvMatch[1].trim();
     const valueString = kvMatch[2].trim();
     
-    let valueType: string | undefined;
-    // currentSection.keys 是 Map<string, PropertyDefinition>
-    for (const [k, v] of currentSection.keys.entries()) {
-        if (k.toLowerCase() === key.toLowerCase()) {
-            // 适配 v 可能是对象的情况
-            valueType = v.type;
-            break;
-        }
-    }
+    const valueType = context.schemaManager.getProperty(context.currentSection.typeName ?? '', key)?.type;
 
     if (valueType) {
         // 计算值在行中的精确起始位置

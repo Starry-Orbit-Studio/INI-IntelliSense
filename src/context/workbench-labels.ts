@@ -253,6 +253,7 @@ export function workbenchLabels(): WorkbenchLabels {
         dictionaryMissing: localize('workbench.dictionaryMissing', 'Not configured / not loaded'),
         descriptionLanguages: localize('workbench.descriptionLanguages', 'Loaded description languages'),
         updateDictionary: localize('workbench.updateDictionary', 'Update dictionary'),
+        editDictionary: localize('dictionary.editor.title', 'Dictionary editor'),
         externalValidator: localize('workbench.externalValidator', 'Manage external INI Validator'),
         bothDirections: localize('workbench.bothDirections', 'Both directions'),
         upstream: localize('workbench.upstream', 'Upstream · used by'),

@@ -9,6 +9,7 @@ import { compileFileCategoryGlob } from '../file-type-manager';
 import { styleRules } from './rules/style-rules';
 import { typeRules } from './rules/type-rules';
 import { logicRules } from './rules/logic-rules';
+import { structuralRules, checkNumberedKey, checkFilePurpose } from './rules/context-rules';
 import { rulePolicy } from './rule-catalog';
 import { localize } from '../i18n';
 
@@ -92,6 +93,7 @@ export class DiagnosticManager implements vscode.Disposable {
         const configuration = vscode.workspace.getConfiguration('ra2-ini-intellisense.diagnostics', uri);
         const relative = vscode.workspace.asRelativePath(uri, false).replace(/\\/g, '/');
         if (
+            this.schema.isDictionaryDocument(uri) ||
             !configuration.get('enabled', true) ||
             configuration
                 .get<string[]>('excludePatterns', [])
@@ -170,7 +172,7 @@ export class DiagnosticManager implements vscode.Disposable {
                 currentSection: { name: section?.name ?? null, typeName, keys },
                 seenRegistryKeys,
             };
-            for (const rule of [...styleRules, ...typeRules, ...logicRules]) {
+            for (const rule of [...styleRules, ...typeRules, ...logicRules, checkNumberedKey, checkFilePurpose]) {
                 result.push(...rule(context));
             }
             if (parsed && section && !['#include', 'description'].includes(section.name.toLowerCase())) {
@@ -192,7 +194,8 @@ export class DiagnosticManager implements vscode.Disposable {
                 seenKeys.add(normalized);
                 if (
                     keys?.size &&
-                    ![...keys.keys()].some((name) => name.toLowerCase() === normalized) &&
+                    !this.schema.getTypeForRegistry(section.name) &&
+                    !this.schema.getProperty(typeName ?? '', parsed.key) &&
                     !['inherits', '$inherits'].includes(normalized) &&
                     policy.get('L005') !== null
                 ) {
@@ -211,6 +214,7 @@ export class DiagnosticManager implements vscode.Disposable {
                 }
             }
         }
+        result.push(...structuralRules(document, model, this.project));
         const filtered = result.filter((diagnostic) => {
             const severity = policy.get(String(diagnostic.code));
             if (severity === null) {

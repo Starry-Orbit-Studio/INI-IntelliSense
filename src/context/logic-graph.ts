@@ -111,7 +111,7 @@ export async function indexLogic(
         const keys = schema.getAllKeysForType(object.type);
         for (const [key, resolution] of object.properties) {
             const property = resolution.effective;
-            let expected = [...keys].find(([name]) => name.toLowerCase() === key)?.[1].type;
+            let expected = schema.getProperty(object.type, key)?.type;
             const visited = new Set<string>();
             while (expected && schema.getListDefinition(expected) && !visited.has(expected)) {
                 visited.add(expected);

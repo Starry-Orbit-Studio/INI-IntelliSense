@@ -328,6 +328,7 @@ export class ProjectWorkbench implements vscode.TreeDataProvider<ProjectItem>, v
             this.node(origin, labels.logicChain, 'logic', 'references', 'ra2-ini-intellisense.logicChain'),
             this.node(origin, labels.audit, 'audit', 'checklist', 'ra2-ini-intellisense.auditResources'),
             this.node(origin, labels.checkCenter, 'checks', 'check', 'ra2-ini-intellisense.checkCenter'),
+            this.node(origin, localize('dictionary.editor.title', 'Dictionary editor'), 'dictionary', 'book', 'ra2-ini-intellisense.editDictionary'),
             this.node(
                 origin,
                 labels.projectSettings,

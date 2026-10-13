@@ -4,6 +4,7 @@ import * as fs from 'fs';
 import { INIManager } from './parser';
 import { INIValidatorExt } from './ini-validator-ext';
 import { SchemaManager } from './schema-manager';
+import { DictionaryEditor } from './dictionary/editor';
 import { IniSemanticTokensProvider, legend } from './semantic-tokens-provider';
 import { DiagnosticManager } from './diagnostics/engine';
 import { OverrideDecorator } from './override-decorator';
@@ -139,6 +140,7 @@ export async function activate(context: vscode.ExtensionContext) {
     const media = new MediaService(projectResources, decoder, context.extensionUri);
     const inspection = new InspectionService(projectResources, media, iniManager, schemaManager, fileTypeManager, (key) => csfManager.getLabel(key)?.value);
     diagnosticManager.project = inspection.ini;
+    context.subscriptions.push(new DictionaryEditor(context, schemaManager, descriptionManager, inspection.ini, projectResources));
     overrideDecorator.project = inspection.ini;
     valuePreviewDecorator.project = inspection.ini;
     context.subscriptions.push(new AnalysisController(context, inspection, schemaManager, descriptionManager, diagnosticManager, key => csfManager.getLabel(key)?.value));
@@ -514,10 +516,9 @@ export async function activate(context: vscode.ExtensionContext) {
 		
 		indexWorkspaceFiles();
         
-        // 初始全量诊断（现在是异步调度）
-        if (vscode.window.activeTextEditor) {
-            diagnosticManager.handleDocumentChange(vscode.window.activeTextEditor.document);
-        }
+        for (const document of vscode.workspace.textDocuments) { diagnosticManager.handleDocumentChange(document); }
+        overrideDecorator.triggerUpdateDecorationsForAllVisibleEditors();
+        for (const editor of vscode.window.visibleTextEditors) { valuePreviewDecorator.triggerUpdate(editor); }
 	}
 	
 	context.subscriptions.push(vscode.commands.registerCommand('ra2-ini-intellisense.configureSchemaPath', async () => {
@@ -918,14 +919,7 @@ export async function activate(context: vscode.ExtensionContext) {
                 const currentFileType = inspection.ini.category(document.uri);
                 const typeName = inspection.ini.type(document.uri, currentSectionName, currentFileType);
 				if (typeName) {
-					const allKeys = schemaManager.getAllKeysForType(typeName);
-					let propDef: import('./schema-manager').PropertyDefinition | undefined;
-					for (const [k, v] of allKeys.entries()) {
-						if (k.toLowerCase() === keyPart.toLowerCase()) {
-							propDef = v;
-							break;
-						}
-					}
+					const propDef = schemaManager.getProperty(typeName, keyPart);
 			
 					if (propDef) {
 						markdown.appendCodeblock(`${keyPart}: ${propDef.type}`, 'ini');
@@ -954,7 +948,7 @@ export async function activate(context: vscode.ExtensionContext) {
 						// 逐级向 DescriptionManager 查询描述
 						while (currentLookupType && !visitedTypes.has(currentLookupType)) {
 							visitedTypes.add(currentLookupType);
-							foundDescription = descriptionManager.getDescription(currentLookupType, keyPart);
+							foundDescription = descriptionManager.getDescription(currentLookupType, keyPart) ?? descriptionManager.getDescription(currentLookupType, propDef.declaration ?? keyPart);
 							if (foundDescription) {
 								break; // 找到了就退出
 							}
@@ -1018,7 +1012,8 @@ export async function activate(context: vscode.ExtensionContext) {
 				if (!typeName) {return new vscode.CompletionList([], false);}
 
 				if (isKeyCompletion) {
-					const keys = schemaManager.getAllKeysForType(typeName);
+					const effectiveValues = inspection.ini.effective(document.uri, currentSectionName, currentFileType);
+                    const keys = schemaManager.expandedKeys(typeName, key => effectiveValues.get(key.toLowerCase())?.value ?? schemaManager.getProperty(typeName, key)?.defaultValue);
 					if (keys.size === 0) {return new vscode.CompletionList([], false);}
 			
 					const items = Array.from(keys.entries())
@@ -1040,15 +1035,7 @@ export async function activate(context: vscode.ExtensionContext) {
 				} else {
 					const suggestions: vscode.CompletionItem[] = [];
 					const currentKey = line.text.substring(0, equalsIndex).trim();
-					const allKeys = schemaManager.getAllKeysForType(typeName);
-						
-					let valueType: string | undefined;
-					for (const [key, propDef] of allKeys.entries()) {
-						if (key.toLowerCase() === currentKey.toLowerCase()) {
-							valueType = propDef.type;
-							break;
-						}
-					}
+					const valueType = schemaManager.getProperty(typeName, currentKey)?.type;
 
 					if (valueType) {
 						if (valueType.toLowerCase() === 'bool') {
@@ -1112,14 +1099,7 @@ export async function activate(context: vscode.ExtensionContext) {
 					const typeName = inspection.ini.type(document.uri, currentSectionName, inspection.ini.category(document.uri));
 
 					if (typeName) {
-						const allKeys = schemaManager.getAllKeysForType(typeName);
-						let valueType: string | undefined;
-						for (const [key, propDef] of allKeys.entries()) {
-							if (key.toLowerCase() === currentKey.toLowerCase()) {
-								valueType = propDef.type;
-								break;
-							}
-						}
+						const valueType = schemaManager.getProperty(typeName, currentKey)?.type;
 
 						if (valueType === 'ColorStruct') {
 							const parsed = parsePropertyLine(line.text);

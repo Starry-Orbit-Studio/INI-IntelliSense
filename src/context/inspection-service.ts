@@ -175,9 +175,7 @@ export class InspectionService implements vscode.Disposable {
     }
 
     public propertyDefinition(type: string, key: string) {
-        const definition = [...this.schema.getAllKeysForType(type)].find(
-            ([name]) => name.toLowerCase() === key.toLowerCase()
-        )?.[1];
+        const definition = this.schema.getProperty(type, key);
         return {
             definition,
             limits: definition && this.schema.getNumberLimit(definition.type),
@@ -441,7 +439,7 @@ export class InspectionService implements vscode.Disposable {
         inspection.properties = [...this.ini.explain(document.uri, section.name, category).values()]
             .filter(({ effective }) => !/^\$?inherits$/i.test(effective.key))
             .map(({ effective: item, declarations }) => {
-                const definition = [...definitions].find(([key]) => key.toLowerCase() === item.key.toLowerCase())?.[1];
+                const definition = this.schema.getProperty(type, item.key);
                 const limits = definition && this.schema.getNumberLimit(definition.type);
                 const strings = definition && this.schema.getStringLimit(definition.type);
                 const editable =

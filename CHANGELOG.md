@@ -4,6 +4,9 @@
 
 ## [Unreleased]
 
+- Added a visual dictionary editor with searchable types, tags and descriptions, inherited sources, numbered keys, typed constraints, multilingual Markdown, project examples, native undo and conflict-safe edits. Downloaded dictionaries can be copied into the project for customization.
+- Added configurable include/parent cycle and missing-file checks, registered reference type checks, empty list members, numbered-key bounds, file-purpose checks and registry integrity checks; defer context-dependent results while loading is incomplete and treat intentional overrides/empty values as informational.
+
 - Split the top-level project page into Overview and Project configuration, with direct entry/file/directory pickers, reorderable lists, file categories, display toggles and map renderer inputs.
 - Keep the check center focused on results, rules/file exceptions and the external checker; remove duplicate general settings and hide compatibility switches behind the unified rules.
 - Show configuration destinations and effective sources, preserve drafts, restore inheritance, detect external edits, roll back failed batches and check saved paths without running programs. Resolve dictionary/checker configuration in the selected project.

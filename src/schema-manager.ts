@@ -2,6 +2,8 @@ import * as vscode from 'vscode';
 import * as fs from 'fs';
 import * as path from 'path';
 import { localize } from './i18n';
+import { DictionarySource } from './dictionary/source-model';
+import { keyPattern, patternIndex, patternBound } from './dictionary/key-pattern';
 
 /**
  * 定义一个属性的详细定义。
@@ -10,6 +12,10 @@ export interface PropertyDefinition {
     type: string;        // 值的类型，如 'int', 'bool', 'BuildingType'
     defaultValue?: string; // 默认值
     fileType?: string;   // 该键所属的文件类型，如 'rules', 'art'。如果未定义，则通用。
+    declaration?: string;
+    sourcePath?: string;
+    sourceLine?: number;
+    owner?: string;
     source?: string;     // 键的来源（文件名，不含后缀），如 'Ares', 'Phobos'，如果是主字典则可能为空或 'INIDictionary'
 }
 
@@ -78,6 +84,7 @@ export class SchemaManager {
     private schemas = new Map<string, SchemaDefinition>();
     // 缓存已计算的类型键集合, 避免对同一类型的继承链进行重复遍历, 提高性能。
     private keyCache = new Map<string, Map<string, PropertyDefinition>>();
+    private propertyCache = new Map<string, PropertyDefinition | undefined>();
     // 标记Schema文件是否已成功加载并解析。
     private isLoaded: boolean = false;
     private schemaFilePath: string | null = null;
@@ -95,6 +102,7 @@ export class SchemaManager {
     
     // 用于防止循环 include
     private visitedPaths: Set<string> = new Set();
+    private dictionaryDocuments = new Set<string>();
 
     /**
      * 清空所有已加载的 schema 数据，重置状态。
@@ -105,6 +113,7 @@ export class SchemaManager {
         this.sections.clear();
         this.schemas.clear();
         this.keyCache.clear();
+        this.propertyCache.clear();
         this.isLoaded = false;
         this.schemaFilePath = null;
         
@@ -117,6 +126,7 @@ export class SchemaManager {
         this.stringLimitTypes.clear();
         this.listTypes.clear();
         this.visitedPaths.clear();
+        this.dictionaryDocuments.clear();
     }
 
     /**
@@ -162,9 +172,12 @@ export class SchemaManager {
 
         this.clearSchema();
         this.schemaFilePath = filePath;
+        for (const entry of new DictionarySource(content).inSection('Description')) {
+            if (entry.value) { this.dictionaryDocuments.add(path.resolve(path.dirname(filePath), entry.value).toLowerCase()); }
+        }
 
         // 开始递归解析
-        this.parseFileRecursively(filePath);
+        this.parseFileRecursively(filePath, content);
 
         if (this.registries.size > 0 || this.schemas.size > 0) {
             this.isLoaded = true;
@@ -178,7 +191,8 @@ export class SchemaManager {
      * 递归解析单个文件
      * @param filePath 文件的绝对路径
      */
-    private parseFileRecursively(filePath: string) {
+    private parseFileRecursively(filePath: string, suppliedContent?: string) {
+        this.dictionaryDocuments.add(path.resolve(filePath).toLowerCase());
         if (this.visitedPaths.has(filePath)) {
             return;
         }
@@ -186,7 +200,7 @@ export class SchemaManager {
 
         let content: string;
         try {
-            content = fs.readFileSync(filePath, 'utf-8');
+            content = suppliedContent ?? fs.readFileSync(filePath, 'utf-8');
         } catch (e) {
             console.error(`[SchemaManager] Failed to read file: ${filePath}`, e);
             return;
@@ -196,37 +210,13 @@ export class SchemaManager {
         const dirName = path.dirname(filePath);
         const sourceName = path.parse(filePath).name; // 获取文件名作为来源，不含后缀
 
-        // 预扫描：处理 [#include]
-        let inIncludeSection = false;
-        for (const line of lines) {
-            const trimmedLine = line.trim();
-            if (trimmedLine === '' || trimmedLine.startsWith(';')) { continue; }
-
-            if (trimmedLine.startsWith('[')) {
-                inIncludeSection = trimmedLine.toLowerCase() === '[#include]';
-                continue;
-            }
-
-            if (inIncludeSection) {
-                // 支持 "Key=File" 和 "File" 两种格式
-                let includePath = trimmedLine;
-                const equalsIndex = trimmedLine.indexOf('=');
-                if (equalsIndex !== -1) {
-                    includePath = trimmedLine.substring(equalsIndex + 1).trim();
-                }
-                
-                if (includePath) {
-                    const absolutePath = path.resolve(dirName, includePath);
-                    // 优先解析子文件（深度优先），这样主文件的定义可以覆盖子文件（如果需要）
-                    // 或者如果想要子文件覆盖主文件，可以放在后面解析。
-                    // 这里采用先加载子文件，主文件的定义将合并/覆盖进去。
-                    this.parseFileRecursively(absolutePath);
-                }
-            }
+        for (const entry of new DictionarySource(content).inSection('#include')) {
+            const include = entry.value ?? entry.key;
+            if (include) { this.parseFileRecursively(path.resolve(dirName, include)); }
         }
 
         // 解析当前文件内容
-        this.parseContent(content, sourceName);
+        this.parseContent(content, sourceName, filePath);
     }
 
     /**
@@ -234,8 +224,9 @@ export class SchemaManager {
      * @param content 文件内容
      * @param sourceName 来源标识（文件名）
      */
-    private parseContent(content: string, sourceName: string) {
+    private parseContent(content: string, sourceName: string, filePath: string) {
         const lines = content.split(/\r?\n/);
+        const original = new DictionarySource(content);
         
         // 第一遍扫描：识别节结构
         const preParsed = new Map<string, { base: string | null, contentLines: string[] }>();
@@ -255,7 +246,8 @@ export class SchemaManager {
                     continue;
                 }
                 const baseName = sectionMatch[2] ? sectionMatch[2].trim() : null;
-                currentSection = { base: baseName, contentLines: [] };
+                currentSection = preParsed.get(typeName) ?? { base: baseName, contentLines: [] };
+                if (baseName) { currentSection.base = baseName; }
                 preParsed.set(typeName, currentSection);
             } else if (currentSection) {
                 currentSection.contentLines.push(trimmedLine);
@@ -347,8 +339,12 @@ export class SchemaManager {
                 for (const line of data.contentLines) {
                     const [key, value] = this.parseKeyValue(line);
                     if (key) {
-                        const keyName = key.split('(')[0].trim();
+                        const keyName = key.trim();
                         const propertyDef = this.parsePropertyDefinition(value || 'string', sourceName);
+                        const declaration = original.find(typeName, keyName);
+                        Object.assign(propertyDef, { declaration: keyName, owner: typeName, sourcePath: filePath, sourceLine: declaration?.line });
+                        const old = [...definition.keys.keys()].find(name => name.toLowerCase() === keyName.toLowerCase());
+                        if (old) { definition.keys.delete(old); }
                         definition.keys.set(keyName, propertyDef);
                     }
                 }
@@ -412,13 +408,56 @@ export class SchemaManager {
     public getStringLimit(typeName: string): StringLimit | undefined { return this.stringLimits.get(typeName); }
     public getListDefinition(typeName: string): ListDefinition | undefined { return this.listDefinitions.get(typeName); }
 
+    public getSchemaPath(): string | null { return this.schemaFilePath; }
+    public isDictionaryDocument(uri: vscode.Uri): boolean {
+        return uri.scheme === 'file' && this.dictionaryDocuments.has(path.resolve(uri.fsPath).toLowerCase());
+    }
+
+    public getTypeNames(): string[] {
+        return [...new Set([...this.schemas.keys(), ...this.numberLimits.keys(), ...this.stringLimits.keys(), ...this.listDefinitions.keys(), 'int', 'float', 'double', 'string', 'bool'])];
+    }
+
+    /** One resolver is shared by hover, completion, references and diagnostics. */
+    public getProperty(typeName: string, key: string): PropertyDefinition | undefined {
+        const id = typeName.toLowerCase() + ':' + key.toLowerCase();
+        if (this.propertyCache.has(id)) { return this.propertyCache.get(id); }
+        const keys = this.getAllKeysForType(typeName);
+        const result = [...keys].find(([name]) => name.toLowerCase() === key.toLowerCase())?.[1]
+            ?? [...keys].find(([name]) => patternIndex(name, key) !== undefined)?.[1];
+        this.propertyCache.set(id, result); return result;
+    }
+
+    public expandedKeys(typeName: string, read: (key: string) => string | undefined): Map<string, PropertyDefinition> {
+        const result = new Map<string, PropertyDefinition>();
+        for (const [name, property] of this.getAllKeysForType(typeName)) {
+            const pattern = keyPattern(name);
+            if (!pattern) { result.set(name, property); continue; }
+            const min = patternBound(pattern.minimum, read), max = patternBound(pattern.maximum, read);
+            if (min === undefined || max === undefined || max < min) { continue; }
+            for (let index = min; index <= Math.min(max, min + 255); index++) {
+                result.set(pattern.prefix + index + pattern.suffix, property);
+            }
+        }
+        return result;
+    }
+
+    public isAssignable(actual: string, expected: string): boolean {
+        const visited = new Set<string>();
+        while (actual && !visited.has(actual.toLowerCase())) {
+            if (actual.toLowerCase() === expected.toLowerCase()) { return true; }
+            visited.add(actual.toLowerCase());
+            actual = this.getSchema(actual)?.base ?? '';
+        }
+        return false;
+    }
+
     /**
      * 根据注册表名获取其对应的类型名。
      * @param registryName 注册表名, 如 'BuildingTypes'
      * @returns 类型名, 如 'BuildingType', 或 undefined
      */
     public getTypeForRegistry(registryName: string): string | undefined {
-        return this.registries.get(registryName);
+        return [...this.registries].find(([name]) => name.toLowerCase() === registryName.toLowerCase())?.[1];
     }
     
     /**
@@ -485,7 +524,12 @@ export class SchemaManager {
         
         // 合并父类的键和当前类型的键。
         // Map的构造函数特性确保了子类键会覆盖父类的同名键。
-        const allKeys = new Map([...baseKeys, ...schema.keys]);
+        const allKeys = new Map(baseKeys);
+        for (const [key, property] of schema.keys) {
+            const old = [...allKeys.keys()].find(name => name.toLowerCase() === key.toLowerCase());
+            if (old) { allKeys.delete(old); }
+            allKeys.set(key, property);
+        }
 
         // 将计算结果存入缓存。
         this.keyCache.set(typeName, allKeys);

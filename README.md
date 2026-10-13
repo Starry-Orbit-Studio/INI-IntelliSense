@@ -191,3 +191,11 @@ Maintained by **Astralette (小星星)**.
 This project is licensed under the MIT License. See the `LICENSE` file for details.
 
 The top-level Project overview and settings page has Overview and Project configuration tabs, with typed controls for loading entries, resource directories/archive priority, dictionaries, preview preferences and map rendering. Configuration destinations and effective sources are explicit; grouped changes require Apply and isolated toggles save immediately. The check center contains results, rules/file exceptions and external-checker configuration, retaining existing rule preferences transparently.
+
+### Dictionary authoring and contextual checks
+
+Open **Dictionary editor** from the project workbench or an INI tag’s context menu. Search tags, descriptions, types and sources; edit inherited definitions, numbered keys, ranges, enumerations, lists, registries and multilingual Markdown. Editing an inherited tag creates an override in the current dictionary.
+
+**Apply changes** updates unsaved VS Code documents and supports native undo. **Save and reload** saves dictionary and description documents and refreshes the extension. The visual and text editors share documents; stale edits are rejected. Downloaded dictionaries are read-only in the visual editor; **Create project copy** preserves customization across dictionary downloads.
+
+The check center includes `C001–C004` for include/parent loading and cycles, `T009–T010` for registered reference types and empty list members, and `L007–L010` for numbered ranges, file purposes and registry integrity. Rules support severity overrides and file exceptions. Vanilla mode skips extension loading syntax; incomplete contexts defer dependent conclusions, and dictionary `CheckExist=false` declarations are respected.

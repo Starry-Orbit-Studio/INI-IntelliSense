@@ -18,11 +18,21 @@ const definitions: [string, string, RuleSeverity][] = [
     ['T006', 'Invalid value suffix', 'Error'],
     ['T007', 'Invalid list length', 'Error'],
     ['T008', 'Invalid boolean', 'Error'],
+    ['T009', 'Referenced object has an incompatible type', 'Warning'],
+    ['T010', 'Empty list member', 'Warning'],
+    ['C001', 'Included file could not be loaded', 'Warning'],
+    ['C002', 'Include cycle', 'Warning'],
+    ['C003', 'Missing parent section', 'Warning'],
+    ['C004', 'Inheritance cycle', 'Error'],
     ['L001', 'Missing referenced section', 'Error'],
-    ['L003', 'Empty value', 'Warning'],
-    ['L004', 'Duplicate registry key', 'Error'],
+    ['L003', 'Empty value', 'Hint'],
+    ['L004', 'Duplicate registry key', 'Information'],
     ['L005', 'Unknown key for the inferred type', 'None'],
     ['L006', 'Repeated key within a section', 'Information'],
+    ['L007', 'Numbered key outside its effective range', 'Warning'],
+    ['L008', 'Key belongs to a different file purpose', 'Information'],
+    ['L009', 'Repeated registered object', 'Information'],
+    ['L010', 'Registered object has no definition', 'Warning'],
 ];
 export function ruleCatalog() {
     return definitions.map(([id, name, severity]) => ({

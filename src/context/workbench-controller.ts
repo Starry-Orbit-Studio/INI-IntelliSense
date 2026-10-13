@@ -414,6 +414,7 @@ class WorkbenchSession implements vscode.Disposable {
             refresh: () => this.refresh(), editing: active => { this.editing = active; },
         }, message)) { return; }
         if (data.type === 'check-center') { await vscode.commands.executeCommand('ra2-ini-intellisense.checkCenter', current.origin); return; }
+        if (data.type === 'dictionary-edit') { await vscode.commands.executeCommand('ra2-ini-intellisense.editDictionary', current.origin); return; }
         if (data.type === 'dictionary-update') { await vscode.commands.executeCommand('ra2-ini-intellisense.downloadDictionary', current.origin, this.configurationScope ?? (vscode.workspace.getWorkspaceFolder(current.origin) ? 'folder' : 'user')); this.refresh(); return; }
         if (data.type === 'native-settings') { await vscode.commands.executeCommand('workbench.action.openSettings', '@ext:Astralette.ra2-ini-intellisense'); return; }
 

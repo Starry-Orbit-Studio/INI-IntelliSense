@@ -1,0 +1,49 @@
+:root { color-scheme: light dark; }
+* { box-sizing: border-box; }
+body { margin: 0; color: var(--vscode-foreground); background: var(--vscode-editor-background); font: var(--vscode-font-size, 13px) var(--vscode-font-family, sans-serif); }
+#dictionary { padding: 18px 22px; height: 100vh; display: flex; flex-direction: column; gap: 12px; }
+h1 { margin: 0 0 5px; font-size: 19px; } h2 { margin: 0 0 12px; font-size: 15px; } h3 { font-size: 13px; }
+small { color: var(--vscode-descriptionForeground); overflow-wrap: anywhere; }
+button, input, select, textarea { font: inherit; border-radius: 4px; border: 1px solid var(--vscode-input-border, transparent); }
+button { padding: 7px 11px; background: var(--vscode-button-secondaryBackground); color: var(--vscode-button-secondaryForeground); cursor: pointer; }
+button:hover { background: var(--vscode-button-secondaryHoverBackground); }
+button:disabled { opacity: .45; cursor: default; }
+input, select, textarea { color: var(--vscode-input-foreground); background: var(--vscode-input-background); padding: 7px 9px; width: 100%; min-width: 0; }
+textarea { min-height: 125px; resize: vertical; line-height: 1.5; }
+input:focus, select:focus, textarea:focus, button:focus-visible { outline: 1px solid var(--vscode-focusBorder); outline-offset: 1px; }
+.dictionary-toolbar { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.dictionary-toolbar > div { flex: 1; min-width: 230px; }
+.dictionary-toolbar small { display: block; max-width: 620px; }
+.dictionary-status { font-size: 12px; color: var(--vscode-descriptionForeground); }
+.dictionary-layout { display: grid; grid-template-columns: minmax(140px, 190px) minmax(220px, 300px) minmax(290px, 1fr); flex: 1; min-height: 0; gap: 14px; }
+.dictionary-layout > * { padding: 14px; border: 1px solid var(--vscode-panel-border); border-radius: 6px; overflow: auto; min-width: 0; }
+.dictionary-types > button, .dictionary-tags > button { margin: 0 6px 10px 0; }
+.dictionary-type-list, .dictionary-tag-list { display: flex; flex-direction: column; gap: 3px; }
+.dictionary-type-list button, .dictionary-tag-list button { text-align: left; background: transparent; color: var(--vscode-foreground); }
+.dictionary-type-list button { overflow-wrap: anywhere; white-space: normal; min-width: 0; }
+.dictionary-tag-list button strong, .dictionary-tag-list button small { display: block; }
+.dictionary-tag-list button strong { margin-bottom: 4px; overflow-wrap: anywhere; }
+button[aria-current="true"] { background: var(--vscode-list-activeSelectionBackground); color: var(--vscode-list-activeSelectionForeground); }
+button[aria-current="true"] small { color: inherit; opacity: .8; }
+.dictionary-field { display: flex; flex-direction: column; gap: 5px; margin: 0 0 13px; max-width: 620px; }
+.dictionary-field > span { color: var(--vscode-descriptionForeground); font-size: 12px; }
+.dictionary-source { overflow-wrap: anywhere; font-size: 12px; color: var(--vscode-descriptionForeground); }
+.dictionary-description { margin-top: 18px; border-top: 1px solid var(--vscode-panel-border); padding-top: 14px; }
+summary { cursor: pointer; margin-bottom: 12px; }
+.dictionary-preview { white-space: pre-wrap; overflow-wrap: anywhere; line-height: 1.6; font: inherit; padding: 12px; background: var(--vscode-textBlockQuote-background); border-radius: 4px; }
+.dictionary-preview p:first-child { margin-top: 0; } .dictionary-preview p:last-child { margin-bottom: 0; }
+.dictionary-preview a { color: var(--vscode-textLink-foreground); } .dictionary-preview pre { overflow: auto; white-space: pre; }
+.dictionary-preview code { font-family: var(--vscode-editor-font-family, monospace); }
+.dictionary-preview table { border-collapse: collapse; } .dictionary-preview td, .dictionary-preview th { padding: 4px 8px; border: 1px solid var(--vscode-panel-border); }
+.dictionary-description > select { width: 130px; display: block; margin-bottom: 12px; }
+.dictionary-example { display: block; text-align: left; white-space: pre-wrap; overflow-wrap: anywhere; width: 100%; margin-bottom: 6px; }
+.dictionary-checkbox { display: flex; gap: 7px; align-items: center; margin-top: 12px; }
+.dictionary-checkbox input { width: auto; }
+.dictionary-actions { position: sticky; bottom: -14px; padding: 14px 0; display: flex; flex-wrap: wrap; gap: 8px; background: var(--vscode-editor-background); border-top: 1px solid var(--vscode-panel-border); }
+.dictionary-actions button:first-child, [data-action="save"] { background: var(--vscode-button-background); color: var(--vscode-button-foreground); }
+.dictionary-message { color: var(--vscode-errorForeground); margin: 0; }
+.dictionary-notice { margin: 0; padding: 10px; border-left: 3px solid var(--vscode-focusBorder); background: var(--vscode-textBlockQuote-background); }
+.dictionary-problems { max-height: 180px; overflow: auto; } .dictionary-problems p { overflow-wrap: anywhere; }
+[hidden] { display: none !important; }
+@media (max-width: 900px) { .dictionary-layout { grid-template-columns: 140px 210px minmax(270px, 1fr); gap: 8px; } #dictionary { padding: 12px; } }
+@media (max-width: 650px) { #dictionary { height: auto; min-height: 100vh; } .dictionary-layout { grid-template-columns: 140px minmax(180px, 1fr); } .dictionary-details { grid-column: 1 / -1; } .dictionary-types, .dictionary-tags { max-height: 300px; } }

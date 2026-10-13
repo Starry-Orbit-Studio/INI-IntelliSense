@@ -44,8 +44,9 @@ export class ProjectIni {
     private generation = 0;
     private activeDocuments = new Map<string, Set<string>>();
     private dependencies = new Map<string, string[]>();
+    private fileCandidates = new Map<string, vscode.Uri[]>();
     private contexts = new Map<string, ProjectResolutionContext>();
-    private typeIndexes = new Map<string, { sources: Map<string, SectionSource[]>; types: Map<string, string> }>();
+    private typeIndexes = new Map<string, { sources: Map<string, SectionSource[]>; types: Map<string, string>; registeredTypes: Map<string, Set<string>> }>();
     private queries = new Map<string, { signature: string[]; sources: Map<string, SectionSource[]> }>();
     private incomingQueries = new Map<
         string,
@@ -71,6 +72,7 @@ export class ProjectIni {
         this.incomingQueries.clear();
         this.activeDocuments.clear();
         this.dependencies.clear();
+        this.fileCandidates.clear();
         this.contexts.clear();
     }
 
@@ -126,6 +128,7 @@ export class ProjectIni {
                         uri.scheme === 'file' && /^\/[a-z]:/i.test(uri.path)
                             ? uri.toString().toLowerCase()
                             : uri.toString();
+                    this.fileCandidates.set(this.resources.projectRoot(origin).toString(), files.map(item => item.uri));
                     const known = new Map(files.map((item) => [canonical(item.uri), item.uri]));
                     const names = new Map<string, vscode.Uri[]>();
                     for (const file of files) {
@@ -570,6 +573,7 @@ export class ProjectIni {
                 registries[registry] ??= this.schema.getTypeForRegistry(registry) ?? 'Unknown';
             }
             const registered = new Map<string, string>();
+            const registeredTypes = new Map<string, Set<string>>();
             for (const [registry, type] of Object.entries(registries)) {
                 for (const value of registryValues(
                     registry,
@@ -578,6 +582,8 @@ export class ProjectIni {
                     snapshot.context.compatibility !== 'vanilla'
                 )) {
                     registered.set(value.toLowerCase(), type);
+                    const variants = registeredTypes.get(value.toLowerCase()) ?? new Set<string>();
+                    variants.add(type); registeredTypes.set(value.toLowerCase(), variants);
                 }
             }
             for (const [name, type] of registered) {
@@ -629,7 +635,7 @@ export class ProjectIni {
                             );
                         }
                         for (const [key, value] of definition.section.properties) {
-                            const expected = keyTypes.get(type)!.get(key.toLowerCase());
+                            const expected = keyTypes.get(type)!.get(key.toLowerCase()) ?? this.propertyType(type, key);
                             if (!expected || !this.schema.isComplexType(expected)) {
                                 continue;
                             }
@@ -648,7 +654,7 @@ export class ProjectIni {
                     break;
                 }
             }
-            cached = { sources, types };
+            cached = { sources, types, registeredTypes };
             this.typeIndexes.set(scope, cached);
         }
         return (
@@ -659,9 +665,7 @@ export class ProjectIni {
     }
 
     public propertyType(owner: string, key: string): string | undefined {
-        const property = [...this.schema.getAllKeysForType(owner)].find(
-            ([name]) => name.toLowerCase() === key.toLowerCase()
-        )?.[1];
+        const property = this.schema.getProperty(owner, key);
         let type = property?.type;
         const visited = new Set<string>();
         while (type && this.schema.getListDefinition(type) && !visited.has(type)) {
@@ -669,6 +673,25 @@ export class ProjectIni {
             type = this.schema.getListDefinition(type)!.type;
         }
         return type;
+    }
+
+    /** Registrations are authoritative; reference-based guesses must not cause type mismatch warnings. */
+    public registeredTypes(origin: vscode.Uri, name: string): string[] {
+        this.type(origin, name);
+        return [...(this.typeIndexes.get(this.queryScope(origin))?.registeredTypes.get(name.toLowerCase()) ?? [])];
+    }
+
+    /** Match the same local, project-root and unambiguous basename lookup used during loading. */
+    public includeTarget(origin: vscode.Uri, parent: vscode.Uri, name: string): vscode.Uri | undefined {
+        const candidates = this.fileCandidates.get(this.resources.projectRoot(origin).toString()) ?? [];
+        const normalized = name.replace(/\\/g, '/');
+        const relative = vscode.Uri.joinPath(parent.with({ path: path.posix.dirname(parent.path) }), normalized);
+        const root = vscode.Uri.joinPath(this.resources.projectRoot(origin), normalized);
+        const canonical = (uri: vscode.Uri) => uri.scheme === 'file' && /^\/[a-z]:/i.test(uri.path) ? uri.toString().toLowerCase() : uri.toString();
+        const exact = candidates.find(uri => canonical(uri) === canonical(relative)) ?? candidates.find(uri => canonical(uri) === canonical(root));
+        if (exact) { return exact; }
+        const matching = candidates.filter(uri => path.posix.basename(uri.path).toLowerCase() === normalized.toLowerCase());
+        return matching.length === 1 ? matching[0] : undefined;
     }
 
     public category(uri: vscode.Uri): string {

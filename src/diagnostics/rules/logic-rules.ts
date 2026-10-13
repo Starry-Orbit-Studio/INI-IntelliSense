@@ -47,7 +47,7 @@ const checkEmptyValue: ValidationRule = (context: RuleContext): IniDiagnostic[] 
         if (value === '') {
             return [new IniDiagnostic(
                 line.range,
-                localize('diag.logic.emptyValue', "The key '{0}' has an empty value.", key),
+                localize('checks.emptyValueReview', "The key '{0}' has an empty value. This may intentionally clear an inherited value; review the effective result.", key),
                 vscode.DiagnosticSeverity.Warning,
                 ErrorCode.LOGIC_EMPTY_VALUE
             )];
@@ -84,7 +84,7 @@ const checkDuplicateRegistryKey: ValidationRule = (context: RuleContext): IniDia
             
             return [new IniDiagnostic(
                 range,
-                localize('diag.logic.duplicateRegistryKey', "Duplicate registry key '{0}'. This will overwrite the previous entry.", key),
+                localize('checks.registryOverrideReview', "Registry key '{0}' replaces an earlier entry in this section. Review the effective registration.", key),
                 vscode.DiagnosticSeverity.Error,
                 ErrorCode.LOGIC_DUPLICATE_REGISTRY_KEY
             )];
@@ -97,8 +97,35 @@ const checkDuplicateRegistryKey: ValidationRule = (context: RuleContext): IniDia
     return [];
 };
 
+const checkRegistryDefinition: ValidationRule = (context: RuleContext): IniDiagnostic[] => {
+    const { project, schemaManager, currentSection, document, lineNumber } = context;
+    const registry = currentSection.name;
+    if (!project || !registry || !schemaManager.getIdListRegistryNames().has(registry) || !project.context(document.uri).complete) { return []; }
+    const property = /^\s*([^=;]+)\s*=\s*([^;]+)/.exec(context.codePart);
+    if (!property) { return []; }
+    const key = property[1].trim(), value = property[2].trim();
+    if (!value || /^(none|<none>)$/i.test(value)) { return []; }
+    const effective = project.effective(document.uri, registry, project.category(document.uri));
+    const winner = effective.get(key.toLowerCase());
+    if (key !== '+' && (winner?.uri.toString() !== document.uri.toString() || winner.line !== lineNumber)) { return []; }
+    const previous = [...effective.values()].filter(item => item.value.toLowerCase() === value.toLowerCase() && item.key !== key && item.key !== '+');
+    const result: IniDiagnostic[] = [];
+    if (key !== '+' && previous.length) {
+        const item = new IniDiagnostic(context.line.range, localize('checks.duplicateRegisteredValue', '[{0}] is registered more than once in [{1}]. Review whether the duplicate is intentional.', value, registry), vscode.DiagnosticSeverity.Information, ErrorCode.LOGIC_DUPLICATE_REGISTRY_VALUE);
+        item.relatedInformation = previous.slice(0, 8).map(entry => new vscode.DiagnosticRelatedInformation(new vscode.Location(entry.uri, new vscode.Position(entry.line, 0)), localize('checks.otherRegistration', 'Other registration')));
+        result.push(item);
+    }
+    const checkExist = schemaManager.getProperty(registry, 'CheckExist')?.type;
+    const expected = schemaManager.getTypeForRegistry(registry)!;
+    if (!/^(no|false|0)$/i.test(checkExist ?? '') && !project.sources(document.uri, value, expected === 'AnimType' || expected === 'VoxelAnimType' ? 'art' : 'rules').length) {
+        result.push(new IniDiagnostic(context.line.range, localize('checks.registeredMissing', '[{0}] is registered in [{1}], but has no definition in the current loading context.', value, registry), vscode.DiagnosticSeverity.Warning, ErrorCode.LOGIC_MISSING_REGISTERED_SECTION));
+    }
+    return result;
+};
+
 export const logicRules: ValidationRule[] = [
     checkUnregisteredSection,
     checkEmptyValue,
     checkDuplicateRegistryKey,
+    checkRegistryDefinition,
 ];

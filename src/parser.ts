@@ -228,6 +228,7 @@ export class INIManager implements vscode.Disposable {
 
     setSchemaManager(manager: SchemaManager) {
         this.schemaManager = manager;
+        this.inferredTypeCache.clear();
     }
 
     setFileTypeManager(manager: FileTypeManager) {
@@ -644,20 +645,16 @@ export class INIManager implements vscode.Disposable {
                 const contextSec = doc.getSectionAt(loc.range.start.line);
                 if (contextSec) {
                     const contextTypeName = this.getTypeForSection(contextSec.name, visited, contextFileType);
-                    const allKeys = this.schemaManager.getAllKeysForType(contextTypeName);
                     
                     // 找到引用行的 Key
                     const line = doc.lines[loc.range.start.line];
                     const kvMatch = line.match(/^\s*([^;=\s][^=]*?)\s*=/);
                     if (kvMatch) {
                         const key = kvMatch[1].trim();
-                        for (const [k, propDef] of allKeys) {
-                            if (k.toLowerCase() === key.toLowerCase()) {
-                                if (this.schemaManager.isComplexType(propDef.type)) {
-                                    this.inferredTypeCache.set(cacheKey, propDef.type);
-                                    return propDef.type;
-                                }
-                            }
+                        const propDef = this.schemaManager.getProperty(contextTypeName, key);
+                        if (propDef && this.schemaManager.isComplexType(propDef.type)) {
+                            this.inferredTypeCache.set(cacheKey, propDef.type);
+                            return propDef.type;
                         }
                     }
                 }
