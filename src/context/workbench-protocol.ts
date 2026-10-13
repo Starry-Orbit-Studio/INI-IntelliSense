@@ -156,6 +156,8 @@ export interface Inspection {
     selectedAsset?: string;
     selectedPalette?: string;
     mediaRevision?: number;
+    stringTable?: import('../strings/string-table').StringTable;
+    fileText?: string;
     theater?: string;
     library?: AssetOption[];
     media?: MediaPayload;

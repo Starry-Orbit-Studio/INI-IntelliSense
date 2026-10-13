@@ -2,35 +2,26 @@
 
 # Change Log
 
-## [Unreleased]
+## [0.0.7] - 2026-10-13
 
-- Add a main-editor Files and MIX browser with dual-pane directory/nested-MIX navigation, content-based DLL/BIG detection, virtualized multi-selection, lasso, drag/drop, clipboard, media previews and content comparison with text diffs.
-- Share conflict-aware batch transfers and safe nested writeback across the browser and legacy tree, with unknown-ID and filename encoding preservation, checksums, signed indexes, recovery backups, bounded staging and guarded undo.
-- Keep archive INI saves native, protect unsaved documents and preserve member timestamps across unrelated archive edits; expose backup/staging limits and update English/Chinese guidance.
-
-- Added a visual dictionary editor with searchable types, tags and descriptions, inherited sources, numbered keys, typed constraints, multilingual Markdown, project examples, native undo and conflict-safe edits. Downloaded dictionaries can be copied into the project for customization.
-- Added configurable include/parent cycle and missing-file checks, registered reference type checks, empty list members, numbered-key bounds, file-purpose checks and registry integrity checks; defer context-dependent results while loading is incomplete and treat intentional overrides/empty values as informational.
-
-- Split the top-level project page into Overview and Project configuration, with direct entry/file/directory pickers, reorderable lists, file categories, display toggles and map renderer inputs.
-- Keep the check center focused on results, rules/file exceptions and the external checker; remove duplicate general settings and hide compatibility switches behind the unified rules.
-- Show configuration destinations and effective sources, preserve drafts, restore inheritance, detect external edits, roll back failed batches and check saved paths without running programs. Resolve dictionary/checker configuration in the selected project.
-
-- Add a sidebar INI check center between resource checks and project settings, with rule levels, presets, configuration scopes, file exceptions, searchable results and source navigation.
-- Share entry/include resolution across contextual editing, isolate non-loaded files, and expose compatibility modes and per-file categories.
-- Add upstream/downstream logic exploration using effective typed references, inheritance, conditions and source locations, with search, bounded expansion and missing/stale indicators.
-- Restore Tag documentation and inherited descriptions with bundled English/Chinese fallback; add boolean and repeated-key checks and fix configuration commands, diagnostic refresh and overlapping semantic tokens.
-
-- Use INI terminology `VehicleType` for vehicle type labels and searches while retaining compatibility with existing dictionaries.
-- Upgrade the extension sidebar into a project workbench with semantic object categories, cross-category search, recent items, maps and project overview/settings; keep file and archive tools available in collapsed views.
-- Keep object previews in the bottom panel, preserve catalogue navigation, and separate sound events and auxiliary definitions from registered game objects.
-- Fix map thumbnail LZO decoding, RGB channel order and preview dimensions; reject corrupt streams instead of displaying zero-filled images.
-
-- Add a searchable, filterable project object catalogue with favorites, configurable property columns, object comparison and reviewed batch numeric changes.
-- Add effective-property provenance and local override editing with comment preservation, native undo, dictionary constraints and stale-edit protection.
-- Resolve configured project entry INIs and their include graphs, with explicit context and missing-file reporting.
-- Keep primary and secondary VXL lighting fixed relative to the inspection camera without changing authored INI values; add reference images and perspective panorama skies.
-- Open map title-bar previews in the bottom-panel map inspector, with embedded radar imagery, metadata and section navigation. Optionally render unsaved map text through a cancellable CNCMaps worker backend.
-- Recover asset workbench opening when generated view commands are missing after an update, wait for the inspector to initialize, and keep automatic reveal retryable after failures. Show a reload action when VS Code has not registered the new view.
+- Upgrade the sidebar into a project workbench with object categories, cross-category search, recent items and maps; keep the bottom panel focused on the selected object.
+- Add favorites, configurable property columns, object comparison and batch numeric editing with a change preview.
+- Show effective property sources and support local overrides with comment preservation, native undo and stale-edit protection.
+- Add a project configuration page for entry INIs, resource directories, file roles, dictionaries and map rendering, with file pickers and reorderable lists.
+- Show where settings are saved and inherited from; retain drafts, restore inherited values and detect conflicting external edits before applying changes.
+- Resolve game-loaded INIs through configured entries and include chains, with inheritance and overrides; keep standalone files separate and support configurable compatibility modes.
+- Add a dedicated INI check center with rule switches, severity levels, presets, file exceptions, searchable results and source navigation.
+- Expand checks for missing or cyclic includes and inheritance, reference types, registry integrity, file roles, list members, numbered tags, booleans and duplicate keys; defer context-dependent checks until indexing completes.
+- Add upstream/downstream logic exploration with typed references, inheritance, conditions and source locations, plus search and incremental expansion.
+- Add a visual dictionary editor for types, tags, inherited descriptions, numbered tags, constraints and multilingual documentation; support project copies, native undo and conflict detection.
+- Improve inherited Tag descriptions and English/Chinese documentation fallback; use the familiar INI term VehicleType for vehicles.
+- Add a main-editor Files and MIX browser with single-pane browsing by default, optional dual panes and opening beside in native editor groups; detect renamed DLL/BIG archives by content and browse nested MIX files.
+- Support multi-selection, lasso, clipboard and drag transfers between directories, archives and editor groups, with copy/move feedback, conflict handling and MIX/folder content comparison.
+- Keep archive INI editing in the native editor; add guarded nested writeback, recovery backups and undo while protecting unsaved documents and preserving archive entry IDs and names.
+- Route file selections to the shared bottom asset preview, including searchable CSF/LLF string tables, multiline text, label/value copying and INI reference lookup.
+- Keep VXL lighting fixed relative to the camera during rotation; add reference-image backgrounds and panoramic skies for perspective viewing.
+- Add a bottom map inspector with corrected radar imagery, metadata and section navigation; optionally render unsaved maps through a cancellable CNCMaps worker.
+- Fix cases where the asset panel could not open or reveal automatically after an extension update.
 
 ## [0.0.6] - 2026-10-11
 

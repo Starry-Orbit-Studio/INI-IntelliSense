@@ -13,6 +13,7 @@ import { renderProperties } from './property-editor';
 import { objectBrowser, CatalogPreferences } from './object-browser';
 import { PreviewEnvironment, BackgroundMode } from './environment';
 import { mapView } from './map-view';
+import { stringTableView } from './string-table-view';
 
 declare function acquireVsCodeApi(): {
     postMessage(message: unknown): void;
@@ -1336,7 +1337,7 @@ function voxelControls(media: Extract<MediaPayload, { kind: 'voxel' }>, host: HT
 }
 
 function render(inspection: Inspection): void {
-    const pageKind = inspection.checks || inspection.logic ? 'analysis' : inspection.project
+    const pageKind = inspection.stringTable ? 'strings' : inspection.fileText !== undefined ? 'file' : inspection.checks || inspection.logic ? 'analysis' : inspection.project
         ? 'project'
         : inspection.objects
           ? 'catalog'
@@ -1470,6 +1471,14 @@ function render(inspection: Inspection): void {
     }
     if (inspection.project) {
         projectView(app, inspection, labels, post);
+        return;
+    }
+    if (inspection.stringTable) {
+        disposeCatalog = stringTableView(app, inspection, labels, post);
+        return;
+    }
+    if (inspection.fileText !== undefined) {
+        app.append(element('p', 'hint', labels.fileExcerpt), element('pre', 'file-excerpt', inspection.fileText));
         return;
     }
     if (inspection.map) {

@@ -15,6 +15,15 @@ import { localize } from '../../i18n';
 import { validFileName, validRelativeFileName } from './file-names';
 
 const VIEW = 'ra2-ini-intellisense.files';
+// URI.fsPath normalizes Windows drive letters; keep that identity separate from presentation.
+const displayPath = (value: string): string => value.replace(/^[a-z]:(?=[\\/]|$)/, (drive) => drive.toUpperCase());
+const locationTitle = (uri: vscode.Uri): string => {
+    if (uri.scheme !== MixUriCodec.scheme || uri.path !== '/') {
+        return displayPath(path.posix.basename(uri.path)) || labels().title;
+    }
+    const decoded = MixUriCodec.decode(uri);
+    return path.posix.basename(decoded.nestedChain.at(-1) ?? decoded.containerUri.path);
+};
 const validName = validFileName;
 const labels = () =>
     Object.fromEntries(
@@ -42,11 +51,11 @@ export class FileBrowserEditor implements vscode.CustomReadonlyEditorProvider, v
         this.compare.reader = this.locations;
         this.subscriptions.push(
             vscode.window.registerCustomEditorProvider(VIEW, this, {
-                supportsMultipleEditorsPerDocument: false,
+                supportsMultipleEditorsPerDocument: true,
                 webviewOptions: { retainContextWhenHidden: true },
             }),
             vscode.window.registerCustomEditorProvider(VIEW + '.alias', this, {
-                supportsMultipleEditorsPerDocument: false,
+                supportsMultipleEditorsPerDocument: true,
                 webviewOptions: { retainContextWhenHidden: true },
             }),
             vscode.commands.registerCommand(
@@ -103,16 +112,16 @@ export class FileBrowserEditor implements vscode.CustomReadonlyEditorProvider, v
             console.error('[MIX alias detection]', error);
         }
     }
-    public async open(uri: vscode.Uri, secondary?: vscode.Uri): Promise<void> {
+    public async open(uri: vscode.Uri, secondary?: vscode.Uri, column = vscode.ViewColumn.Active): Promise<void> {
         const stat = await vscode.workspace.fs.stat(uri);
         if (!(stat.type & vscode.FileType.Directory) && uri.scheme !== MixUriCodec.scheme) {
             if (!(await this.locations.isArchive(uri))) {
                 throw new Error(localize('mix.browser.invalidArchive', 'This file is not a supported MIX archive.'));
             }
-            await vscode.commands.executeCommand('vscode.openWith', uri, VIEW);
+            await vscode.commands.executeCommand('vscode.openWith', uri, VIEW, { viewColumn: column, preview: false });
             return;
         }
-        const panel = vscode.window.createWebviewPanel(VIEW, labels().title, vscode.ViewColumn.Active, {
+        const panel = vscode.window.createWebviewPanel(VIEW, locationTitle(uri), column, {
             enableScripts: true,
             retainContextWhenHidden: true,
         });
@@ -141,6 +150,7 @@ export class FileBrowserEditor implements vscode.CustomReadonlyEditorProvider, v
 
     private async attach(panel: vscode.WebviewPanel, initial: vscode.Uri, secondary?: vscode.Uri): Promise<void> {
         this.panels.add(panel);
+        panel.title = locationTitle(initial);
         const assets = vscode.Uri.joinPath(this.context.extensionUri, 'dist', 'workbench'),
             nonce = randomBytes(18).toString('base64');
         panel.webview.options = { enableScripts: true, localResourceRoots: [assets] };
@@ -208,6 +218,7 @@ export class FileBrowserEditor implements vscode.CustomReadonlyEditorProvider, v
             });
             const state: FileBrowserState = {
                 panes,
+                split: !!secondary,
                 labels: labels(),
                 clipboard: this.clipboard.uris.length,
                 cut: this.clipboard.cut,
@@ -220,11 +231,11 @@ export class FileBrowserEditor implements vscode.CustomReadonlyEditorProvider, v
         };
         const display = (uri: vscode.Uri) => {
             if (uri.scheme !== MixUriCodec.scheme) {
-                return uri.fsPath;
+                return displayPath(uri.fsPath);
             }
             const decoded = MixUriCodec.decode(uri);
             return [
-                decoded.containerUri.fsPath,
+                displayPath(decoded.containerUri.fsPath),
                 ...decoded.nestedChain,
                 decoded.virtualPath === '/' ? '' : decoded.virtualPath.slice(1),
             ]
@@ -313,7 +324,7 @@ export class FileBrowserEditor implements vscode.CustomReadonlyEditorProvider, v
                     label:
                         crumb.scheme === MixUriCodec.scheme && crumb.path === '/'
                             ? display(crumb).split(' › ').at(-1)!
-                            : path.posix.basename(crumb.path) || crumb.fsPath,
+                            : displayPath(path.posix.basename(crumb.path) || crumb.fsPath),
                 })),
                 rows,
                 readonly: listing.readonly,
@@ -336,6 +347,9 @@ export class FileBrowserEditor implements vscode.CustomReadonlyEditorProvider, v
                 futures[index] = [];
             }
             roots[index] = uri;
+            if (index === 0) {
+                panel.title = locationTitle(uri);
+            }
             comparison = undefined;
             await refresh();
         };
@@ -360,76 +374,19 @@ export class FileBrowserEditor implements vscode.CustomReadonlyEditorProvider, v
                 comparison = undefined;
             }
         };
-        const renderPreview = async (id: string, previewToken: vscode.CancellationToken) => {
+        const renderPreview = async (id: string, previewToken: vscode.CancellationToken, explicit = false) => {
             const uri = resource(id),
                 entry = entryTokens.get(id);
-            if (!entry || entry.directory || entry.archive || previewToken.isCancellationRequested) {
-                return;
-            }
-            if (entry.size > 16 * 1024 * 1024) {
-                await panel.webview.postMessage({
-                    type: 'preview',
-                    token: id,
-                    name: entry.name,
-                    hint: localize(
-                        'mix.browser.largePreview',
-                        'Open this file in its editor to preview it (larger than 16 MiB).'
-                    ),
-                });
+            if (!entry || entry.directory || entry.archive || previewToken.isCancellationRequested || !panel.active) {
                 return;
             }
             const slice = await this.locations.resourceRange(uri);
             if (slice) {
                 this.media.resources.registerSlice(uri, slice);
             }
-            const candidate = { uri, name: entry.name, priority: 0, source: display(uri) };
-            if (/\.(wav|mp3|ogg|flac)$/i.test(entry.name)) {
-                const audio = await this.media.load(candidate, {}, previewToken);
-                if (audio.kind === 'audio' && !previewToken.isCancellationRequested) {
-                    await panel.webview.postMessage({
-                        type: 'preview',
-                        token: id,
-                        name: entry.name,
-                        audio:
-                            'data:audio/' +
-                            (/\.mp3$/i.test(entry.name) ? 'mpeg' : entry.name.split('.').at(-1)!.toLowerCase()) +
-                            ';base64,' +
-                            audio.bytes,
-                    });
-                }
-                return;
+            if (!previewToken.isCancellationRequested) {
+                await vscode.commands.executeCommand('ra2-ini-intellisense.previewResource', uri.toString(), !explicit);
             }
-            const png = await this.media.thumbnail(candidate, previewToken);
-            if (previewToken.isCancellationRequested) {
-                return;
-            }
-            if (png) {
-                await panel.webview.postMessage({
-                    type: 'preview',
-                    token: id,
-                    name: entry.name,
-                    image: 'data:image/png;base64,' + Buffer.from(png).toString('base64'),
-                });
-            } else {
-                const sample = await this.locations.readRange(uri, 0, Math.min(entry.size, 4096)),
-                    text = new TextDecoder().decode(sample);
-                await panel.webview.postMessage({
-                    type: 'preview',
-                    token: id,
-                    name: entry.name,
-                    text: !sample.includes(0)
-                        ? text
-                        : [...sample.subarray(0, 256)].map((byte) => byte.toString(16).padStart(2, '0')).join(' '),
-                    hint:
-                        entry.size > sample.length
-                            ? localize(
-                                  'mix.browser.partialPreview',
-                                  'Showing the beginning of the file. Open it to see all content.'
-                              )
-                            : undefined,
-                });
-            }
-            return;
         };
         const listener = panel.webview.onDidReceiveMessage(async (raw) => {
             if (!raw || typeof raw !== 'object' || typeof raw.type !== 'string') {
@@ -470,15 +427,10 @@ export class FileBrowserEditor implements vscode.CustomReadonlyEditorProvider, v
                 previewCancellation?.cancel();
                 const current = new vscode.CancellationTokenSource();
                 previewCancellation = current;
-                void renderPreview(raw.token, current.token)
+                void renderPreview(raw.token, current.token, raw.explicit === true)
                     .catch((error) => {
                         if (!current.token.isCancellationRequested) {
-                            void panel.webview.postMessage({
-                                type: 'preview',
-                                token: raw.token,
-                                name: entryTokens.get(raw.token)?.name ?? '',
-                                hint: error instanceof Error ? error.message : String(error),
-                            });
+                            fail(error);
                         }
                     })
                     .finally(() => {
@@ -487,6 +439,23 @@ export class FileBrowserEditor implements vscode.CustomReadonlyEditorProvider, v
                             previewCancellation = undefined;
                         }
                     });
+                return;
+            }
+            if (raw.type === 'cancelPreview') {
+                previewCancellation?.cancel();
+                return;
+            }
+            if (raw.type === 'uploadFailed') {
+                message = localize(
+                    'mix.browser.uploadFailed',
+                    'Cannot read the dropped files. Use Import files to choose them from disk.'
+                );
+                post();
+                return;
+            }
+            if (raw.type === 'dismiss') {
+                message = undefined;
+                post();
                 return;
             }
             if (raw.type === 'cancel') {
@@ -511,6 +480,18 @@ export class FileBrowserEditor implements vscode.CustomReadonlyEditorProvider, v
                         comparison = undefined;
                         await refresh();
                         break;
+                    case 'openBeside':
+                    case 'openTab': {
+                        const uri = raw.token ? resource(raw.token) : roots[index];
+                        if (uri) {
+                            await this.open(
+                                uri,
+                                undefined,
+                                raw.type === 'openBeside' ? vscode.ViewColumn.Beside : vscode.ViewColumn.Active
+                            );
+                        }
+                        break;
+                    }
                     case 'pick': {
                         const chosen = await this.pick(raw.folder === true);
                         if (!chosen) {
@@ -565,6 +546,9 @@ export class FileBrowserEditor implements vscode.CustomReadonlyEditorProvider, v
                             await transfer(this.clipboard.uris, roots[index]!, this.clipboard.cut);
                             if (this.clipboard.cut) {
                                 this.clipboard = { uris: [], cut: false };
+                                this.panels.forEach((other) => {
+                                    void other.webview.postMessage({ type: 'clipboard', count: 0, cut: false });
+                                });
                             }
                             await refresh();
                         }
@@ -589,8 +573,10 @@ export class FileBrowserEditor implements vscode.CustomReadonlyEditorProvider, v
                             canSelectMany: true,
                             openLabel: labels().import,
                         });
-                        if (picked?.length && roots[index]) {
-                            await transfer(picked, roots[index]!);
+                        const target = raw.target ? resource(raw.target) : roots[index];
+                        if (picked?.length && target) {
+                            const entry = raw.target && entryTokens.get(raw.target);
+                            await transfer(picked, entry?.archive ? this.locations.archiveRoot(target) : target);
                             await refresh();
                         }
                         break;
@@ -737,15 +723,11 @@ export class FileBrowserEditor implements vscode.CustomReadonlyEditorProvider, v
                             await navigate(index, this.locations.archiveRoot(uri));
                             break;
                         }
-                        await vscode.commands.executeCommand(
-                            /\.(shp|tem|sno|urb|ubn|des|lun|pcx|pal|vxl|hva|wav|mp3|ogg|flac)$/i.test(uri.path)
-                                ? 'vscode.openWith'
-                                : 'vscode.open',
-                            uri,
-                            ...(/\.(shp|tem|sno|urb|ubn|des|lun|pcx|pal|vxl|hva|wav|mp3|ogg|flac)$/i.test(uri.path)
-                                ? ['ra2-resource-preview.viewer']
-                                : [])
-                        );
+                        if (/\.(shp|tem|sno|urb|ubn|des|lun|pcx|pal|vxl|hva|wav|mp3|ogg|flac|csf)$/i.test(uri.path)) {
+                            await renderPreview(raw.token, cancellation.token, true);
+                        } else {
+                            await vscode.commands.executeCommand('vscode.open', uri);
+                        }
                         break;
                     }
                     case 'compare': {
@@ -843,7 +825,13 @@ export class FileBrowserEditor implements vscode.CustomReadonlyEditorProvider, v
                 watches.push(watch, watch.onDidCreate(changed), watch.onDidChange(changed), watch.onDidDelete(changed));
             }
         };
-        const listeners = [listener, this.mix.onDidChangeFile(changed)];
+        const listeners = [
+            listener,
+            this.mix.onDidChangeFile(changed),
+            panel.onDidChangeViewState(() => {
+                void panel.webview.postMessage({ type: 'active', active: panel.active });
+            }),
+        ];
         panel.onDidDispose(() => {
             disposed = true;
             clearTimeout(refreshTimer);

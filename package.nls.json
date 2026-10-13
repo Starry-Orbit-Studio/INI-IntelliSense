@@ -94,5 +94,6 @@
     "mix.browser.create": "New MIX",
     "mix.backupCount.description": "Maximum write-recovery backups per file. Older backups are cleaned on subsequent writes; the latest is always retained.",
     "mix.backupBudget.description": "Write-recovery backup budget per file, in MiB. The latest backup is retained even if it alone exceeds this budget.",
-    "mix.transferBudget.description": "In-memory staging budget for one transfer, in MiB. Prevents bulk imports exhausting the extension host. Transfer in batches or adjust this value for available memory."
+    "mix.transferBudget.description": "In-memory staging budget for one transfer, in MiB. Prevents bulk imports exhausting the extension host. Transfer in batches or adjust this value for available memory.",
+    "command.previewResource.title": "View in asset workbench"
 }

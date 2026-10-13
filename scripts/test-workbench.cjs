@@ -153,7 +153,7 @@ async function main() {
             await page.waitForFunction(
                 (id) =>
                     document.getElementById('app')?.dataset.inspection === id &&
-                    document.querySelector('.sprite-canvas,.voxel-canvas,audio,.catalog-table,.project-layout,.map-sections,.analysis-content,.logic-focus'),
+                    document.querySelector('.sprite-canvas,.voxel-canvas,audio,.catalog-table,.project-layout,.map-sections,.analysis-content,.logic-focus,.string-table'),
                 value.id
             );
         };
@@ -1006,6 +1006,22 @@ async function main() {
         await send(graph);
         await page.waitForFunction(() => document.querySelector('form input')?.value === 'Gun');
         assert.ok(await page.getByRole('button', { name: 'Gun · WeaponType', exact: true }).count() === 2, 'same-page revisions render search results');
+
+        const strings = inspection('strings', undefined);
+        strings.assets = []; strings.paletteOptions = [];
+        strings.stringTable = { format: 'LLF', entries: Array.from({ length: 15000 }, (_, index) => ({ label: 'UI:Item' + index, value: index === 42 ? '<script>literal</script>\n中文 #正文' : 'Text ' + index, line: index })) };
+        await page.setViewportSize({ width: 1100, height: 500 });
+        await send(strings);
+        assert.ok(await page.locator('.string-row').count() < 100, 'Large string tables are virtualized');
+        await page.getByLabel(labels.stringSearch).fill('中文');
+        await page.locator('.string-row').click();
+        assert.equal(await page.locator('.string-detail pre').first().textContent(), '<script>literal</script>\n中文 #正文');
+        assert.equal(await page.locator('.string-detail script').count(), 0);
+        await page.getByRole('button', { name: labels.stringCopyValue, exact: true }).click();
+        assert.ok(await page.evaluate(() => window.messages.some(message => message.type === 'string-copy-value' && message.index === 42)));
+        await page.getByRole('button', { name: labels.stringOpen, exact: true }).click();
+        assert.ok(await page.evaluate(() => window.messages.some(message => message.type === 'string-open' && message.index === 42)));
+        await page.screenshot({ path: path.join(root, 'out', 'webview-qa', 'strings.png'), fullPage: true });
 
         assert.deepEqual(errors, [], 'Webview must not emit browser or CSP errors');
         console.log(

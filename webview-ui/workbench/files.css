@@ -48,7 +48,10 @@ button:disabled {
     display: flex;
     align-items: center;
     gap: 3px;
-    flex-wrap: wrap;
+    flex-wrap: nowrap;
+    overflow-x: auto;
+    flex-shrink: 0;
+    min-height: 46px;
     padding: 8px 12px;
     border-bottom: 1px solid var(--vscode-panel-border, #444);
 }
@@ -220,51 +223,67 @@ button:disabled {
     background: var(--vscode-panel-border, #444);
     cursor: col-resize;
 }
-.file-preview {
-    width: 240px;
-    flex: none;
-    border-left: 1px solid var(--vscode-panel-border, #444);
-    padding: 12px;
-    overflow: auto;
-}
-.file-preview header {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    gap: 6px;
-}
-.file-preview strong {
+
+.notice {
+    margin-left: auto;
+    min-width: 0;
     overflow: hidden;
     text-overflow: ellipsis;
-}
-.file-preview img {
-    display: block;
-    max-width: 100%;
-    max-height: 320px;
-    object-fit: contain;
-    margin: 20px auto;
-    background: repeating-conic-gradient(#7772 0% 25%, transparent 0% 50%) 50%/16px 16px;
-}
-.file-preview pre {
-    white-space: pre-wrap;
-    word-break: break-word;
-    font-family: var(--vscode-editor-font-family, monospace);
-    font-size: 11px;
-    line-height: 1.6;
-}
-.file-preview p {
-    font-size: 12px;
-    line-height: 1.7;
-    opacity: 0.65;
-}
-.notice {
-    padding: 8px 12px;
-    line-height: 1.5;
-    background: var(--vscode-editorInfo-background, #007acc20);
+    white-space: nowrap;
 }
 .notice.error {
     color: var(--vscode-errorForeground, #f88);
-    background: var(--vscode-inputValidation-errorBackground, #5a1d1d);
+}
+.global-info {
+    height: 34px;
+    flex: 0 0 34px;
+    display: flex;
+    gap: 10px;
+    align-items: center;
+    overflow: hidden;
+}
+.global-info .status-text {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+.global-info:has(.notice:not(:empty)) .status-text {
+    flex: 0 1 40%;
+}
+.global-info .notice {
+    flex: 1;
+}
+.global-info button {
+    padding: 2px 6px;
+    flex: none;
+}
+.file-row.drop-target {
+    outline: 2px solid var(--vscode-focusBorder, #007acc);
+    outline-offset: -2px;
+    background: var(--vscode-list-dropBackground, #28485c);
+}
+.drag-feedback {
+    position: fixed;
+    pointer-events: none;
+    z-index: 100;
+    max-width: 290px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    padding: 7px 10px;
+    border: 1px solid var(--vscode-focusBorder, #007acc);
+    border-radius: 6px;
+    background: var(--vscode-editorWidget-background, #252526);
+    box-shadow: 0 3px 10px #0007;
+}
+.drag-badge {
+    position: fixed;
+    top: -100px;
+    padding: 10px 16px;
+    background: var(--vscode-list-activeSelectionBackground, #094771);
+    color: var(--vscode-list-activeSelectionForeground, white);
+    border-radius: 6px;
 }
 .lasso {
     position: absolute;
@@ -284,14 +303,13 @@ button:disabled {
     display: flex;
     flex-direction: column;
     min-width: 190px;
+    max-height: calc(100vh - 8px);
+    overflow-y: auto;
 }
 .context-menu button {
     text-align: left;
 }
 @media (max-width: 1000px) {
-    .file-preview {
-        width: 190px;
-    }
     .columns,
     .file-row {
         grid-template-columns: minmax(80px, 1fr) 75px 60px;
@@ -305,9 +323,6 @@ button:disabled {
     }
 }
 @media (max-width: 700px) {
-    .file-preview {
-        display: none;
-    }
     .columns,
     .file-row {
         grid-template-columns: minmax(90px, 1fr) 65px;
@@ -334,11 +349,6 @@ button:disabled {
 #files:not(.comparing) .status {
     display: none;
 }
-.file-preview audio {
-    max-width: 100%;
-    width: 100%;
-    margin-top: 18px;
-}
 
 .file-label {
     display: inline-block;
@@ -358,5 +368,31 @@ button:disabled {
     #files:not(.comparing) .columns,
     #files:not(.comparing) .file-row {
         grid-template-columns: minmax(90px, 1fr) 65px;
+    }
+}
+
+.control-icon {
+    margin-right: 5px;
+}
+@media (max-width: 1000px) {
+    .toolbar [data-label='copy'],
+    .toolbar [data-label='cut'],
+    .toolbar [data-label='undo'] {
+        display: none;
+    }
+    .toolbar [data-label='split'] .control-label,
+    .toolbar [data-label='followPreview'] .control-label,
+    .toolbar [data-label='openBeside'] .control-label {
+        display: none;
+    }
+    .toolbar .control-icon {
+        margin: 0;
+    }
+}
+@media (max-width: 600px) {
+    .toolbar [data-label='export'],
+    .toolbar [data-label='refresh'],
+    .toolbar [data-label='paste'] {
+        display: none;
     }
 }

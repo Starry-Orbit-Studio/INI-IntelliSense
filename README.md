@@ -41,7 +41,7 @@ See [Asset Workbench architecture and development](docs/asset-workbench.md) for 
 
 ### Files and MIX browser
 
-Open Files and MIX from the project sidebar for a dual-pane directory/archive browser with nested navigation, virtualized lists, multi-selection, lasso, drag/drop, copy/cut/paste, extraction, conflict handling, undo and content comparison. Save archive INIs through the native editor with nested writeback. Content detection recognizes MIX renamed to DLL/BIG while leaving ordinary DLLs alone.
+Open Files and MIX from the project sidebar for a directory/archive browser that defaults to one pane, with optional dual panes and native editor groups. Selection uses the shared bottom preview, including searchable CSF/LLF string tables. Supports nested navigation, virtualized lists, multi-selection, lasso, drag/drop, copy/cut/paste, extraction, conflict handling, undo and content comparison. Save archive INIs through the native editor with nested writeback. Content detection recognizes MIX renamed to DLL/BIG while leaving ordinary DLLs alone.
 
 ### 1. Dynamic Syntax Highlighting
 Going beyond traditional static syntax files, this extension provides more accurate and richer coloring through dynamic code analysis.

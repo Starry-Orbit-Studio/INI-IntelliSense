@@ -4,6 +4,17 @@ import { WorkbenchLabels } from './workbench-protocol';
 
 export function workbenchLabels(): WorkbenchLabels {
     return {
+        stringSearch: localize('workbench.stringSearch', 'Search labels and text…'),
+        stringEntries: localize('workbench.stringEntries', 'entries'),
+        stringCopyLabel: localize('workbench.stringCopyLabel', 'Copy label'),
+        stringCopyValue: localize('workbench.stringCopyValue', 'Copy text'),
+        stringReferences: localize('workbench.stringReferences', 'Find INI references'),
+        stringOpen: localize('workbench.stringOpen', 'Open source'),
+        stringExtra: localize('workbench.stringExtra', 'Extra value'),
+        fileExcerpt: localize(
+            'workbench.fileExcerpt',
+            'Beginning of the file. Open the file in the editor to view or edit its full contents.'
+        ),
         configEnabled: localize('workbench.configEnabled', 'On'),
         configScope_exception: localize('workbench.configScope_exception', 'File exception'),
         configDictionaryUnavailable: localize(

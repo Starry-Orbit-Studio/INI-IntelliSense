@@ -28,6 +28,9 @@ async function main() {
         await page.addScriptTag({ path: path.resolve('dist/workbench/files.js') });
         const left = page.locator('[data-pane="0"]'), right = page.locator('[data-pane="1"]');
         await left.locator('.file-row').first().waitFor();
+        assert.equal(await right.isVisible(), false, 'Default is a single pane');
+        assert.equal(await page.locator('.file-preview').count(), 0, 'Preview belongs to the shared bottom workbench');
+        await page.locator('[data-label=split]').click();
         assert.ok(await page.locator('.file-row').count() < 100, '12,000 entries are virtualized');
         assert.equal(await page.locator('.file-row script, .file-row img').count(), 0, 'Names are rendered as text');
         await left.locator('.file-row').nth(3).click();
@@ -49,8 +52,7 @@ async function main() {
         await left.locator('input[type=search]').fill('nested.mix'); await left.locator('.file-row').dblclick();
         assert.equal(await page.evaluate(() => window.__messages.filter(message => message.type === 'navigate').at(-1).token), 'file-0');
         await left.locator('input[type=search]').fill('asset00003'); await left.locator('.file-row').click(); await page.waitForTimeout(250);
-        assert.ok((await page.locator('.file-preview pre').textContent()).includes('<script>'));
-        assert.equal(await page.locator('.file-preview script').count(), 0);
+        assert.equal(await page.evaluate(() => window.__messages.filter(message => message.type === 'preview').at(-1).token), 'file-3');
         await left.locator('input[type=search]').fill('');
         await left.locator('.file-scroll').evaluate(element => element.scrollTop = 0); await page.waitForTimeout(100);
         const box = await left.locator('.file-scroll').boundingBox();
@@ -60,9 +62,11 @@ async function main() {
         await left.locator('.file-row').nth(3).click(); await left.locator('.file-row').nth(5).click({ modifiers: ['Shift'] });
         await left.locator('.file-row.selected').first().dragTo(right.locator('.file-scroll'));
         assert.equal(await page.evaluate(() => window.__messages.filter(message => message.type === 'transfer').at(-1)?.tokens.length), 3, 'Multi-selection drag sends all rows');
+        const positionBefore = await left.locator('.file-scroll').boundingBox();
         await page.evaluate(() => { window.__state = { ...window.__state, busy: true }; window.dispatchEvent(new MessageEvent('message', { data: { type: 'state', state: window.__state } })); });
         assert.equal(await page.locator('.toolbar button[data-label="copy"]').isDisabled(), true);
-        assert.equal(await page.locator('.toolbar button[data-label="cancel"]').isEnabled(), true);
+        assert.equal(await page.locator('.global-info button[data-label="cancel"]').isEnabled(), true);
+        assert.deepEqual(await left.locator('.file-scroll').boundingBox(), positionBefore, 'Busy status does not move or resize content');
         await page.evaluate(() => { window.__state = { ...window.__state, busy: false }; window.dispatchEvent(new MessageEvent('message', { data: { type: 'state', state: window.__state } })); });
         fs.mkdirSync('out/webview-qa', { recursive: true }); await page.screenshot({ path: 'out/webview-qa/files.png' });
         await page.setViewportSize({ width: 740, height: 720 }); await page.screenshot({ path: 'out/webview-qa/files-narrow.png' });

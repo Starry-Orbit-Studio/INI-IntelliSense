@@ -13,14 +13,19 @@ import './files.css';
 
 declare function acquireVsCodeApi(): {
     postMessage(message: unknown): void;
-    getState(): { split?: boolean; preview?: boolean } | undefined;
+    getState(): { split?: boolean; preview?: boolean; splitRatio?: number } | undefined;
     setState(state: unknown): void;
 };
 const api = acquireVsCodeApi(),
     main = document.querySelector<HTMLElement>('#files')!;
 let state: FileBrowserState | undefined,
     active = 0,
-    split = api.getState()?.split ?? true,
+    split = api.getState()?.split ?? false,
+    initialized = false,
+    dragging = false,
+    pressedForDrag = false,
+    dragPane = -1,
+    pendingState: unknown,
     showPreview = api.getState()?.preview ?? true,
     previewToken = '',
     previewTimer: ReturnType<typeof setTimeout> | undefined;
@@ -33,7 +38,12 @@ const el = <K extends keyof HTMLElementTagNameMap>(tag: K, className = '', text 
     return element;
 };
 const button = (key: string, action: () => void, symbol?: string) => {
-    const element = el('button', '', symbol ? symbol + ' ' + l(key) : l(key));
+    const element = el('button');
+    if (symbol) {
+        element.append(el('span', 'control-icon', symbol));
+    }
+    element.append(el('span', 'control-label', l(key)));
+    element.setAttribute('aria-label', l(key));
     element.title = l(key);
     element.dataset.label = key;
     element.onclick = action;
@@ -45,13 +55,74 @@ const size = (value: number) =>
         : value < 1024 * 1024
           ? (value / 1024).toFixed(1) + ' KiB'
           : (value / 1024 / 1024).toFixed(1) + ' MiB';
-const persist = () => api.setState({ split, preview: showPreview });
+const persist = () => api.setState({ split, preview: showPreview, splitRatio });
 const toolbar = el('header', 'toolbar'),
     panels = el('section', 'panes'),
     notice = el('div', 'notice'),
     info = el('footer', 'global-info'),
-    preview = el('aside', 'file-preview');
-main.append(toolbar, notice, panels, info);
+    statusText = el('span', 'status-text'),
+    cancel = button('cancel', () => send('cancel')),
+    dismiss = button('close', () => send('dismiss'));
+notice.setAttribute('role', 'status');
+notice.setAttribute('aria-live', 'polite');
+info.append(statusText, notice, cancel, dismiss);
+main.append(toolbar, panels, info);
+let busyTimer: ReturnType<typeof setTimeout> | undefined;
+const dragFeedback = el('div', 'drag-feedback');
+dragFeedback.hidden = true;
+document.body.append(dragFeedback);
+function stopDrag() {
+    dragging = false;
+    pressedForDrag = false;
+    dragFeedback.hidden = true;
+    document
+        .querySelectorAll('.drop-active,.drop-target')
+        .forEach((node) => node.classList.remove('drop-active', 'drop-target'));
+    if (pendingState) {
+        const data = pendingState;
+        pendingState = undefined;
+        window.dispatchEvent(new MessageEvent('message', { data }));
+    }
+}
+document.addEventListener('dragend', stopDrag);
+document.addEventListener(
+    'pointerdown',
+    (event) => {
+        const target = event.target as HTMLElement;
+        if (
+            event.button === 0 &&
+            target.closest('.file-row') &&
+            (target.closest('.file-label,.icon') || target.closest('.file-row.selected'))
+        ) {
+            pressedForDrag = true;
+            dragPane = Number(target.closest<HTMLElement>('[data-pane]')?.dataset.pane ?? -1);
+        }
+    },
+    true
+);
+document.addEventListener(
+    'pointerup',
+    () => {
+        pressedForDrag = false;
+        if (!dragging) {
+            setTimeout(stopDrag, 0);
+        }
+    },
+    true
+);
+document.addEventListener(
+    'pointercancel',
+    () => {
+        pressedForDrag = false;
+        if (!dragging) {
+            stopDrag();
+        }
+    },
+    true
+);
+window.addEventListener('blur', () => {
+    clearTimeout(previewTimer);
+});
 
 let panes: Pane[] = [];
 
@@ -75,6 +146,8 @@ class Pane {
     private readonly probed = new Set<string>();
     private diffOnly = false;
     private dragTokens: string[] = [];
+    private edgeScroll = 0;
+    private scrollFrame = 0;
     private table = createTable<FileRow>({
         data: [],
         columns: [
@@ -133,98 +206,150 @@ class Pane {
         this.root.addEventListener('pointerdown', () => setActive(index));
         this.scroll.addEventListener('keydown', (event) => this.key(event));
         this.scroll.addEventListener('pointerdown', (event) => this.startLasso(event));
+        const clearDrop = () => {
+            this.edgeScroll = 0;
+            cancelAnimationFrame(this.scrollFrame);
+            dragFeedback.hidden = true;
+            this.root.classList.remove('drop-active');
+            this.root.querySelectorAll('.drop-target').forEach((node) => node.classList.remove('drop-target'));
+        };
+        const scrollEdge = () => {
+            this.scroll.scrollTop += this.edgeScroll;
+            if (this.edgeScroll) {
+                this.scrollFrame = requestAnimationFrame(scrollEdge);
+            }
+        };
         this.root.addEventListener('dragover', (event) => {
-            const target = (event.target as HTMLElement).closest<HTMLElement>('[data-token]'),
-                row = target && this.row(target.dataset.token!);
-            if ((row && !row.directory && !row.archive) || this.data?.readonly) {
+            const types = event.dataTransfer?.types ?? [];
+            if (!types.includes('application/x-ra2-resources') && !types.includes('Files')) {
+                return;
+            }
+            const target = (event.target as HTMLElement).closest<HTMLElement>('[data-token]');
+            const row = target && this.row(target.dataset.token!);
+            clearDrop();
+            if (this.data?.readonly || !this.data || state?.busy || (row && !row.directory && !row.archive)) {
+                if (event.dataTransfer) {
+                    event.dataTransfer.dropEffect = 'none';
+                }
                 return;
             }
             event.preventDefault();
+            event.stopPropagation();
+            const moving = types.includes('application/x-ra2-resources') && event.shiftKey;
             if (event.dataTransfer) {
-                event.dataTransfer.dropEffect = event.shiftKey ? 'move' : 'copy';
+                event.dataTransfer.dropEffect = moving ? 'move' : 'copy';
             }
-            this.root.classList.add('drop-active');
+            if (row) {
+                target!.classList.add('drop-target');
+            } else {
+                this.root.classList.add('drop-active');
+            }
+            dragFeedback.textContent = l(moving ? 'dropMove' : 'dropCopy') + ' · ' + (row?.name ?? this.data.label);
+            dragFeedback.style.left = Math.min(event.clientX + 16, Math.max(8, innerWidth - 300)) + 'px';
+            dragFeedback.style.top = Math.min(event.clientY + 16, innerHeight - 40) + 'px';
+            dragFeedback.hidden = false;
+            const bounds = this.scroll.getBoundingClientRect();
+            this.edgeScroll = event.clientY < bounds.top + 30 ? -12 : event.clientY > bounds.bottom - 30 ? 12 : 0;
+            if (this.edgeScroll) {
+                this.scrollFrame = requestAnimationFrame(scrollEdge);
+            }
         });
         this.root.addEventListener('dragleave', (event) => {
             if (!this.root.contains(event.relatedTarget as Node)) {
-                this.root.classList.remove('drop-active');
+                clearDrop();
             }
         });
-        this.root.addEventListener('drop', async (event) => {
-            event.preventDefault();
-            this.root.classList.remove('drop-active');
-            setActive(index);
-            const target = (event.target as HTMLElement).closest<HTMLElement>('[data-token]'),
-                row = target && this.row(target.dataset.token!),
-                destination = row && (row.directory || row.archive) ? row.token : undefined;
-            const payload = event.dataTransfer?.getData('application/x-ra2-resources');
-            if (payload) {
-                try {
-                    const tokens: unknown = JSON.parse(payload);
-                    if (Array.isArray(tokens) && tokens.every((token) => typeof token === 'string')) {
-                        send('transfer', { tokens, target: destination, move: event.shiftKey });
-                    }
-                } catch {
-                    /* Ignore foreign drag data. */
-                }
-            } else if (event.dataTransfer?.files.length) {
-                const files: { file: File; name: string }[] = [],
-                    directories: string[] = [];
-                const collect = async (entry: FileSystemEntry, prefix = ''): Promise<void> => {
-                    const name = prefix + entry.name;
-                    if (entry.isFile) {
-                        files.push({
-                            name,
-                            file: await new Promise<File>((resolve, reject) =>
-                                (entry as FileSystemFileEntry).file(resolve, reject)
-                            ),
-                        });
-                    } else {
-                        directories.push(name);
-                        const reader = (entry as FileSystemDirectoryEntry).createReader();
-                        while (true) {
-                            const entries = await new Promise<FileSystemEntry[]>((resolve, reject) =>
-                                reader.readEntries(resolve, reject)
-                            );
-                            if (!entries.length) {
-                                break;
-                            }
-                            for (const child of entries) {
-                                await collect(child, name + '/');
-                            }
-                        }
-                    }
-                };
-                const entries = Array.from(event.dataTransfer.items)
-                    .map((item) => item.webkitGetAsEntry())
-                    .filter((entry): entry is FileSystemEntry => !!entry);
-                if (entries.length) {
-                    for (const entry of entries) {
-                        await collect(entry);
-                    }
-                } else {
-                    files.push(...Array.from(event.dataTransfer.files).map((file) => ({ file, name: file.name })));
-                }
-                if (
-                    files.length > 1024 ||
-                    directories.length > 1024 ||
-                    files.reduce((sum, item) => sum + item.file.size, 0) > 96 * 1024 * 1024
-                ) {
-                    send('import');
+        this.root.addEventListener('dragend', clearDrop);
+        // Keep internal drags out of VS Code's outer Webview drag forwarding.
+        this.root.addEventListener('drag', (event) => event.stopPropagation());
+        this.root.addEventListener('drop', (event) => {
+            void (async () => {
+                event.preventDefault();
+                clearDrop();
+                event.stopPropagation();
+                stopDrag();
+                if (this.data?.readonly || !this.data || state?.busy) {
                     return;
                 }
-                const uploads = await Promise.all(
-                    files.map(async ({ file, name }) => {
-                        const bytes = new Uint8Array(await file.arrayBuffer());
-                        let binary = '';
-                        for (let offset = 0; offset < bytes.length; offset += 32768) {
-                            binary += String.fromCharCode(...bytes.subarray(offset, offset + 32768));
+                setActive(index);
+                const target = (event.target as HTMLElement).closest<HTMLElement>('[data-token]'),
+                    row = target && this.row(target.dataset.token!),
+                    destination = row && (row.directory || row.archive) ? row.token : undefined;
+                if (row && !row.directory && !row.archive) {
+                    return;
+                }
+                const payload = event.dataTransfer?.getData('application/x-ra2-resources');
+                if (payload) {
+                    try {
+                        const tokens: unknown = JSON.parse(payload);
+                        if (Array.isArray(tokens) && tokens.every((token) => typeof token === 'string')) {
+                            send('transfer', { tokens, target: destination, move: event.shiftKey });
                         }
-                        return { name, content: btoa(binary) };
-                    })
-                );
-                send('upload', { files: uploads, directories, target: destination });
-            }
+                    } catch {
+                        /* Ignore foreign drag data. */
+                    }
+                } else if (event.dataTransfer?.files.length) {
+                    const files: { file: File; name: string }[] = [],
+                        directories: string[] = [];
+                    const collect = async (entry: FileSystemEntry, prefix = ''): Promise<void> => {
+                        const name = prefix + entry.name;
+                        if (entry.isFile) {
+                            files.push({
+                                name,
+                                file: await new Promise<File>((resolve, reject) =>
+                                    (entry as FileSystemFileEntry).file(resolve, reject)
+                                ),
+                            });
+                        } else {
+                            directories.push(name);
+                            const reader = (entry as FileSystemDirectoryEntry).createReader();
+                            while (true) {
+                                const entries = await new Promise<FileSystemEntry[]>((resolve, reject) =>
+                                    reader.readEntries(resolve, reject)
+                                );
+                                if (!entries.length) {
+                                    break;
+                                }
+                                for (const child of entries) {
+                                    await collect(child, name + '/');
+                                }
+                            }
+                        }
+                    };
+                    const entries = Array.from(event.dataTransfer.items)
+                        .map((item) => item.webkitGetAsEntry())
+                        .filter((entry): entry is FileSystemEntry => !!entry);
+                    if (entries.length) {
+                        for (const entry of entries) {
+                            await collect(entry);
+                        }
+                    } else {
+                        files.push(...Array.from(event.dataTransfer.files).map((file) => ({ file, name: file.name })));
+                    }
+                    if (
+                        files.length > 1024 ||
+                        directories.length > 1024 ||
+                        files.reduce((sum, item) => sum + item.file.size, 0) > 96 * 1024 * 1024
+                    ) {
+                        send('import', { target: destination });
+                        return;
+                    }
+                    const uploads = await Promise.all(
+                        files.map(async ({ file, name }) => {
+                            const bytes = new Uint8Array(await file.arrayBuffer());
+                            let binary = '';
+                            for (let offset = 0; offset < bytes.length; offset += 32768) {
+                                binary += String.fromCharCode(...bytes.subarray(offset, offset + 32768));
+                            }
+                            return { name, content: btoa(binary) };
+                        })
+                    );
+                    send('upload', { files: uploads, directories, target: destination });
+                }
+            })().catch((error) => {
+                console.error('[File browser drop]', error);
+                send('uploadFailed');
+            });
         });
         this.virtual._didMount();
         this.virtual._willUpdate();
@@ -242,7 +367,10 @@ class Pane {
     get selectedRow(): FileRow | undefined {
         return this.row(this.tokens[0]);
     }
-    update(data: PaneState | undefined) {
+    update(data: PaneState | undefined, force = false) {
+        if (!force && this.data && this.data.location === data?.location && this.data.revision === data?.revision) {
+            return;
+        }
         const changed = this.data?.location !== data?.location;
         if (this.data?.revision !== data?.revision || changed) {
             this.probed.clear();
@@ -316,9 +444,15 @@ class Pane {
     }
 
     private renderRows() {
+        if ((dragging || pressedForDrag) && dragPane === this.index) {
+            return;
+        }
         const rows = this.table.getRowModel().rows;
         this.space.style.height = this.virtual.getTotalSize() + 'px';
-        this.space.replaceChildren();
+        const rendered = new Set<string>();
+        const existing = new Map(
+            Array.from(this.space.children, (child) => [(child as HTMLElement).dataset.token!, child as HTMLElement])
+        );
         this.empty.hidden = rows.length > 0;
         this.scroll.setAttribute('aria-rowcount', String(rows.length));
         const probes: string[] = [];
@@ -331,7 +465,28 @@ class Pane {
                 this.probed.add(data.token);
                 probes.push(data.token);
             }
+            rendered.add(data.token);
+            const signature = JSON.stringify([
+                item.index,
+                data.name,
+                data.size,
+                data.directory,
+                data.archive,
+                data.id,
+                data.status,
+                data.diff,
+            ]);
+            const retained = existing.get(data.token);
+            if (retained?.dataset.signature === signature) {
+                retained.classList.toggle('selected', !!this.selection[data.token]);
+                retained.classList.toggle('focused', item.index === this.focusIndex && active === this.index);
+                retained.setAttribute('aria-selected', String(!!this.selection[data.token]));
+                retained.style.transform = `translateY(${item.start}px)`;
+                continue;
+            }
+            retained?.remove();
             const row = el('div', 'file-row');
+            row.dataset.signature = signature;
             row.dataset.token = data.token;
             row.dataset.index = String(item.index);
             row.draggable = true;
@@ -380,19 +535,32 @@ class Pane {
                 showMenu(event.clientX, event.clientY);
             };
             row.ondragstart = (event) => {
+                event.stopPropagation();
                 if (!this.selection[data.token]) {
                     this.selection = { [data.token]: true };
                     this.focusIndex = item.index;
                     this.anchor = item.index;
                     row.classList.add('selected');
                 }
+                dragging = true;
+                clearTimeout(previewTimer);
+                send('cancelPreview');
                 this.dragTokens = this.tokens;
                 event.dataTransfer?.setData('application/x-ra2-resources', JSON.stringify(this.dragTokens));
                 if (event.dataTransfer) {
                     event.dataTransfer.effectAllowed = 'copyMove';
+                    const badge = el('div', 'drag-badge', this.dragTokens.length + ' ' + l('selected'));
+                    document.body.append(badge);
+                    event.dataTransfer.setDragImage(badge, 12, 12);
+                    setTimeout(() => badge.remove(), 0);
                 }
             };
             this.space.append(row);
+        }
+        for (const [token, row] of existing) {
+            if (!rendered.has(token)) {
+                row.remove();
+            }
         }
         const total = rows.reduce((sum, row) => sum + row.original.size, 0);
         this.footer.textContent =
@@ -426,15 +594,27 @@ class Pane {
         }
         this.focusIndex = index;
         this.updateTable();
+        this.preview();
+    }
+
+    preview(explicit = false) {
         const selected = this.selectedRow;
         clearTimeout(previewTimer);
-        if (showPreview && this.tokens.length === 1 && selected && !selected.directory && !selected.archive) {
+        send('cancelPreview');
+        if (
+            (showPreview || explicit) &&
+            this.tokens.length === 1 &&
+            selected &&
+            !selected.directory &&
+            !selected.archive
+        ) {
             previewToken = selected.token;
-            preview.replaceChildren(el('p', '', l('loading')));
-            previewTimer = setTimeout(() => send('preview', { pane: this.index, token: selected.token }), 180);
+            previewTimer = setTimeout(
+                () => send('preview', { pane: this.index, token: selected.token, explicit }),
+                explicit ? 0 : 180
+            );
         } else {
             previewToken = '';
-            preview.replaceChildren(el('p', '', l('previewHint')));
         }
     }
 
@@ -471,12 +651,14 @@ class Pane {
             event.preventDefault();
             this.selection = Object.fromEntries(this.table.getRowModel().rows.map((row) => [row.id, true]));
             this.updateTable();
+            this.preview();
         } else if (event.key === ' ') {
             event.preventDefault();
             this.choose(this.focusIndex, command, event.shiftKey);
         } else if (event.key === 'Escape') {
             this.selection = {};
             this.updateTable();
+            this.preview();
         } else if (event.key === 'Enter' && this.selectedRow) {
             event.preventDefault();
             const row = this.selectedRow;
@@ -498,13 +680,17 @@ class Pane {
             startX = event.clientX - rectangle.left,
             startY = event.clientY - rectangle.top + this.scroll.scrollTop;
         const original = event.ctrlKey || event.metaKey ? { ...this.selection } : {};
-        let dragged = false;
+        let dragged = false,
+            lassoFrame = 0,
+            lastPointer = event;
+        clearTimeout(previewTimer);
+        send('cancelPreview');
         if (originRow) {
             originRow.draggable = false;
         }
-        event.preventDefault();
-        this.scroll.setPointerCapture(event.pointerId);
         const move = (current: PointerEvent) => {
+            lastPointer = current;
+            cancelAnimationFrame(lassoFrame);
             if (!dragged && Math.abs(current.clientX - event.clientX) + Math.abs(current.clientY - event.clientY) < 4) {
                 return;
             }
@@ -533,19 +719,25 @@ class Pane {
                 this.selection[rows[index].id] = true;
             }
             this.updateTable();
+            if (current.clientY < rectangle.top + 24 || current.clientY > rectangle.bottom - 24) {
+                lassoFrame = requestAnimationFrame(() => move(lastPointer));
+            }
         };
         const stop = () => {
+            cancelAnimationFrame(lassoFrame);
             if (originRow) {
                 originRow.draggable = true;
             }
-            if (!dragged && originRow) {
-                this.choose(Number(originRow.dataset.index), event.ctrlKey || event.metaKey, event.shiftKey);
-            } else if (!dragged) {
+            if (!dragged && !originRow) {
                 this.selection = original;
                 this.updateTable();
             }
             this.scroll.focus();
             this.lasso.hidden = true;
+            this.preview();
+            if (this.scroll.hasPointerCapture(event.pointerId)) {
+                this.scroll.releasePointerCapture(event.pointerId);
+            }
             this.scroll.removeEventListener('pointermove', move);
             document.removeEventListener('pointerup', stop);
             document.removeEventListener('pointercancel', stop);
@@ -559,21 +751,25 @@ class Pane {
 panes.push(new Pane(0), new Pane(1));
 const grip = el('div', 'split-grip');
 grip.title = l('split');
-panels.append(panes[0].root, grip, panes[1].root, preview);
-let splitRatio = 50;
+panels.append(panes[0].root, grip, panes[1].root);
+let splitRatio = Math.min(75, Math.max(25, api.getState()?.splitRatio ?? 50));
+applyLayout();
+function applyLayout() {
+    panes[0].root.style.flex = split ? `0 0 calc(${splitRatio}% - 2.5px)` : '1 1 0';
+    panes[1].root.hidden = !split;
+    grip.hidden = !split;
+}
 grip.onpointerdown = (event) => {
     grip.setPointerCapture(event.pointerId);
     const move = (current: PointerEvent) => {
         const rect = panels.getBoundingClientRect();
-        splitRatio = Math.min(
-            75,
-            Math.max(25, ((current.clientX - rect.left) / (rect.width - (showPreview ? preview.offsetWidth : 0))) * 100)
-        );
-        panes[0].root.style.flexBasis = splitRatio + '%';
+        splitRatio = Math.min(75, Math.max(25, ((current.clientX - rect.left) / rect.width) * 100));
+        applyLayout();
     };
     const stop = () => {
         grip.removeEventListener('pointermove', move);
         grip.removeEventListener('pointerup', stop);
+        persist();
     };
     grip.addEventListener('pointermove', move);
     grip.addEventListener('pointerup', stop);
@@ -596,8 +792,15 @@ function action(type: string) {
     }
     if (type === 'copy' || type === 'cut') {
         send('clipboard', { tokens: selected, cut: type === 'cut' });
+    } else if (type === 'preview') {
+        panes[active].preview(true);
+    } else if (['openTab', 'openBeside'].includes(type)) {
+        send(type, {
+            token: panes[active].selectedRow?.directory || panes[active].selectedRow?.archive ? selected[0] : undefined,
+        });
     } else if (type === 'open' && selected[0]) {
-        send('open', { token: selected[0] });
+        const row = panes[active].selectedRow;
+        send(row?.directory || row?.archive ? 'navigate' : 'open', { token: selected[0] });
     } else {
         send(type, { tokens: selected });
     }
@@ -620,55 +823,101 @@ function updateButtons() {
     });
 }
 function renderToolbar() {
-    toolbar.replaceChildren(el('strong', '', l('title')));
-    for (const key of ['copy', 'cut', 'paste', 'import', 'export', 'rename', 'remove', 'create', 'undo']) {
+    toolbar.replaceChildren();
+    for (const key of ['copy', 'cut', 'paste', 'import', 'export', 'undo']) {
         toolbar.append(button(key, () => action(key)));
     }
     toolbar.append(
+        button('more', () => {
+            const box = toolbar.querySelector('[data-label=more]')!.getBoundingClientRect();
+            showMenu(box.left, box.bottom);
+        }),
         el('span', 'spacer'),
         button('refresh', () => send('refresh')),
-        button('compare', () => send('compare'))
+        button('openBeside', () => action('openBeside'), '⇥')
     );
+    if (split) {
+        toolbar.append(button('compare', () => send('compare')));
+    }
     if (state?.compare) {
         toolbar.append(
             button('sync', () => action('sync')),
             button('clearCompare', () => send('clearCompare'))
         );
     }
-    toolbar.append(
-        button('split', () => {
+    const splitButton = button(
+        'split',
+        () => {
             split = !split;
             if (!split) {
                 setActive(0);
             }
-            panes[1].root.hidden = !split;
-            grip.hidden = !split;
+            applyLayout();
             persist();
-        }),
-        button('preview', () => {
-            showPreview = !showPreview;
-            preview.hidden = !showPreview;
-            persist();
-        })
+            renderToolbar();
+        },
+        '▥'
     );
-    if (state?.busy) {
-        toolbar.append(button('cancel', () => send('cancel')));
-    }
+    splitButton.setAttribute('aria-pressed', String(split));
+    splitButton.classList.toggle('checked', split);
+    const previewButton = button(
+        'followPreview',
+        () => {
+            showPreview = !showPreview;
+            persist();
+            panes[active].preview();
+            renderToolbar();
+        },
+        '◉'
+    );
+    previewButton.setAttribute('aria-pressed', String(showPreview));
+    previewButton.classList.toggle('checked', showPreview);
+    toolbar.append(splitButton, previewButton);
     updateButtons();
 }
 function showMenu(x: number, y: number) {
     document.querySelector('.context-menu')?.remove();
     const menu = el('div', 'context-menu');
     menu.style.left = Math.min(x, innerWidth - 200) + 'px';
-    menu.style.top = Math.min(y, innerHeight - 240) + 'px';
-    for (const key of ['open', 'diff', 'copy', 'cut', 'paste', 'export', 'rename', 'remove'].filter(
-        (key) => key !== 'diff' || panes[active].selectedRow?.diff
-    )) {
+    menu.style.top = Math.max(4, Math.min(y, innerHeight - 440)) + 'px';
+    for (const key of [
+        'open',
+        'preview',
+        'openTab',
+        'openBeside',
+        'diff',
+        'copy',
+        'cut',
+        'paste',
+        'export',
+        'rename',
+        'remove',
+        'create',
+        'import',
+        'undo',
+        'refresh',
+    ].filter((key) => key !== 'diff' || panes[active].selectedRow?.diff)) {
         const control = button(key, () => {
             action(key);
             menu.remove();
         });
-        control.disabled = key !== 'paste' && !panes[active].tokens.length;
+        control.disabled =
+            (!['paste', 'create', 'openBeside', 'openTab', 'import', 'undo', 'refresh'].includes(key) &&
+                !panes[active].tokens.length) ||
+            !!state?.busy ||
+            (!!state?.panes[active]?.readonly && ['paste', 'rename', 'remove', 'cut', 'create'].includes(key));
+        if (key === 'preview') {
+            control.disabled ||=
+                panes[active].tokens.length !== 1 ||
+                !!panes[active].selectedRow?.directory ||
+                !!panes[active].selectedRow?.archive;
+        }
+        if (key === 'undo') {
+            control.disabled ||= !state?.undo;
+        }
+        if (key === 'paste') {
+            control.disabled ||= !state?.clipboard;
+        }
         menu.append(control);
     }
     document.body.append(menu);
@@ -719,17 +968,32 @@ document.addEventListener('keydown', (event) => {
 window.addEventListener('message', (event) => {
     const message = event.data;
     if (message?.type === 'state') {
+        if (dragging || pressedForDrag) {
+            pendingState = message;
+            return;
+        }
+        if (!initialized) {
+            split = api.getState()?.split ?? !!message.state.split;
+            initialized = true;
+        }
         state = message.state as FileBrowserState;
         panes.forEach((pane, index) => pane.update(state!.panes[index]));
-        panes[1].root.hidden = !split;
-        grip.hidden = !split;
-        preview.hidden = !showPreview;
+        applyLayout();
         main.classList.toggle('comparing', !!state.compare);
         renderToolbar();
-        notice.textContent = state.message ?? (state.busy ? l('working') : '');
-        notice.hidden = !notice.textContent;
+        clearTimeout(busyTimer);
+        notice.textContent = state.message ?? '';
         notice.classList.toggle('error', !!state.message);
-        info.textContent = state.compare
+        cancel.textContent = l('cancel');
+        dismiss.textContent = l('close');
+        cancel.hidden = !state.busy;
+        dismiss.hidden = !state.message;
+        if (state.busy && !state.message) {
+            busyTimer = setTimeout(() => {
+                notice.textContent = l('working');
+            }, 200);
+        }
+        statusText.textContent = state.compare
             ? Object.entries(state.compare.counts)
                   .map(([key, count]) => l(key) + ': ' + count)
                   .join(' · ')
@@ -737,12 +1001,11 @@ window.addEventListener('message', (event) => {
               ? l('flat')
               : l('dragHint');
         if (state.clipboard) {
-            info.textContent +=
+            statusText.textContent +=
                 ' · ' + state.clipboard + ' ' + l('clipboard') + (state.cut ? ' (' + l('move') + ')' : '');
         }
-        if (!preview.childElementCount) {
-            preview.append(el('p', '', l('previewHint')));
-        }
+        statusText.title = statusText.textContent ?? '';
+        notice.title = notice.textContent ?? '';
     } else if (message?.type === 'classification' && state && Array.isArray(message.results)) {
         for (const result of message.results) {
             for (const pane of state.panes) {
@@ -752,35 +1015,13 @@ window.addEventListener('message', (event) => {
                 }
             }
         }
-        panes.forEach((pane, index) => pane.update(state!.panes[index]));
+        panes.forEach((pane, index) => pane.update(state!.panes[index], true));
     } else if (message?.type === 'clipboard' && state) {
         state.clipboard = message.count;
         state.cut = message.cut;
         updateButtons();
-    } else if (message?.type === 'preview' && message.token === previewToken) {
-        const heading = el('header', ''),
-            open = button('open', () => send('open', { token: message.token }));
-        heading.append(el('strong', '', message.name), open);
-        preview.replaceChildren(heading);
-        if (message.image) {
-            const image = el('img');
-            image.src = message.image;
-            image.alt = message.name;
-            preview.append(image);
-        }
-        if (message.audio) {
-            const audio = el('audio');
-            audio.src = message.audio;
-            audio.controls = true;
-            audio.preload = 'metadata';
-            preview.append(audio);
-        }
-        if (message.text) {
-            preview.append(el('pre', '', message.text));
-        }
-        if (message.hint) {
-            preview.append(el('p', '', message.hint));
-        }
+    } else if (message?.type === 'active' && message.active) {
+        panes[active].preview();
     }
 });
 setActive(0);

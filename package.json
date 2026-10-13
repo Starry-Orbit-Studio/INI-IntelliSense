@@ -9,7 +9,7 @@
     "url": "https://github.com/Super-StarX/INI-IntelliSense.git"
   },
   "private": true,
-  "version": "0.0.6",
+  "version": "0.0.7",
   "engines": {
     "vscode": "^1.96.0"
   },
@@ -273,6 +273,11 @@
           "command": "ra2-ini-intellisense.browseFiles",
           "when": "resourceScheme == file || resourceScheme == ra2mix",
           "group": "navigation@50"
+        },
+        {
+          "command": "ra2-ini-intellisense.previewResource",
+          "when": "resourceExtname == .csf || resourceExtname == .llf",
+          "group": "navigation"
         }
       ],
       "view/item/context": [
@@ -373,6 +378,11 @@
         {
           "when": "resourceExtname == '.map' || resourceExtname == '.mpr' || resourceExtname == '.yrm'",
           "command": "ra2-ini-intellisense.previewMap",
+          "group": "navigation"
+        },
+        {
+          "command": "ra2-ini-intellisense.previewResource",
+          "when": "resourceExtname == .csf || resourceExtname == .llf",
           "group": "navigation"
         }
       ]
@@ -588,6 +598,11 @@
         "command": "ra2-ini-intellisense.mix.newArchive",
         "title": "%mix.browser.create%",
         "category": "%command.category%"
+      },
+      {
+        "command": "ra2-ini-intellisense.previewResource",
+        "title": "%command.previewResource.title%",
+        "icon": "$(preview)"
       }
     ],
     "configuration": {

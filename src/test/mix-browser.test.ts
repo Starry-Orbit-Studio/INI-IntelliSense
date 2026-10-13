@@ -470,13 +470,35 @@ suite('MIX folder browser and transactions', () => {
             this.skip();
             return;
         }
-        this.timeout(90000);
+        this.timeout(150000);
         await fs.writeFile(disk('hello.ini').fsPath, '[Hello]\nValue=1\n');
+        await fs.writeFile(disk('sample.llf').fsPath, 'UI:First: >-\n  第一行 #正文\n  最后一行\nUI:Next: 下一条\n');
         await fs.writeFile(
             disk('alias.dll').fsPath,
             await archive({ 'inner.mix': await archive({ 'notes.ini': '[Hello]\nValue=1\n' }) })
         );
-        await fs.writeFile(disk('target.mix').fsPath, await archive({}));
+        const uint32 = (value: number) => {
+            const result = Buffer.alloc(4);
+            result.writeUInt32LE(value);
+            return result;
+        };
+        const text = Buffer.from('CSF中文', 'utf16le');
+        const stringTable = Buffer.concat([
+            Buffer.from(' FSC'),
+            uint32(3),
+            uint32(1),
+            uint32(1),
+            uint32(0),
+            uint32(0),
+            Buffer.from(' LBL'),
+            uint32(1),
+            uint32(7),
+            Buffer.from('UI:TEST'),
+            Buffer.from(' RTS'),
+            uint32(text.length / 2),
+            Buffer.from(text.map((byte) => byte ^ 0xff)),
+        ]);
+        await fs.writeFile(disk('target.mix').fsPath, await archive({ 'strings.csf': stringTable }));
         const original = await fs.readFile(disk('target.mix').fsPath),
             output = path.resolve(__dirname, '../webview-qa/native-files.png');
         await fs.mkdir(path.dirname(output), { recursive: true });

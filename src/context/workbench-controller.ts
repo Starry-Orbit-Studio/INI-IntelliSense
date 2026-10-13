@@ -19,6 +19,7 @@ import { ConfigurationService } from './configuration-service';
 import { ConfigurationScope } from './configuration-model';
 import { configurationMessage } from './configuration-channel';
 import { commandOrigin } from './command-origin';
+import { parseCsf, parseLlf } from '../strings/string-table';
 
 class WorkbenchSession implements vscode.Disposable {
     public pinned = false;
@@ -152,35 +153,78 @@ class WorkbenchSession implements vscode.Disposable {
                     links: new Map(),
                     edits: new Map(),
                 };
-                const contextual = await this.service.inspectResource(candidate, token);
-                if (contextual) {
-                    current = contextual;
-                    current.assets.set(id, { candidate, options: contextual.options });
-                    current.inspection.assets.unshift({
-                        id,
-                        name: candidate.name,
-                        source: this.service.resources.label(uri, candidate.uri),
-                        priority: 0,
-                    });
-                    current.inspection.focus = candidate.name;
+                if (/\.(csf|llf)$/i.test(uri.path)) {
+                    const bytes = await this.service.resources.read(uri, 32 * 1024 * 1024);
+                    try {
+                        current.inspection.stringTable = /\.llf$/i.test(uri.path)
+                            ? parseLlf(
+                                  vscode.workspace.textDocuments
+                                      .find((document) => document.uri.toString() === uri.toString())
+                                      ?.getText() ?? new TextDecoder().decode(bytes)
+                              )
+                            : parseCsf(bytes);
+                    } catch (error) {
+                        throw new Error(
+                            localize(
+                                'workbench.stringInvalid',
+                                'Cannot read this string table: {0}',
+                                error instanceof Error ? error.message : String(error)
+                            )
+                        );
+                    }
+                    current.inspection.assets = [];
+                } else if (
+                    !/\.(shp|tem|sno|urb|ubn|des|lun|pcx|pal|vxl|hva|wav|mp3|ogg|flac|png|jpe?g|gif|bmp)$/i.test(
+                        uri.path
+                    )
+                ) {
+                    const stat = await vscode.workspace.fs.stat(uri);
+                    const bytes = await this.service.resources.readRange(uri, 0, Math.min(stat.size, 4096));
+                    current.inspection.fileText = bytes.includes(0)
+                        ? Array.from(bytes.subarray(0, 256), (byte) => byte.toString(16).padStart(2, '0')).join(' ')
+                        : new TextDecoder().decode(bytes);
+                    current.inspection.assets = [];
                 } else {
-                    current.assets.get(id)!.options = await this.service.projectMediaOptions(uri);
+                    const owners = await this.service.resourceOwners(candidate, token);
+                    const contextual =
+                        owners.filter((owner) => owner.category === 'rules').length <= 1 &&
+                        owners.filter((owner) => owner.category === 'art').length <= 1
+                            ? await this.service.inspectResource(candidate, token)
+                            : undefined;
+                    if (contextual) {
+                        current = contextual;
+                        current.assets.set(id, { candidate, options: contextual.options });
+                        current.inspection.assets.unshift({
+                            id,
+                            name: candidate.name,
+                            source: this.service.resources.label(uri, candidate.uri),
+                            priority: 0,
+                        });
+                        current.inspection.focus = candidate.name;
+                    } else {
+                        current.assets.get(id)!.options = await this.service.projectMediaOptions(uri);
+                    }
+                    for (const owner of owners) {
+                        const link = randomUUID();
+                        current.links.set(link, new vscode.Location(owner.uri, owner.position));
+                        current.inspection.references.push({ id: link, label: owner.label });
+                    }
+                    await this.service.select(current, id, token);
+                    current.inspection.paletteOptions = (
+                        current.inspection.media && mediaCapabilities(current.inspection.media.kind).palette
+                            ? await this.service.resources.list(uri, ['.pal'])
+                            : []
+                    ).map((candidate) => {
+                        const paletteId = randomUUID();
+                        current!.assets.set(paletteId, { candidate, options: { origin: uri } });
+                        return {
+                            id: paletteId,
+                            name: candidate.name,
+                            source: this.service.resources.label(uri, candidate.uri),
+                            priority: candidate.priority,
+                        };
+                    });
                 }
-                await this.service.select(current, id, token);
-                current.inspection.paletteOptions = (
-                    current.inspection.media && mediaCapabilities(current.inspection.media.kind).palette
-                        ? await this.service.resources.list(uri, ['.pal'])
-                        : []
-                ).map((candidate) => {
-                    const paletteId = randomUUID();
-                    current!.assets.set(paletteId, { candidate, options: { origin: uri } });
-                    return {
-                        id: paletteId,
-                        name: candidate.name,
-                        source: this.service.resources.label(uri, candidate.uri),
-                        priority: candidate.priority,
-                    };
-                });
             } else {
                 const document = await vscode.workspace.openTextDocument(uri);
                 current = await this.service.inspect(document, position, token);
@@ -254,7 +298,11 @@ class WorkbenchSession implements vscode.Disposable {
                     errors: index.errors,
                     counts,
                     documents,
-                    configuration: this.configuration.describe(origin, ['loading', 'resources', 'dictionary', 'editing', 'maps'], this.configurationScope),
+                    configuration: this.configuration.describe(
+                        origin,
+                        ['loading', 'resources', 'dictionary', 'editing', 'maps'],
+                        this.configurationScope
+                    ),
                 };
                 this.configurationScope = session.inspection.project.configuration!.scope;
                 session.inspection.owner = localize('workbench.projectSettings', 'Project overview and settings');
@@ -376,6 +424,7 @@ class WorkbenchSession implements vscode.Disposable {
             key?: string;
             operation?: string;
             request?: number;
+            index?: number;
         };
         if (data.type === 'ready') {
             this.ready = true;
@@ -406,17 +455,55 @@ class WorkbenchSession implements vscode.Disposable {
             return;
         }
         const current = this.current;
-        if (current.inspection.project && await configurationMessage({
-            service: this.configuration, origin: current.origin, root: this.service.resources.projectRoot(current.origin), scope: this.configurationScope,
-            groups: ['loading', 'resources', 'dictionary', 'editing', 'maps'],
-            setScope: scope => { this.configurationScope = scope; },
-            post: message => { void this.webview.postMessage(message); },
-            refresh: () => this.refresh(), editing: active => { this.editing = active; },
-        }, message)) { return; }
-        if (data.type === 'check-center') { await vscode.commands.executeCommand('ra2-ini-intellisense.checkCenter', current.origin); return; }
-        if (data.type === 'dictionary-edit') { await vscode.commands.executeCommand('ra2-ini-intellisense.editDictionary', current.origin); return; }
-        if (data.type === 'dictionary-update') { await vscode.commands.executeCommand('ra2-ini-intellisense.downloadDictionary', current.origin, this.configurationScope ?? (vscode.workspace.getWorkspaceFolder(current.origin) ? 'folder' : 'user')); this.refresh(); return; }
-        if (data.type === 'native-settings') { await vscode.commands.executeCommand('workbench.action.openSettings', '@ext:Astralette.ra2-ini-intellisense'); return; }
+        if (
+            current.inspection.project &&
+            (await configurationMessage(
+                {
+                    service: this.configuration,
+                    origin: current.origin,
+                    root: this.service.resources.projectRoot(current.origin),
+                    scope: this.configurationScope,
+                    groups: ['loading', 'resources', 'dictionary', 'editing', 'maps'],
+                    setScope: (scope) => {
+                        this.configurationScope = scope;
+                    },
+                    post: (message) => {
+                        void this.webview.postMessage(message);
+                    },
+                    refresh: () => this.refresh(),
+                    editing: (active) => {
+                        this.editing = active;
+                    },
+                },
+                message
+            ))
+        ) {
+            return;
+        }
+        if (data.type === 'check-center') {
+            await vscode.commands.executeCommand('ra2-ini-intellisense.checkCenter', current.origin);
+            return;
+        }
+        if (data.type === 'dictionary-edit') {
+            await vscode.commands.executeCommand('ra2-ini-intellisense.editDictionary', current.origin);
+            return;
+        }
+        if (data.type === 'dictionary-update') {
+            await vscode.commands.executeCommand(
+                'ra2-ini-intellisense.downloadDictionary',
+                current.origin,
+                this.configurationScope ?? (vscode.workspace.getWorkspaceFolder(current.origin) ? 'folder' : 'user')
+            );
+            this.refresh();
+            return;
+        }
+        if (data.type === 'native-settings') {
+            await vscode.commands.executeCommand(
+                'workbench.action.openSettings',
+                '@ext:Astralette.ra2-ini-intellisense'
+            );
+            return;
+        }
 
         if (
             data.type === 'save-favorites' &&
@@ -757,6 +844,51 @@ class WorkbenchSession implements vscode.Disposable {
             ['tem', 'sno', 'urb', 'ubn', 'lun', 'des'].includes(data.theater)
         ) {
             this.service.setPreviewTheater(current.origin, data.theater);
+        } else if (
+            ['string-copy-label', 'string-copy-value', 'string-open', 'string-uses'].includes(data.type ?? '') &&
+            typeof data.index === 'number' &&
+            Number.isInteger(data.index)
+        ) {
+            const entry = current.inspection.stringTable?.entries[data.index];
+            if (!entry) {
+                return;
+            }
+            if (data.type === 'string-copy-label' || data.type === 'string-copy-value') {
+                await vscode.env.clipboard.writeText(data.type === 'string-copy-label' ? entry.label : entry.value);
+            } else if (data.type === 'string-open') {
+                if (entry.line !== undefined) {
+                    await vscode.window.showTextDocument(current.origin, {
+                        selection: new vscode.Range(entry.line, 0, entry.line, 0),
+                    });
+                }
+            } else {
+                await this.service.ini.load(current.origin);
+                const found: { label: string; description: string; uri: vscode.Uri; line: number }[] = [];
+                for (const document of this.service.ini.documents(current.origin)) {
+                    for (const section of document.sections) {
+                        for (const [key, value] of section.properties) {
+                            if (
+                                value.split(',').some((part) => part.trim().toLowerCase() === entry.label.toLowerCase())
+                            ) {
+                                found.push({
+                                    label: '[' + section.name + '] ' + key,
+                                    description: this.service.resources.label(current.origin, document.uri),
+                                    uri: document.uri,
+                                    line: section.startLine,
+                                });
+                            }
+                        }
+                    }
+                }
+                const choice = await vscode.window.showQuickPick(found, {
+                    placeHolder: localize('workbench.stringUses', 'INI references to this label ({0})', found.length),
+                });
+                if (choice) {
+                    await vscode.window.showTextDocument(choice.uri, {
+                        selection: new vscode.Range(choice.line, 0, choice.line, 0),
+                    });
+                }
+            }
         } else if (data.type === 'source' && data.id) {
             const location = current.links.get(data.id);
             if (location) {
@@ -934,6 +1066,7 @@ export class WorkbenchController
     private revealErrorReported = false;
     private readonly resolved = new vscode.EventEmitter<void>();
     private cursorRevision = 0;
+    private resourceRevision = 0;
     private autoCancellation?: vscode.CancellationTokenSource;
     private backgroundRoots = new Set<string>();
 
@@ -1007,6 +1140,42 @@ export class WorkbenchController
             }, 140);
         };
         this.disposables.push(
+            vscode.commands.registerCommand(
+                'ra2-ini-intellisense.previewResource',
+                async (value?: string | vscode.Uri, follow = false) => {
+                    const uri =
+                        typeof value === 'string'
+                            ? vscode.Uri.parse(value)
+                            : value instanceof vscode.Uri
+                              ? value
+                              : vscode.window.activeTextEditor?.document.uri;
+                    if (!uri) {
+                        return;
+                    }
+                    if (!['file', 'ra2mix', 'vscode-remote'].includes(uri.scheme)) {
+                        return;
+                    }
+                    if (follow && (this.inspector?.pinned || (this.autoRevealed && !this.view?.visible))) {
+                        return;
+                    }
+                    if (
+                        follow &&
+                        !vscode.workspace.getConfiguration('ra2-ini-intellisense', uri).get('media.enabled', true)
+                    ) {
+                        return;
+                    }
+                    const revision = ++this.resourceRevision;
+                    this.cursorRevision++;
+                    this.autoCancellation?.cancel();
+                    clearTimeout(this.timer);
+                    const inspector = await this.revealInspector(true);
+                    if (revision !== this.resourceRevision || (follow && inspector.pinned)) {
+                        return;
+                    }
+                    this.autoRevealed = true;
+                    await inspector.inspect(uri, new vscode.Position(0, 0), !/\.(map|mpr|yrm)$/i.test(uri.path));
+                }
+            ),
             vscode.commands.registerCommand('ra2-ini-intellisense.previewMap', async (uri?: vscode.Uri) => {
                 const origin = commandOrigin(uri);
                 if (!origin || !/\.(map|mpr|yrm)$/i.test(origin.path)) {
@@ -1024,22 +1193,55 @@ export class WorkbenchController
             ),
             vscode.commands.registerCommand('ra2-ini-intellisense.configureFileCategory', async (value?: unknown) => {
                 let origin = commandOrigin(value);
-                if (!origin) { return; }
+                if (!origin) {
+                    return;
+                }
                 if (!/\.(ini|map|mpr|yrm)$/i.test(origin.path)) {
                     const files = await service.resources.listDocuments(origin);
-                    const chosen = await vscode.window.showQuickPick(files.map(file => ({ label: vscode.workspace.asRelativePath(file.uri), uri: file.uri })), { title: localize('workbench.configureFileCategory', 'Set INI file category') });
-                    if (!chosen) { return; } origin = chosen.uri;
+                    const chosen = await vscode.window.showQuickPick(
+                        files.map((file) => ({ label: vscode.workspace.asRelativePath(file.uri), uri: file.uri })),
+                        { title: localize('workbench.configureFileCategory', 'Set INI file category') }
+                    );
+                    if (!chosen) {
+                        return;
+                    }
+                    origin = chosen.uri;
                 }
                 const configuration = vscode.workspace.getConfiguration('ra2-ini-intellisense', origin);
                 const rules = configuration.get<Record<string, string[]>>('indexing.fileCategories', {});
-                const selected = await vscode.window.showQuickPick([{ label: localize('workbench.automatic', 'Automatic'), category: undefined }, ...Object.keys(rules).map(category => ({ label: category, category }))], { title: localize('workbench.configureFileCategory', 'Set INI file category'), placeHolder: vscode.workspace.asRelativePath(origin) });
-                if (!selected) { return; }
-                const target = vscode.workspace.getWorkspaceFolder(origin) ? vscode.ConfigurationTarget.WorkspaceFolder : vscode.ConfigurationTarget.Global;
+                const selected = await vscode.window.showQuickPick(
+                    [
+                        { label: localize('workbench.automatic', 'Automatic'), category: undefined },
+                        ...Object.keys(rules).map((category) => ({ label: category, category })),
+                    ],
+                    {
+                        title: localize('workbench.configureFileCategory', 'Set INI file category'),
+                        placeHolder: vscode.workspace.asRelativePath(origin),
+                    }
+                );
+                if (!selected) {
+                    return;
+                }
+                const target = vscode.workspace.getWorkspaceFolder(origin)
+                    ? vscode.ConfigurationTarget.WorkspaceFolder
+                    : vscode.ConfigurationTarget.Global;
                 const details = configuration.inspect<Record<string, string>>('indexing.fileOverrides');
-                const overrides = { ...(target === vscode.ConfigurationTarget.WorkspaceFolder ? details?.workspaceFolderValue : details?.globalValue) };
+                const overrides = {
+                    ...(target === vscode.ConfigurationTarget.WorkspaceFolder
+                        ? details?.workspaceFolderValue
+                        : details?.globalValue),
+                };
                 const relative = vscode.workspace.asRelativePath(origin, false).replace(/\\/g, '/');
-                if (selected.category) { overrides[relative] = selected.category; } else { delete overrides[relative]; }
-                await configuration.update('indexing.fileOverrides', Object.keys(overrides).length ? overrides : undefined, target);
+                if (selected.category) {
+                    overrides[relative] = selected.category;
+                } else {
+                    delete overrides[relative];
+                }
+                await configuration.update(
+                    'indexing.fileOverrides',
+                    Object.keys(overrides).length ? overrides : undefined,
+                    target
+                );
             }),
             vscode.commands.registerCommand('ra2-ini-intellisense.configureProject', async (uri?: vscode.Uri) => {
                 const origin = commandOrigin(uri);

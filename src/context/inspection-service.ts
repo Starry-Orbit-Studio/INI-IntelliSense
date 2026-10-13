@@ -195,6 +195,58 @@ export class InspectionService implements vscode.Disposable {
         };
     }
 
+    /** Return every matching declaration; raw file previews must not infer a unique owner from the first match. */
+    public async resourceOwners(
+        candidate: ResourceCandidate,
+        token: vscode.CancellationToken
+    ): Promise<{ uri: vscode.Uri; position: vscode.Position; label: string; category: string }[]> {
+        await this.ini.load(candidate.uri);
+        const base = path.posix.basename(candidate.name, path.posix.extname(candidate.name)).toLowerCase();
+        const name = candidate.name.toLowerCase();
+        const documents = this.ini.documents(candidate.uri);
+        const result: { uri: vscode.Uri; position: vscode.Position; label: string; category: string }[] = [];
+        const artNames = new Set<string>();
+        for (const doc of documents) {
+            if (this.ini.category(doc.uri) !== 'art') {
+                continue;
+            }
+            for (const section of doc.sections) {
+                const image =
+                    [...section.properties].find(([key]) => key.toLowerCase() === 'image')?.[1] ?? section.name;
+                if (image.toLowerCase() === base || image.toLowerCase() === name) {
+                    artNames.add(section.name.toLowerCase());
+                }
+            }
+        }
+        for (const doc of documents) {
+            if (token.isCancellationRequested) {
+                return [];
+            }
+            for (const section of doc.sections) {
+                const image =
+                    [...section.properties].find(([key]) => key.toLowerCase() === 'image')?.[1] ?? section.name;
+                const category = this.ini.category(doc.uri);
+                const matches =
+                    (category === 'art' && artNames.has(section.name.toLowerCase())) ||
+                    (category === 'rules' && artNames.has(image.toLowerCase())) ||
+                    [...section.properties].some(
+                        ([key, value]) =>
+                            /^(image|cameo|altcameo|bibshape|turretanim|buildup|palette|filename)$/i.test(key) &&
+                            value.split(',').some((part) => [base, name].includes(part.trim().toLowerCase()))
+                    );
+                if (matches) {
+                    result.push({
+                        category,
+                        uri: doc.uri,
+                        position: new vscode.Position(section.startLine, 0),
+                        label: '[' + section.name + '] · ' + this.resources.label(candidate.uri, doc.uri),
+                    });
+                }
+            }
+        }
+        return result;
+    }
+
     /** Cheap classification for audits; binary work begins only for recognized references. */
     public async inspectResource(
         candidate: ResourceCandidate,

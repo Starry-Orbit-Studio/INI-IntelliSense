@@ -25,6 +25,7 @@ export interface FileBrowserState {
     cut: boolean;
     undo: boolean;
     busy: boolean;
+    split?: boolean;
     message?: string;
     compare?: { counts: Record<string, number> };
 }
@@ -61,7 +62,6 @@ export const browserLabelDefaults: Record<string, string> = {
     differences: 'Differences only',
     sync: 'Copy selected differences to the other pane',
     open: 'Open',
-    preview: 'Preview',
     close: 'Close',
     readOnly: 'Read-only',
     flat: 'Folder imports into MIX use resource basenames; name / ID collisions are resolved before writing.',
@@ -76,12 +76,19 @@ export const browserLabelDefaults: Record<string, string> = {
     different: 'Different content',
     identical: 'Identical',
     'type-mismatch': 'File / folder conflict',
-    split: 'Show / hide second pane',
+    split: 'Dual pane',
+    openBeside: 'Open beside',
+    openTab: 'Open in new tab',
+    followPreview: 'Follow selection in bottom preview',
+    preview: 'Show in bottom preview',
+    dropCopy: 'Copy to',
+    dropMove: 'Move to',
+    more: 'More actions',
     loading: 'Loading…',
     cancel: 'Cancel',
     working: 'Applying operation…',
     dragHint:
-        'Drag to the other pane to copy. Hold Shift to move. MIX files are copied whole; enter them to copy their contents.',
+        'Drag between folders, MIX archives or editor groups to copy. Hold Shift to move. MIX files are copied whole; enter them to copy their contents.',
     previewHint: 'Select a file to preview. Double-click to open; double-click a MIX to enter it.',
     hashHint: 'Unknown names keep their original MIX ID. They are not renamed automatically.',
     diff: 'Open text diff',

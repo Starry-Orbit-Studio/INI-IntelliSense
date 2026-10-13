@@ -94,5 +94,6 @@
     "mix.browser.create": "新建 MIX",
     "mix.backupCount.description": "每个文件最多保留的写入恢复备份数。会在后续写入时清理过期备份；至少保留最新一份。",
     "mix.backupBudget.description": "每个文件的写入恢复备份预算（MiB）。最新一份总会保留，即使它单独超过预算。",
-    "mix.transferBudget.description": "单次传输暂存内容的内存预算（MiB），防止大批导入耗尽扩展宿主内存。超过预算时请分批操作，或按本机内存调整此值。"
+    "mix.transferBudget.description": "单次传输暂存内容的内存预算（MiB），防止大批导入耗尽扩展宿主内存。超过预算时请分批操作，或按本机内存调整此值。",
+    "command.previewResource.title": "在底栏查看内容"
 }
