@@ -2,6 +2,7 @@ import * as fs from 'fs/promises';
 import * as path from 'path';
 import * as vscode from 'vscode';
 import { MixWorkspaceManager } from '../mix/fs/mix-workspace-manager';
+import { BrowserLocations } from '../mix/browser/locations';
 
 const MIX_CHECKSUM = 0x00010000;
 const MIX_ENCRYPTED = 0x00020000;
@@ -13,7 +14,9 @@ export class MixDetectorService {
     constructor(private readonly mixWorkspaceManager: MixWorkspaceManager) {}
 
     public async isMixLike(uri: vscode.Uri): Promise<boolean> {
-        const cacheKey = uri.toString();
+        let stamp: string;
+        try { const stat = await vscode.workspace.fs.stat(uri); stamp = `${stat.mtime}:${stat.size}`; } catch { return false; }
+        const cacheKey = uri.toString() + stamp;
         const cached = this.cache.get(cacheKey);
         if (cached !== undefined) {
             return cached;
@@ -27,6 +30,7 @@ export class MixDetectorService {
         const task = this.detect(uri)
             .then(result => {
                 this.cache.set(cacheKey, result);
+                if (this.cache.size > 4096) { this.cache.delete(this.cache.keys().next().value!); }
                 this.pendingFileChecks.delete(cacheKey);
                 return result;
             })
@@ -45,7 +49,7 @@ export class MixDetectorService {
             return;
         }
         const key = uri.toString();
-        this.cache.delete(key);
+        for (const cached of this.cache.keys()) { if (cached.startsWith(key)) { this.cache.delete(cached); } }
         this.pendingFileChecks.delete(key);
     }
 
@@ -62,7 +66,8 @@ export class MixDetectorService {
             }
 
             const header = await this.peekFile(uri, 32);
-            return looksLikeMix(header, stat.size);
+            const flags = header.length >= 4 ? new DataView(header.buffer, header.byteOffset, header.byteLength).getUint32(0, true) : 0;
+            return (flags & 0xffff) === 0 && (flags & MIX_ENCRYPTED) !== 0 ? looksLikeMix(header, stat.size) : new BrowserLocations(this.mixWorkspaceManager).isArchive(uri);
         } catch {
             return false;
         }
@@ -117,9 +122,10 @@ function looksLikeMix(header: Uint8Array, totalSize: number): boolean {
 
     if (header.byteLength >= 10) {
         const flags = view.getUint32(0, true);
-        const fileCount = view.getInt16(4, true);
-        const bodySize = view.getInt32(6, true);
+        const fileCount = view.getUint16(4, true);
+        const bodySize = view.getUint32(6, true);
         const hasOnlyKnownFlags = (flags & ~(MIX_CHECKSUM | MIX_ENCRYPTED)) === 0;
+        if (hasOnlyKnownFlags && (flags & MIX_ENCRYPTED) !== 0) { return totalSize >= 92; }
         if (hasOnlyKnownFlags && fileCount > 0 && fileCount < 20000) {
             const indexSize = 10 + fileCount * 12 + bodySize;
             if ((flags & MIX_ENCRYPTED) !== 0) {

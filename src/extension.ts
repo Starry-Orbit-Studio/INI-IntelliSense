@@ -39,6 +39,8 @@ import { ResourceNode } from './resources/resource-node';
 import { ImportExportService } from './services/import-export-service';
 import { MixTreeDragAndDropController } from './views/mix-tree-drag-and-drop';
 import { MixDetectorService } from './services/mix-detector-service';
+import { FileBrowserEditor } from './mix/browser/editor';
+import { validFileName } from './mix/browser/file-names';
 import { ResourcePreviewProvider } from './preview/resource-preview-provider';
 import { CompareService } from './compare/compare-service';
 import { CompareResultsPanel } from './compare/compare-results-panel';
@@ -138,6 +140,9 @@ export async function activate(context: vscode.ExtensionContext) {
     const projectResources = new ProjectResources(mixWorkspaceManager);
     const decoder = new DecoderService(vscode.Uri.joinPath(context.extensionUri, 'dist', 'media-worker.js').fsPath);
     const media = new MediaService(projectResources, decoder, context.extensionUri);
+    const fileBrowser = new FileBrowserEditor(context, mixWorkspaceManager, compareService, media);
+    importExportService.transfers = fileBrowser.transfers;
+    context.subscriptions.push(fileBrowser);
     const inspection = new InspectionService(projectResources, media, iniManager, schemaManager, fileTypeManager, (key) => csfManager.getLabel(key)?.value);
     diagnosticManager.project = inspection.ini;
     context.subscriptions.push(new DictionaryEditor(context, schemaManager, descriptionManager, inspection.ini, projectResources));
@@ -235,9 +240,9 @@ export async function activate(context: vscode.ExtensionContext) {
     }));
     context.subscriptions.push(vscode.commands.registerCommand('ra2-ini-intellisense.mix.export', async (node?: ResourceNode, selection?: ResourceNode[]) => {
         const sources = selection && selection.length > 0
-            ? selection.filter(item => item.uri.scheme === MixUriCodec.scheme).map(item => item.uri)
+            ? selection.filter(item => item.uri.scheme === MixUriCodec.scheme).map(item => item.sourceUri ?? item.uri)
             : node?.uri && node.uri.scheme === MixUriCodec.scheme
-                ? [node.uri]
+                ? [node.sourceUri ?? node.uri]
                 : [];
         if (sources.length === 0) {
             return;
@@ -245,24 +250,14 @@ export async function activate(context: vscode.ExtensionContext) {
 
         await importExportService.exportFromMix(sources);
     }));
-    context.subscriptions.push(vscode.commands.registerCommand('ra2-ini-intellisense.mix.newFolder', async (node?: ResourceNode) => {
+    context.subscriptions.push(vscode.commands.registerCommand('ra2-ini-intellisense.mix.newArchive', async (node?: ResourceNode) => {
         const targetUri = resolveMixTargetUri(node);
-        if (!targetUri) {
-            return;
-        }
-
-        const folderName = await vscode.window.showInputBox({
-            prompt: localize('mix.newFolder.prompt', 'Enter a new folder name'),
-            validateInput: value => value.trim().length === 0 ? localize('mix.newFolder.validation', 'Folder name cannot be empty.') : null,
-        });
-        if (!folderName) {
-            return;
-        }
-
-        const newUri = MixUriCodec.toChildUri(targetUri, `${targetUri.path}/${folderName}`);
-        await vscode.workspace.fs.createDirectory(newUri);
-        mixFilesProvider.refresh();
+        if (!targetUri) { return; }
+        const name = await vscode.window.showInputBox({ title: localize('mix.browser.create', 'New MIX'), value: 'new.mix', validateInput: value => validFileName(value) ? undefined : localize('mix.browser.invalidName', 'Invalid destination filename: {0}', value) });
+        if (name) { await fileBrowser.transfers.createArchive(MixUriCodec.toChildUri(targetUri, `${targetUri.path}/${name}`)); mixFilesProvider.refresh(); }
     }));
+    context.subscriptions.push(vscode.commands.registerCommand('ra2-ini-intellisense.mix.newFolder', (node?: ResourceNode) =>
+        vscode.commands.executeCommand('ra2-ini-intellisense.mix.newArchive', node)));
     context.subscriptions.push(vscode.commands.registerCommand('ra2-ini-intellisense.mix.rename', async (node?: ResourceNode) => {
         if (!node || node.uri.scheme !== MixUriCodec.scheme) {
             return;
@@ -278,9 +273,10 @@ export async function activate(context: vscode.ExtensionContext) {
             return;
         }
 
-        const parentPath = node.uri.path.substring(0, node.uri.path.lastIndexOf('/')) || '/';
-        const newUri = MixUriCodec.toChildUri(node.uri, `${parentPath}/${newName}`);
-        await vscode.workspace.fs.rename(node.uri, newUri, { overwrite: false });
+        const source = node.sourceUri ?? node.uri;
+        const parentPath = source.path.substring(0, source.path.lastIndexOf('/')) || '/';
+        const newUri = MixUriCodec.toChildUri(source, `${parentPath}/${newName}`);
+        await fileBrowser.transfers.rename(source, newUri);
         mixFilesProvider.refresh();
     }));
     context.subscriptions.push(vscode.commands.registerCommand('ra2-ini-intellisense.mix.delete', async (node?: ResourceNode, selection?: ResourceNode[]) => {
@@ -302,9 +298,7 @@ export async function activate(context: vscode.ExtensionContext) {
             return;
         }
 
-        for (const target of targets) {
-            await vscode.workspace.fs.delete(target.uri, { recursive: true });
-        }
+        await fileBrowser.transfers.remove(targets.map(target => target.sourceUri ?? target.uri));
         mixFilesProvider.refresh();
     }));
     context.subscriptions.push(vscode.commands.registerCommand('ra2-ini-intellisense.mix.compareWith', async (node?: ResourceNode) => {

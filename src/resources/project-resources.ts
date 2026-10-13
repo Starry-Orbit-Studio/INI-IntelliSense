@@ -3,6 +3,8 @@ import * as path from 'path';
 import { open } from 'fs/promises';
 import { MixUriCodec } from '../mix/fs/mix-uri-codec';
 import { MixWorkspaceManager } from '../mix/fs/mix-workspace-manager';
+import { MixDetectorService } from '../services/mix-detector-service';
+import { isRecoveryFile } from '../mix/browser/file-names';
 import { ByteCache } from '../media/byte-cache';
 import { indexMix, MixResourceEntry } from './mix-resource-index';
 import { MixArchive } from '../mix/core/archive';
@@ -33,6 +35,7 @@ interface ResourceIndex {
 
 /** One project-scoped resource catalog for every preview surface. */
 export class ProjectResources implements vscode.Disposable {
+    private readonly archiveDetector: MixDetectorService;
     private indexes = new Map<string, Promise<ResourceIndex>>();
     private looseIndexes = new Map<string, Promise<ResourceIndex>>();
     private slices = new Map<string, { container: vscode.Uri; offset: number; size: number }>();
@@ -50,6 +53,7 @@ export class ProjectResources implements vscode.Disposable {
     public readonly onDidChange = this.emitter.event;
 
     constructor(private readonly mix: MixWorkspaceManager) {
+        this.archiveDetector = new MixDetectorService(mix);
         const watcher = vscode.workspace.createFileSystemWatcher('**/*');
         this.disposables.push(
             watcher,
@@ -142,13 +146,13 @@ export class ProjectResources implements vscode.Disposable {
         }
         if (
             uri &&
-            !/\.(ini|map|mpr|yrm|mix|shp|tem|sno|urb|ubn|des|lun|vxl|hva|pal|vpl|idx|bag|wav|ogg|mp3|flac|pcx)$|\/ext[^/]*\.dll$/i.test(
+            !/\.(ini|map|mpr|yrm|mix|big|dll|shp|tem|sno|urb|ubn|des|lun|vxl|hva|pal|vpl|idx|bag|wav|ogg|mp3|flac|pcx)$|\/ext[^/]*\.dll$/i.test(
                 uri.path
             )
         ) {
             return;
         }
-        if (uri && !structural && !/\.mix$|\/ext[^/]*\.dll$/i.test(uri.path)) {
+        if (uri && !structural && !/\.(mix|dll|big)$/i.test(uri.path)) {
             this.epoch++;
             this.bytes.delete(uri.toString());
             this.reads.delete(uri.toString());
@@ -160,6 +164,7 @@ export class ProjectResources implements vscode.Disposable {
         }
         this.epoch++;
         this.catalogEpoch++;
+        this.archiveDetector.clear(uri);
         this.roots.clear();
         this.rootCache.clear();
         this.indexes.clear();
@@ -169,6 +174,11 @@ export class ProjectResources implements vscode.Disposable {
         this.bytes.clear();
         this.reads.clear();
         this.emitter.fire(uri);
+    }
+
+    /** Register a validated metadata-only archive address supplied by the file browser. */
+    public registerSlice(uri: vscode.Uri, slice: { container: vscode.Uri; offset: number; size: number }): void {
+        this.slices.set(uri.toString(), slice);
     }
 
     public async read(uri: vscode.Uri, maxBytes = 64 * 1024 * 1024): Promise<Uint8Array> {
@@ -288,8 +298,9 @@ export class ProjectResources implements vscode.Disposable {
 
     private async findIndexed(origin: vscode.Uri, name: string): Promise<ResourceCandidate[]> {
         const index = await this.index(origin);
-        const normalized = path.posix.basename(name.replace(/\\/g, '/')).toLowerCase();
+        const normalized = name.replace(/\\/g, '/').replace(/^\.\//, '').toLowerCase();
         const found = [...(index.files.get(normalized) ?? [])];
+        if (normalized.includes('/')) { found.push(...(index.files.get(path.posix.basename(normalized)) ?? []).filter(candidate => candidate.uri.scheme !== MixUriCodec.scheme && candidate.uri.path.toLowerCase().endsWith('/' + normalized))); }
         for (const archive of index.archives) {
             try {
                 if (archive.entries) {
@@ -482,6 +493,7 @@ export class ProjectResources implements vscode.Disposable {
                     continue;
                 }
                 for (const [name, type] of entries) {
+                    if (isRecoveryFile(name)) { continue; }
                     if (result.count >= 100000 || generation !== this.catalogEpoch) {
                         break;
                     }
@@ -494,7 +506,7 @@ export class ProjectResources implements vscode.Disposable {
                         ) {
                             queue.push({ ...current, uri, depth: current.depth + 1 });
                         }
-                    } else if (/\.mix$|^ext[^/]*\.dll$/i.test(name)) {
+                    } else if (/\.(mix|dll|big)$/i.test(name) && await this.archiveDetector.isMixLike(uri)) {
                         if (!includeArchives) {
                             continue;
                         }
@@ -563,7 +575,7 @@ export class ProjectResources implements vscode.Disposable {
             return;
         }
         try {
-            const { entries, game } = await indexMix(
+            const { entries, game, databaseId } = await indexMix(
                 size,
                 (at, length) => this.readRange(container, offset + at, length),
                 (type, id) => this.mix.resolveResourceName(type, id)
@@ -573,12 +585,13 @@ export class ProjectResources implements vscode.Disposable {
             }
             result.archives.push({ uri: root, priority, entries, game, container, offset });
             for (const entry of entries.values()) {
+                if (entry.id === databaseId) { continue; }
                 if (!entry.name) {
                     continue;
                 }
                 const uri = MixUriCodec.toChildUri(root, entry.name);
                 this.slices.set(uri.toString(), { container, offset: offset + entry.offset, size: entry.size });
-                if (/\.mix$/i.test(entry.name)) {
+                if (/\.(mix|dll|big)$/i.test(entry.name)) {
                     await this.addArchive(
                         result,
                         origin,
@@ -591,7 +604,7 @@ export class ProjectResources implements vscode.Disposable {
                         generation
                     );
                 } else {
-                    const name = path.posix.basename(entry.name),
+                    const name = entry.name.replace(/\\/g, '/'),
                         key = name.toLowerCase();
                     const values = result.files.get(key) ?? [];
                     values.push({
@@ -617,6 +630,7 @@ export class ProjectResources implements vscode.Disposable {
         this.clearProjectWatchers();
         this.epoch++;
         this.catalogEpoch++;
+        this.archiveDetector.clear();
         this.roots.clear();
         this.rootCache.clear();
         this.disposables.forEach((item) => item.dispose());

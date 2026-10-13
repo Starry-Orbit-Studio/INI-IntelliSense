@@ -64,13 +64,13 @@ module.exports = async function verifyHover(
         }
         for (let attempt = 0; attempt < 30; attempt++) {
             await showHover?.();
-            if (await page.locator('.monaco-hover img[src^="data:image/png;base64,"]').count()) {
+            if (await page.locator('.monaco-hover:visible img[src^="data:image/png;base64,"]').count()) {
                 break;
             }
             await page.waitForTimeout(150);
         }
         try {
-            await page.locator('.monaco-hover img[src^="data:image/png;base64,"]').first().waitFor({ timeout: 10000 });
+            await page.locator('.monaco-hover:visible img[src^="data:image/png;base64,"]').first().waitFor({ timeout: 10000 });
         } catch (error) {
             await mkdir(path.dirname(output), { recursive: true });
             await page.screenshot({ path: output.replace(/\.png$/, '-failed.png') });
@@ -78,10 +78,10 @@ module.exports = async function verifyHover(
             throw error;
         }
         await page.waitForFunction(() => {
-            const image = document.querySelector('.monaco-hover img[src^="data:image/png;base64,"]');
+            const image = Array.from(document.querySelectorAll('.monaco-hover img[src^="data:image/png;base64,"]')).find(image => image.getClientRects().length && getComputedStyle(image).visibility !== 'hidden');
             return image?.complete && image.naturalWidth > 0;
         });
-        const hoverImage = page.locator('.monaco-hover img[src^="data:image/png;base64,"]').first();
+        const hoverImage = page.locator('.monaco-hover:visible img[src^="data:image/png;base64,"]').first();
         const hoverBytes = Buffer.from((await hoverImage.getAttribute('src')).split(',')[1], 'base64');
         if (hoverBytes.includes(Buffer.from('acTL'))) {
             const frames = new Set();
@@ -170,7 +170,7 @@ module.exports = async function verifyHover(
                 for (let attempt = 0; attempt < 20; attempt++) {
                     await showHover();
                     const src = await page
-                        .locator('.monaco-hover img[src^="data:image/png;base64,"]')
+                        .locator('.monaco-hover:visible img[src^="data:image/png;base64,"]')
                         .first()
                         .getAttribute('src')
                         .catch(() => '');
@@ -180,7 +180,7 @@ module.exports = async function verifyHover(
                     await new Promise((resolve) => setTimeout(resolve, 100));
                 }
                 assert.equal(
-                    await page.locator('.monaco-hover img[src^="data:image/png;base64,"]').first().getAttribute('src'),
+                    await page.locator('.monaco-hover:visible img[src^="data:image/png;base64,"]').first().getAttribute('src'),
                     'data:image/png;base64,' + png,
                     'hover and inspector share snow scene and palette'
                 );

@@ -8,7 +8,10 @@ export class MixFileSystemProvider implements vscode.FileSystemProvider {
         this.onDidChangeFile = manager.onDidChangeFile;
     }
 
-    public watch(uri: vscode.Uri, options: { readonly recursive: boolean; readonly excludes: readonly string[] }): vscode.Disposable {
+    public watch(
+        uri: vscode.Uri,
+        options: { readonly recursive: boolean; readonly excludes: readonly string[] }
+    ): vscode.Disposable {
         return this.manager.watch(uri, options);
     }
 
@@ -28,7 +31,11 @@ export class MixFileSystemProvider implements vscode.FileSystemProvider {
         return this.manager.readFile(uri);
     }
 
-    public writeFile(uri: vscode.Uri, content: Uint8Array, options: { readonly create: boolean; readonly overwrite: boolean }): Thenable<void> {
+    public writeFile(
+        uri: vscode.Uri,
+        content: Uint8Array,
+        options: { readonly create: boolean; readonly overwrite: boolean }
+    ): Thenable<void> {
         return this.manager.writeFile(uri, content, options);
     }
 

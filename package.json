@@ -13,7 +13,11 @@
   "engines": {
     "vscode": "^1.96.0"
   },
-  "activationEvents": [],
+  "activationEvents": [
+    "workspaceContains:**/*.mix",
+    "workspaceContains:**/*.big",
+    "workspaceContains:**/ext*.dll"
+  ],
   "categories": [
     "Programming Languages",
     "Other"
@@ -140,6 +144,29 @@
           }
         ],
         "priority": "option"
+      },
+      {
+        "viewType": "ra2-ini-intellisense.files",
+        "displayName": "%mix.browser.title%",
+        "selector": [
+          {
+            "filenamePattern": "*.mix"
+          }
+        ],
+        "priority": "default"
+      },
+      {
+        "viewType": "ra2-ini-intellisense.files.alias",
+        "displayName": "%mix.browser.title%",
+        "selector": [
+          {
+            "filenamePattern": "*.dll"
+          },
+          {
+            "filenamePattern": "*.big"
+          }
+        ],
+        "priority": "option"
       }
     ],
     "viewsContainers": {
@@ -241,6 +268,11 @@
           "when": "resourceExtname == .mix",
           "command": "ra2-ini-intellisense.mix.compareWith",
           "group": "navigation@3"
+        },
+        {
+          "command": "ra2-ini-intellisense.browseFiles",
+          "when": "resourceScheme == file || resourceScheme == ra2mix",
+          "group": "navigation@50"
         }
       ],
       "view/item/context": [
@@ -265,8 +297,8 @@
           "group": "2_mix"
         },
         {
-          "when": "view == mix-files && viewItem =~ /mixDirectory/",
-          "command": "ra2-ini-intellisense.mix.newFolder",
+          "when": "view == mix-files && viewItem =~ /mixFile|mixDirectory|mixEntryMixFile/",
+          "command": "ra2-ini-intellisense.mix.newArchive",
           "group": "2_mix"
         },
         {
@@ -545,6 +577,16 @@
       {
         "command": "ra2-ini-intellisense.editDictionary",
         "title": "%command.editDictionary.title%",
+        "category": "%command.category%"
+      },
+      {
+        "command": "ra2-ini-intellisense.browseFiles",
+        "title": "%mix.browser.title%",
+        "category": "%extension.displayName%"
+      },
+      {
+        "command": "ra2-ini-intellisense.mix.newArchive",
+        "title": "%mix.browser.create%",
         "category": "%command.category%"
       }
     ],
@@ -965,6 +1007,27 @@
           "default": "compatible",
           "scope": "resource",
           "description": "%configuration.project.compatibility%"
+        },
+        "ra2-ini-intellisense.mix.backupCount": {
+          "type": "integer",
+          "default": 5,
+          "minimum": 1,
+          "maximum": 50,
+          "markdownDescription": "%mix.backupCount.description%"
+        },
+        "ra2-ini-intellisense.mix.backupBudgetMiB": {
+          "type": "integer",
+          "default": 1024,
+          "minimum": 128,
+          "maximum": 8192,
+          "markdownDescription": "%mix.backupBudget.description%"
+        },
+        "ra2-ini-intellisense.mix.transferBudgetMiB": {
+          "type": "integer",
+          "default": 512,
+          "minimum": 16,
+          "maximum": 2048,
+          "markdownDescription": "%mix.transferBudget.description%"
         }
       }
     },
@@ -1083,7 +1146,8 @@
     "i18n:extract": "vscode-nls-dev extract --outDir i18n",
     "format:workbench": "prettier --write src/context src/media src/resources/project-resources.ts src/mix/core/encrypted-header.ts src/test/media* src/test/resource-inspection.test.ts src/test/visual-edit.test.ts webview-ui/workbench",
     "test:webview": "node scripts/test-workbench.cjs",
-    "test:dictionary-ui": "node scripts/test-dictionary.cjs"
+    "test:dictionary-ui": "node scripts/test-dictionary.cjs",
+    "test:files-ui": "node scripts/test-files.cjs"
   },
   "devDependencies": {
     "@types/ini": "^4.1.1",
@@ -1104,6 +1168,8 @@
     "vscode-nls-dev": "^4.0.4"
   },
   "dependencies": {
+    "@tanstack/table-core": "8.21.3",
+    "@tanstack/virtual-core": "3.13.12",
     "egoroof-blowfish": "^4.0.3",
     "ini": "^5.0.0",
     "markdown-it": "^15.0.2"

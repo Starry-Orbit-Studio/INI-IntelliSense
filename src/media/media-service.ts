@@ -52,7 +52,7 @@ export class MediaService {
         private readonly extension: vscode.Uri
     ) {
         resources.onDidChange((uri) => {
-            if (!uri || /\.(idx|bag|mix|dll)$/i.test(uri.path)) {
+            if (!uri || /\.(idx|bag|mix|dll|big)$/i.test(uri.path)) {
                 this.bankGeneration++;
                 this.banks.clear();
                 this.bankErrors.clear();

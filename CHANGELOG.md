@@ -4,6 +4,10 @@
 
 ## [Unreleased]
 
+- Add a main-editor Files and MIX browser with dual-pane directory/nested-MIX navigation, content-based DLL/BIG detection, virtualized multi-selection, lasso, drag/drop, clipboard, media previews and content comparison with text diffs.
+- Share conflict-aware batch transfers and safe nested writeback across the browser and legacy tree, with unknown-ID and filename encoding preservation, checksums, signed indexes, recovery backups, bounded staging and guarded undo.
+- Keep archive INI saves native, protect unsaved documents and preserve member timestamps across unrelated archive edits; expose backup/staging limits and update English/Chinese guidance.
+
 - Added a visual dictionary editor with searchable types, tags and descriptions, inherited sources, numbered keys, typed constraints, multilingual Markdown, project examples, native undo and conflict-safe edits. Downloaded dictionaries can be copied into the project for customization.
 - Added configurable include/parent cycle and missing-file checks, registered reference type checks, empty list members, numbered-key bounds, file-purpose checks and registry integrity checks; defer context-dependent results while loading is incomplete and treat intentional overrides/empty values as informational.
 

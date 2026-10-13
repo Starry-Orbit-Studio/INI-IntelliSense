@@ -12,8 +12,8 @@ export class MixTreeDragAndDropController implements vscode.TreeDragAndDropContr
 
     public async handleDrag(source: readonly ResourceNode[], dataTransfer: vscode.DataTransfer): Promise<void> {
         const files = source
-            .filter(node => node.kind === 'mixEntryFile')
-            .map(node => node.uri.toString())
+            .filter(node => ['mixEntryFile', 'mixDirectory', 'mixFile'].includes(node.kind))
+            .map(node => (node.sourceUri ?? node.uri).toString())
             .join('\r\n');
         if (files) {
             dataTransfer.set('text/uri-list', new vscode.DataTransferItem(files));
@@ -33,6 +33,9 @@ export class MixTreeDragAndDropController implements vscode.TreeDragAndDropContr
 
         const item = dataTransfer.get('text/uri-list');
         if (!item) {
+            const sources: vscode.Uri[] = [];
+            dataTransfer.forEach(value => { const file = value.asFile(); if (file?.uri?.scheme === 'file') { sources.push(file.uri); } });
+            if (sources.length) { await this.importExportService.importIntoMix(targetUri, sources); }
             return;
         }
 
@@ -40,7 +43,7 @@ export class MixTreeDragAndDropController implements vscode.TreeDragAndDropContr
         const sourceUris = text
             .split(/\r?\n/)
             .map(line => line.trim())
-            .filter(Boolean)
+            .filter(line => !!line && !line.startsWith('#'))
             .map(line => vscode.Uri.parse(line));
 
         if (sourceUris.length > 0) {
@@ -51,7 +54,7 @@ export class MixTreeDragAndDropController implements vscode.TreeDragAndDropContr
 
 function resolveDropTargetUri(target: ResourceNode): vscode.Uri | undefined {
     if (target.kind === 'mixDirectory' || target.kind === 'mixFile') {
-        return target.uri;
+        return target.uri.scheme === MixUriCodec.scheme ? target.uri : MixUriCodec.toRootUri(target.uri);
     }
 
     if (target.kind === 'mixEntryFile') {

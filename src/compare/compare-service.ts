@@ -1,9 +1,19 @@
 import * as crypto from 'crypto';
 import * as path from 'path';
+import { createReadStream } from 'fs';
 import * as vscode from 'vscode';
 import { TextContentService } from '../services/text-content-service';
 import { MixUriCodec } from '../mix/fs/mix-uri-codec';
-import { CompareEntryDetails, CompareEntryType, CompareItem, CompareResult, CompareSource, CompareSummary } from './types';
+import { MixArchive } from '../mix/core/archive';
+import { MixGame } from '../mix/core/types';
+import {
+    CompareEntryDetails,
+    CompareEntryType,
+    CompareItem,
+    CompareResult,
+    CompareSource,
+    CompareSummary,
+} from './types';
 
 interface ScannedEntry extends CompareEntryDetails {
     key: string;
@@ -12,24 +22,60 @@ interface ScannedEntry extends CompareEntryDetails {
     hash?: string;
 }
 
+export interface CompareReader {
+    list(uri: vscode.Uri): Promise<{ entries: { name: string; directory: boolean; id?: number }[] }>;
+    stat(uri: vscode.Uri): Promise<vscode.FileStat>;
+    read(uri: vscode.Uri): Promise<Uint8Array>;
+    resourceRange(uri: vscode.Uri): Promise<{ container: vscode.Uri; offset: number; size: number } | undefined>;
+    game?(uri: vscode.Uri): Promise<MixGame>;
+}
+
 export class CompareService {
+    public reader?: CompareReader;
     constructor(private readonly textContentService: TextContentService) {}
 
     public async compare(
         left: CompareSource,
         right: CompareSource,
-        progress?: vscode.Progress<{ message?: string; increment?: number }>
+        progress?: vscode.Progress<{ message?: string; increment?: number }>,
+        token?: vscode.CancellationToken
     ): Promise<CompareResult> {
         progress?.report({ message: `Scanning ${left.label}` });
-        const leftEntries = await this.scanSource(left, progress);
+        const game =
+            left.kind === 'mix' || right.kind === 'mix'
+                ? ((await this.reader?.game?.(left.kind === 'mix' ? left.rootUri : right.rootUri)) ?? MixGame.Ra2)
+                : undefined;
+        const leftEntries = await this.scanSource(left, progress, token, game);
 
         progress?.report({ message: `Scanning ${right.label}` });
-        const rightEntries = await this.scanSource(right, progress);
+        const rightEntries = await this.scanSource(right, progress, token, game);
 
-        const keys = new Set<string>([
-            ...leftEntries.keys(),
-            ...rightEntries.keys(),
-        ]);
+        // ID matching must still report a file occupying the other side's directory name.
+        for (const [current, opposite] of [
+            [leftEntries, rightEntries],
+            [rightEntries, leftEntries],
+        ]) {
+            for (const [key, entry] of [...current]) {
+                if (entry.entryType !== 'directory') {
+                    continue;
+                }
+                const conflict = [...opposite].find(
+                    ([, other]) =>
+                        other.entryType === 'file' &&
+                        normalizeCompareKey(other.relativePath) === normalizeCompareKey(entry.relativePath)
+                );
+                if (!conflict) {
+                    continue;
+                }
+                const canonical = 'path:' + normalizeCompareKey(entry.relativePath);
+                current.delete(key);
+                opposite.delete(conflict[0]);
+                current.set(canonical, { ...entry, key: canonical });
+                opposite.set(canonical, { ...conflict[1], key: canonical });
+            }
+        }
+
+        const keys = new Set<string>([...leftEntries.keys(), ...rightEntries.keys()]);
 
         const items: CompareItem[] = [];
         const summary: CompareSummary = {
@@ -54,6 +100,9 @@ export class CompareService {
         });
 
         for (const key of orderedKeys) {
+            if (token?.isCancellationRequested) {
+                throw new vscode.CancellationError();
+            }
             const leftEntry = leftEntries.get(key);
             const rightEntry = rightEntries.get(key);
 
@@ -105,8 +154,8 @@ export class CompareService {
                 continue;
             }
 
-            await this.populateFingerprint(leftEntry);
-            await this.populateFingerprint(rightEntry);
+            await this.populateFingerprint(leftEntry, token);
+            await this.populateFingerprint(rightEntry, token);
 
             const identical = leftEntry.hash === rightEntry.hash;
             items.push({
@@ -139,21 +188,49 @@ export class CompareService {
 
     private async scanSource(
         source: CompareSource,
-        progress?: vscode.Progress<{ message?: string; increment?: number }>
+        progress?: vscode.Progress<{ message?: string; increment?: number }>,
+        token?: vscode.CancellationToken,
+        game?: MixGame
     ): Promise<Map<string, ScannedEntry>> {
         const results = new Map<string, ScannedEntry>();
         const queue: Array<{ uri: vscode.Uri; relativePath: string }> = [{ uri: source.rootUri, relativePath: '' }];
 
         while (queue.length > 0) {
+            if (token?.isCancellationRequested) {
+                throw new vscode.CancellationError();
+            }
             const current = queue.shift()!;
-            const entries = await vscode.workspace.fs.readDirectory(current.uri);
+            const entries: [string, vscode.FileType, number?][] = this.reader
+                ? (await this.reader.list(current.uri)).entries.map((entry) => [
+                      entry.name,
+                      entry.directory ? vscode.FileType.Directory : vscode.FileType.File,
+                      entry.id,
+                  ])
+                : await vscode.workspace.fs.readDirectory(current.uri);
 
-            for (const [name, type] of entries) {
-                const relativePath = normalizeRelativePath(current.relativePath ? path.posix.join(current.relativePath, name) : name);
-                const key = normalizeCompareKey(relativePath);
-                const childUri = current.uri.scheme === MixUriCodec.scheme
-                    ? MixUriCodec.toChildUri(current.uri, path.posix.join(current.uri.path, name))
-                    : vscode.Uri.joinPath(current.uri, name);
+            for (const [name, type, id] of entries) {
+                if (
+                    type & vscode.FileType.SymbolicLink ||
+                    /\.ra2-(?:backup-|workbench\.lock)|\.ra2-.*\.tmp$/.test(name) ||
+                    (source.kind === 'mix' && /^(local mix database\.dat|0x366e051f)$/i.test(name))
+                ) {
+                    continue;
+                }
+                const relativePath = normalizeRelativePath(
+                    current.relativePath ? path.posix.join(current.relativePath, name) : name
+                );
+                const key =
+                    game !== undefined && !(type & vscode.FileType.Directory)
+                        ? 'id:' +
+                          (id ??
+                              (/^0x[0-9a-f]{8}$/i.test(name)
+                                  ? parseInt(name.slice(2), 16)
+                                  : MixArchive.calculateId(relativePath.replace(/\//g, '\\'), game)))
+                        : normalizeCompareKey(relativePath);
+                const childUri =
+                    current.uri.scheme === MixUriCodec.scheme
+                        ? MixUriCodec.toChildUri(current.uri, path.posix.join(current.uri.path, name))
+                        : vscode.Uri.joinPath(current.uri, name);
 
                 if (type & vscode.FileType.Directory) {
                     results.set(key, {
@@ -168,7 +245,7 @@ export class CompareService {
                     continue;
                 }
 
-                const stat = await vscode.workspace.fs.stat(childUri);
+                const stat = await (this.reader?.stat(childUri) ?? vscode.workspace.fs.stat(childUri));
                 results.set(key, {
                     key,
                     relativePath,
@@ -176,6 +253,7 @@ export class CompareService {
                     size: stat.size,
                     entryType: 'file',
                     extension: path.extname(name).toLowerCase(),
+                    likelyText: isDefinitelyText(path.extname(name).toLowerCase()),
                 });
             }
 
@@ -185,32 +263,58 @@ export class CompareService {
         return results;
     }
 
-    private createSingleSideItem(
-        key: string,
-        entry: ScannedEntry,
-        status: 'left-only' | 'right-only'
-    ): CompareItem {
+    private createSingleSideItem(key: string, entry: ScannedEntry, status: 'left-only' | 'right-only'): CompareItem {
         return {
             key,
             relativePath: entry.relativePath,
             entryType: entry.entryType,
             status,
-            reason: status === 'left-only'
-                ? 'Only exists in the left source.'
-                : 'Only exists in the right source.',
+            reason: status === 'left-only' ? 'Only exists in the left source.' : 'Only exists in the right source.',
             left: status === 'left-only' ? entry : undefined,
             right: status === 'right-only' ? entry : undefined,
         };
     }
 
-    private async populateFingerprint(entry: ScannedEntry): Promise<void> {
+    private async populateFingerprint(entry: ScannedEntry, token?: vscode.CancellationToken): Promise<void> {
         if (entry.entryType !== 'file' || entry.hash) {
             return;
         }
 
-        const bytes = await vscode.workspace.fs.readFile(entry.uri);
-        entry.hash = crypto.createHash('sha256').update(bytes).digest('hex');
-        entry.likelyText = isDefinitelyText(entry.extension) || this.textContentService.isLikelyText(bytes);
+        const range = await this.reader?.resourceRange(entry.uri);
+        const physical = range?.container ?? entry.uri;
+        const fingerprint = crypto.createHash('sha256');
+        if (physical.scheme === 'file' && entry.size > 0) {
+            const stream = createReadStream(physical.fsPath, {
+                start: range?.offset ?? 0,
+                end: (range?.offset ?? 0) + entry.size - 1,
+                highWaterMark: 1024 * 1024,
+            });
+            const cancel = token?.onCancellationRequested(() => stream.destroy(new vscode.CancellationError()));
+            try {
+                let received = 0;
+                for await (const chunk of stream) {
+                    if (token?.isCancellationRequested) {
+                        throw new vscode.CancellationError();
+                    }
+                    received += chunk.length;
+                    fingerprint.update(chunk);
+                    entry.likelyText ??=
+                        isDefinitelyText(entry.extension) ||
+                        this.textContentService.isLikelyText(chunk.subarray(0, 4096));
+                }
+                if (received !== entry.size) {
+                    throw new Error('File changed during comparison.');
+                }
+            } finally {
+                cancel?.dispose();
+                stream.destroy();
+            }
+        } else {
+            const bytes = await (this.reader?.read(entry.uri) ?? vscode.workspace.fs.readFile(entry.uri));
+            fingerprint.update(bytes);
+            entry.likelyText = isDefinitelyText(entry.extension) || this.textContentService.isLikelyText(bytes);
+        }
+        entry.hash = fingerprint.digest('hex');
     }
 }
 

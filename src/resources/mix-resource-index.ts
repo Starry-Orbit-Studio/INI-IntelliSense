@@ -2,7 +2,7 @@ import { BinaryReader } from '../media/binary-reader';
 import { decryptMixHeader } from '../mix/core/encrypted-header';
 import { MixArchive } from '../mix/core/archive';
 import { MixGame } from '../mix/core/types';
-import { decodeLocalText } from '../mix/core/local-encoding';
+import { LOCAL_MIX_DATABASE_ID, LEGACY_LOCAL_MIX_DATABASE_ID, readLocalMixDatabase } from '../mix/core/local-mix-database';
 
 export interface MixResourceEntry {
     id: number;
@@ -15,11 +15,13 @@ export interface MixResourceEntry {
 export async function indexMix(
     size: number,
     read: (offset: number, length: number) => Promise<Uint8Array>,
-    resolveName: (game: MixGame, id: number) => Promise<string | undefined>
-): Promise<{ entries: Map<number, MixResourceEntry>; game: MixGame }> {
+    resolveName: (game: MixGame, id: number) => Promise<string | undefined>,
+    strict = false
+): Promise<{ entries: Map<number, MixResourceEntry>; game: MixGame; databaseId?: number }> {
     const prefix = new BinaryReader(await read(0, Math.min(size, 92)));
     prefix.require(0, 6);
     const flags = prefix.u32(0);
+    if (strict && (flags & 0xffff) === 0 && flags & ~0x30000) { throw new Error('Invalid MIX flags.'); }
     let header: BinaryReader,
         body: number,
         cursor: number,
@@ -43,7 +45,7 @@ export async function indexMix(
     const count = header.u16(cursor - 6),
         bodySize = header.u32(cursor - 4);
     header.require(cursor, count * 12);
-    if (body + bodySize > size) {
+    if (body + bodySize > size || strict && body + bodySize + ((flags & 0xffff) === 0 && flags & 0x10000 ? 20 : 0) !== size) {
         throw new Error('Truncated MIX container.');
     }
     const entries = new Map<number, MixResourceEntry>();
@@ -51,30 +53,22 @@ export async function indexMix(
         const at = cursor + i * 12,
             offset = header.u32(at + 4),
             length = header.u32(at + 8);
+        if (strict && (offset + length > bodySize || entries.has(header.u32(at)))) { throw new Error('Invalid or duplicate MIX entry.'); }
         if (offset + length <= bodySize) {
             const id = header.u32(at);
             entries.set(id, { id, offset: body + offset, size: length });
         }
     }
-    const local = entries.get(0x366e051f);
+    let databaseId: number | undefined;
+    const local = entries.get(LOCAL_MIX_DATABASE_ID) ?? entries.get(LEGACY_LOCAL_MIX_DATABASE_ID);
     if (local && local.size >= 52 && local.size <= 4 * 1024 * 1024) {
-        const data = await read(local.offset, local.size),
-            db = new BinaryReader(data);
-        if (db.ascii(0, 21) === 'XCC by Olaf van der Sp') {
-            const gameId = db.u32(44);
-            game = [5, 6].includes(gameId) ? MixGame.Ra2 : [0, 1].includes(gameId) ? MixGame.TdRa : MixGame.Ts;
-            let offset = 52;
-            for (let i = 0; i < Math.min(db.u32(48), 100000) && offset < data.length; i++) {
-                const end = data.indexOf(0, offset);
-                if (end < 0) {
-                    break;
-                }
-                const name = decodeLocalText(data.subarray(offset, end));
-                const entry = entries.get(MixArchive.calculateId(name, game));
-                if (entry) {
-                    entry.name = name;
-                }
-                offset = end + 1;
+        const database = readLocalMixDatabase(await read(local.offset, local.size));
+        if (database) {
+            databaseId = local.id;
+            game = database.game;
+            for (const name of database.entries) {
+                const entry = entries.get(MixArchive.calculateIdBytes(name.encodedName, game));
+                if (entry) { entry.name = name.name; }
             }
         }
     }
@@ -119,5 +113,6 @@ export async function indexMix(
             entry.name = name;
         }
     }
-    return { entries, game };
+    if (game === MixGame.TdRa && [...entries.values()].some(entry => entry.name && MixArchive.calculateId(entry.name, MixGame.Ts) === entry.id && MixArchive.calculateId(entry.name, MixGame.TdRa) !== entry.id)) { game = MixGame.Ts; }
+    return { entries, game, databaseId };
 }

@@ -316,6 +316,7 @@ export class ProjectWorkbench implements vscode.TreeDataProvider<ProjectItem>, v
             this.node(origin, labels.group_sounds, 'group', 'unmute'),
             this.node(origin, labels.projectMaps, 'maps', 'map'),
             this.node(origin, labels.library, 'assets', 'file-media', 'ra2-ini-intellisense.browseAssets'),
+            this.node(origin, localize('mix.browser.title', 'Files and MIX'), 'files', 'files', 'ra2-ini-intellisense.browseFiles'),
             this.node(origin, labels.favorites, 'favorites', 'star', 'ra2-ini-intellisense.browseObjects', [
                 origin,
                 'favorites',

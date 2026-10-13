@@ -6,6 +6,7 @@ export function normalizeMixPath(input: string): string {
     }
 
     const normalized = input.replace(/\\/g, '/');
+    if (normalized.includes('\0') || normalized.split('/').some(part => part === '..' || part === '.')) { throw new Error('Invalid MIX path.'); }
     const trimmed = normalized.startsWith('/') ? normalized : `/${normalized}`;
     const collapsed = trimmed.replace(/\/+/g, '/');
     if (collapsed === '/') {
@@ -29,7 +30,7 @@ export function joinMixPath(dir: string, name: string): string {
     if (normalizedDir === '/') {
         return normalizeMixPath(`/${name}`);
     }
-    return normalizeMixPath(path.posix.join(normalizedDir, name));
+    return normalizeMixPath(`${normalizedDir}/${name}`);
 }
 
 export function splitMixVirtualPath(virtualPath: string): { dir: string; name: string } {

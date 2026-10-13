@@ -72,7 +72,7 @@ async function main() {
 		],
 	});
     const browser = await esbuild.context({
-        entryPoints: { main: 'webview-ui/workbench/main.ts', worker: 'webview-ui/workbench/worker.ts', dictionary: 'webview-ui/workbench/dictionary.ts' },
+        entryPoints: { main: 'webview-ui/workbench/main.ts', worker: 'webview-ui/workbench/worker.ts', dictionary: 'webview-ui/workbench/dictionary.ts', files: 'webview-ui/workbench/files.ts' },
         bundle: true,
         platform: 'browser',
         format: 'iife',

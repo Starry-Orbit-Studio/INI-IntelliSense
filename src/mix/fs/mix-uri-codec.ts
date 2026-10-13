@@ -1,4 +1,5 @@
 import * as vscode from 'vscode';
+import { normalizeMixPath } from '../core/path-utils';
 
 export interface DecodedMixUri {
     containerUri: vscode.Uri;
@@ -45,7 +46,7 @@ export class MixUriCodec {
             return MixUriCodec.toRootUri(decoded.containerUri, decoded.nestedChain);
         }
 
-        return MixUriCodec.toRootUri(decoded.containerUri, [...decoded.nestedChain, leaf]);
+        return MixUriCodec.toRootUri(decoded.containerUri, [...decoded.nestedChain, decoded.virtualPath.slice(1)]);
     }
 
     public static decode(uri: vscode.Uri): DecodedMixUri {
@@ -66,17 +67,21 @@ export class MixUriCodec {
     }
 
     private static decodePayload(query: string): MixUriPayload {
-        return JSON.parse(decodeURIComponent(query)) as MixUriPayload;
+        const payload = JSON.parse(decodeURIComponent(query)) as MixUriPayload;
+        if (
+            !payload ||
+            typeof payload.container !== 'string' ||
+            (payload.chain !== undefined &&
+                (!Array.isArray(payload.chain) ||
+                    payload.chain.length > 32 ||
+                    payload.chain.some((segment) => typeof segment !== 'string' || normalizeMixPath(segment) === '/')))
+        ) {
+            throw new Error('Invalid MIX address.');
+        }
+        return payload;
     }
 }
 
 function normalizePath(value: string): string {
-    if (!value) {
-        return '/';
-    }
-
-    const replaced = value.replace(/\\/g, '/');
-    const prefixed = replaced.startsWith('/') ? replaced : `/${replaced}`;
-    const collapsed = prefixed.replace(/\/+/g, '/');
-    return collapsed.length > 1 && collapsed.endsWith('/') ? collapsed.slice(0, -1) : collapsed;
+    return normalizeMixPath(value);
 }

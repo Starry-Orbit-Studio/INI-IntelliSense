@@ -48,6 +48,7 @@ export abstract class ResourceTreeBase implements vscode.TreeDataProvider<Resour
     }
 
     protected getCommand(element: ResourceNode): vscode.Command | undefined {
+        if (element.kind === 'mixFile') { return { command: 'ra2-ini-intellisense.browseFiles', title: localize('mix.browser.title', 'Files and MIX'), arguments: [element.uri] }; }
         if (isPreviewableResource(element)) {
             return {
                 command: 'vscode.openWith',
